@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Disbursement Performance Dashboard — Apr 2026</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root { --bg:#f4f6fa;--card:#ffffff;--border:#e2e8f0;--text:#1a202c;--muted:#718096; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);font-size:13px;}
+
+  .header{background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);color:white;padding:16px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}
+  .header h1{font-size:19px;font-weight:600;}
+  .header .meta{font-size:11px;opacity:.8;margin-top:3px;}
+
+  .pill-row{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;}
+  .pill{border-radius:12px;padding:8px 16px;text-align:center;min-width:110px;border:1px solid rgba(255,255,255,0.25);}
+  .pill .p-lbl{font-size:10px;opacity:.85;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;}
+  .pill .p-num{font-size:20px;font-weight:700;line-height:1.1;}
+  .pill .p-sub{font-size:10px;opacity:.8;margin-top:2px;}
+  .pill-total{background:rgba(255,255,255,0.18);}
+  .pill-uc{background:rgba(59,130,246,0.35);}
+  .pill-ucv{background:rgba(16,185,129,0.35);}
+  .pill-ncv{background:rgba(245,158,11,0.35);}
+  .pill-sep{width:1px;background:rgba(255,255,255,0.2);margin:4px 0;}
+
+  .wrap{padding:16px 20px;}
+  .kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px;}
+  .kpi{background:var(--card);border-radius:10px;padding:13px 15px;border-left:4px solid;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+  .kpi .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px;}
+  .kpi .val{font-size:20px;font-weight:700;}
+  .kpi .sub{font-size:11px;color:var(--muted);margin-top:3px;}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;}
+  .card{background:var(--card);border-radius:10px;padding:15px 17px;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid var(--border);}
+  .card-title{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:13px;}
+  .chart-wrap{position:relative;}
+
+  .perf-table{width:100%;border-collapse:collapse;}
+  .perf-table th{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:5px 7px;text-align:left;border-bottom:1.5px solid var(--border);}
+  .perf-table td{padding:8px 7px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
+  .perf-table tr:last-child td{border-bottom:none;}
+
+  .avatar{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:white;flex-shrink:0;}
+  .bar-track{background:#eef2f7;border-radius:4px;height:6px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:4px;}
+  .badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;}
+  .badge-blue{background:#dbeafe;color:#1e40af;}
+  .badge-green{background:#d1fae5;color:#065f46;}
+  .badge-purple{background:#ede9fe;color:#5b21b6;}
+  .badge-amber{background:#fef3c7;color:#92400e;}
+  .badge-teal{background:#ccfbf1;color:#134e4a;}
+
+  .bm-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f5f5f5;}
+  .bm-row:last-child{border-bottom:none;}
+  .bm-rank{font-size:13px;min-width:24px;text-align:center;}
+  .bm-info{flex:1;}
+  .bm-name{font-size:12px;font-weight:500;}
+  .bm-sub{font-size:10px;color:var(--muted);}
+  .bm-amt{font-size:12px;font-weight:600;min-width:56px;text-align:right;}
+  .warn-dot{width:7px;height:7px;border-radius:50%;background:#ef4444;flex-shrink:0;}
+
+  .prod-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f5f5f5;font-size:12px;}
+  .prod-row:last-child{border-bottom:none;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>📊 Disbursement Performance Dashboard</h1>
+    <div class="meta">Apr 2026 &nbsp;·&nbsp; 892 transactions &nbsp;·&nbsp; All AMs &nbsp;·&nbsp; UCD Dealer Channel</div>
+  </div>
+  <div class="pill-row">
+    <div class="pill pill-total">
+      <div class="p-lbl">Total Disbursed</div>
+      <div class="p-num">₹4,019L</div>
+      <div class="p-sub">892 cases · 30 BMs</div>
+    </div>
+    <div class="pill-sep"></div>
+    <div class="pill pill-uc">
+      <div class="p-lbl">🚗 Used Car</div>
+      <div class="p-num">₹3,326L</div>
+      <div class="p-sub">809 cases · 82.8%</div>
+    </div>
+    <div class="pill pill-ucv">
+      <div class="p-lbl">🚛 Used CV</div>
+      <div class="p-num">₹480L</div>
+      <div class="p-sub">72 cases · 11.9%</div>
+    </div>
+    <div class="pill pill-ncv">
+      <div class="p-lbl">🆕 New CV</div>
+      <div class="p-num">₹214L</div>
+      <div class="p-sub">11 cases · 5.3%</div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="kpi-grid">
+    <div class="kpi" style="border-color:#3b82f6;"><div class="lbl">Avg Ticket Size</div><div class="val">₹4.50L</div><div class="sub">per disbursed case</div></div>
+    <div class="kpi" style="border-color:#10b981;"><div class="lbl">Top AM</div><div class="val">Akramuz</div><div class="sub">₹1,551L · 440 cases</div></div>
+    <div class="kpi" style="border-color:#f59e0b;"><div class="lbl">Top Bank</div><div class="val">Chola</div><div class="sub">₹1,909L · 451 cases</div></div>
+    <div class="kpi" style="border-color:#8b5cf6;"><div class="lbl">Top BM</div><div class="val">Mukesh Ojha</div><div class="sub">₹305.9L · 53 cases</div></div>
+    <div class="kpi" style="border-color:#ef4444;"><div class="lbl">Peak Day</div><div class="val">Apr 30</div><div class="sub">128 cases · ₹740L</div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">📅 Daily disbursement trend — Apr 2026</div>
+      <div class="chart-wrap" style="height:215px;"><canvas id="dailyChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">👤 AM-wise performance</div>
+      <table class="perf-table">
+        <thead><tr><th>AM Name</th><th>Cases</th><th>Amount (₹L)</th><th style="min-width:80px;"></th><th>%</th></tr></thead>
+        <tbody>
+          <tr><td><span class="avatar" style="background:#3b82f6;">AZ</span>&nbsp; Akramuz Zaman</td><td><strong>440</strong></td><td><strong>1,551.4</strong></td><td><div class="bar-track"><div class="bar-fill" style="width:100%;background:#3b82f6;"></div></div></td><td><span class="badge badge-blue">38.6%</span></td></tr>
+          <tr><td><span class="avatar" style="background:#10b981;">RS</span>&nbsp; Rosan Kumar Sahoo</td><td><strong>187</strong></td><td><strong>951.4</strong></td><td><div class="bar-track"><div class="bar-fill" style="width:61.3%;background:#10b981;"></div></div></td><td><span class="badge badge-green">23.7%</span></td></tr>
+          <tr><td><span class="avatar" style="background:#8b5cf6;">YS</span>&nbsp; Yogender Shukla</td><td><strong>160</strong></td><td><strong>769.3</strong></td><td><div class="bar-track"><div class="bar-fill" style="width:49.6%;background:#8b5cf6;"></div></div></td><td><span class="badge badge-purple">19.1%</span></td></tr>
+          <tr><td><span class="avatar" style="background:#f59e0b;">RP</span>&nbsp; Raju Patra</td><td><strong>80</strong></td><td><strong>526.7</strong></td><td><div class="bar-track"><div class="bar-fill" style="width:33.9%;background:#f59e0b;"></div></div></td><td><span class="badge badge-amber">13.1%</span></td></tr>
+          <tr><td><span class="avatar" style="background:#14b8a6;">JA</span>&nbsp; Jawed H. Ansari</td><td><strong>25</strong></td><td><strong>220.4</strong></td><td><div class="bar-track"><div class="bar-fill" style="width:14.2%;background:#14b8a6;"></div></div></td><td><span class="badge badge-teal">5.5%</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid3">
+    <div class="card">
+      <div class="card-title">🏦 Bank-wise performance</div>
+      <div class="chart-wrap" style="height:195px;"><canvas id="bankChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🚗 Product-wise split</div>
+      <div class="chart-wrap" style="height:130px;"><canvas id="productChart"></canvas></div>
+      <div style="margin-top:10px;">
+        <div class="prod-row"><span>🚗 Used Car</span><span><strong>₹3,326L</strong> · 809 cases</span></div>
+        <div class="prod-row"><span>🚛 Used CV</span><span><strong>₹480L</strong> · 72 cases</span></div>
+        <div class="prod-row"><span>🆕 New CV</span><span><strong>₹214L</strong> · 11 cases</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">🗺️ State-wise performance</div>
+      <div class="chart-wrap" style="height:195px;"><canvas id="stateChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">🏆 Top 5 BM performers</div>
+      <div class="bm-row"><div class="bm-rank">🥇</div><div class="bm-info"><div class="bm-name">Mukesh Kumar Ojha</div><div class="bm-sub">53 cases · Jharkhand · Yogender Shukla AM</div><div class="bar-track" style="margin-top:4px;"><div class="bar-fill" style="width:100%;background:#3b82f6;"></div></div></div><div class="bm-amt" style="color:#3b82f6;">₹305.9L</div></div>
+      <div class="bm-row"><div class="bm-rank">🥈</div><div class="bm-info"><div class="bm-name">Seraj Ahmed</div><div class="bm-sub">68 cases · Assam · Akramuz Zaman AM</div><div class="bar-track" style="margin-top:4px;"><div class="bar-fill" style="width:82%;background:#10b981;"></div></div></div><div class="bm-amt" style="color:#10b981;">₹251.5L</div></div>
+      <div class="bm-row"><div class="bm-rank">🥉</div><div class="bm-info"><div class="bm-name">Md Aminul Haque</div><div class="bm-sub">67 cases · Assam · Akramuz Zaman AM</div><div class="bar-track" style="margin-top:4px;"><div class="bar-fill" style="width:74%;background:#8b5cf6;"></div></div></div><div class="bm-amt" style="color:#8b5cf6;">₹227.6L</div></div>
+      <div class="bm-row"><div class="bm-rank" style="font-size:12px;color:#718096;">4</div><div class="bm-info"><div class="bm-name">Nitish Kumar Dash</div><div class="bm-sub">36 cases · Odisha · Rosan Kumar Sahoo AM</div><div class="bar-track" style="margin-top:4px;"><div class="bar-fill" style="width:72%;background:#f59e0b;"></div></div></div><div class="bm-amt" style="color:#f59e0b;">₹220.2L</div></div>
+      <div class="bm-row"><div class="bm-rank" style="font-size:12px;color:#718096;">5</div><div class="bm-info"><div class="bm-name">Sudarshan Medhi</div><div class="bm-sub">58 cases · Assam · Akramuz Zaman AM</div><div class="bar-track" style="margin-top:4px;"><div class="bar-fill" style="width:70%;background:#14b8a6;"></div></div></div><div class="bm-amt" style="color:#14b8a6;">₹214.7L</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚠️ Bottom 5 BM — needs attention</div>
+      <div class="bm-row"><div class="warn-dot"></div><div class="bm-info"><div class="bm-name">Jiyareja Akhtar</div><div class="bm-sub">28 cases · Assam · Akramuz Zaman AM</div><div class="bar-track" style="margin-top:4px;"><div class="bar-fill" style="width:22%;background:#ef4444;"></div></div></div><div class="bm-amt" style="color:#ef4444;">₹64.8L</div></div>
+      <div class="bm-row"><div class="warn-dot"></div><div class="bm-info"><div class="bm-name">Dipankar Choudhury</div><div class="bm-sub">23 cases · Assam · Akramuz Zaman AM</div><div class="bar-track" style="margin-top:4px;"><div class="bar-fill" style="width:21%;background:#ef4444;"></div></div></div><div class="bm-amt" style="color:#ef4444;">₹63.7L</div></div>
+      <div class="bm-row"><div class="warn-dot"></div><div class="bm-info"><div class="bm-name">Md Aquib Hussain</div><div class="bm-sub">14 cases · Jharkhand · Yogender Shukla AM</div><div class="bar-track" style="margin-top:4px;"><div class="bar-fill" style="width:14%;background:#f59e0b;"></div></div></div><div class="bm-amt" style="color:#f59e0b;">₹41.8L</div></div>
+      <div class="bm-row"><div class="warn-dot"></div><div class="bm-info"><div class="bm-name">Arman Ansari</div><div class="bm-sub">5 cases · Jawed H. Ansari AM</div><div class="bar-track" style="margin-top:4px;"><div class="bar-fill" style="width:6%;background:#f59e0b;"></div></div></div><div class="bm-amt" style="color:#f59e0b;">₹18.5L</div></div>
+      <div class="bm-row"><div class="warn-dot"></div><div class="bm-info"><div class="bm-name">Binay Kumar Sharma</div><div class="bm-sub">1 case only · needs immediate review</div><div class="bar-track" style="margin-top:4px;"><div class="bar-fill" style="width:1%;background:#ef4444;"></div></div></div><div class="bm-amt" style="color:#ef4444;">₹2.5L</div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:12px;">
+    <div class="card-title">📋 All BM performance — disbursement amount (₹L) · 🔵 Top 5 · 🔴 Bottom 5</div>
+    <div class="chart-wrap" style="height:270px;"><canvas id="allBmChart"></canvas></div>
+  </div>
+
+  <div style="text-align:center;font-size:11px;color:var(--muted);padding:6px 0;">
+    Source: report_copy__1_.xlsx &nbsp;·&nbsp; Apr 2026 &nbsp;·&nbsp; 892 records &nbsp;·&nbsp; Auto-generated
+  </div>
+</div>
+
+<script>
+const gc='rgba(0,0,0,0.05)',tc='#718096';
+const leg={display:true,position:'top',labels:{color:tc,font:{size:10},boxWidth:9,boxHeight:9}};
+
+new Chart(document.getElementById('dailyChart'),{
+  type:'bar',
+  data:{
+    labels:['1','2','3','4','6','7','8','9','10','11','13','14','15','16','17','18','20','21','22','23','24','25','27','28','29','30'],
+    datasets:[
+      {label:'Cases',type:'bar',data:[5,14,18,12,13,23,29,18,39,26,29,16,10,28,29,31,41,36,41,47,42,53,30,67,67,128],backgroundColor:'rgba(59,130,246,0.25)',borderColor:'#3b82f6',borderWidth:1.5,borderRadius:3,yAxisID:'y'},
+      {label:'Amount (₹L)',type:'line',data:[36.55,53.52,73.85,47.93,47.98,98.47,107.04,74.53,164.31,131.35,139.12,66.55,43.15,118.01,103.82,161.03,156.88,150.51,148.43,198.10,154.38,233.44,139.79,301.46,328.89,740.11],borderColor:'#10b981',borderWidth:2,pointRadius:2.5,pointBackgroundColor:'#10b981',fill:false,tension:0.3,yAxisID:'y2'}
+    ]
+  },
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:leg},scales:{x:{ticks:{color:tc,font:{size:10}},grid:{color:gc}},y:{ticks:{color:tc,font:{size:10}},grid:{color:gc},beginAtZero:true,title:{display:true,text:'Cases',color:tc,font:{size:9}}},y2:{position:'right',ticks:{color:'#10b981',font:{size:10},callback:v=>'₹'+v+'L'},grid:{display:false},beginAtZero:true}}}
+});
+
+new Chart(document.getElementById('bankChart'),{
+  type:'doughnut',
+  data:{labels:['Chola','HDB','Tata Capital','Mahindra','Indusind','HDFC','Indostar','AXIS','Piramal','Others'],datasets:[{data:[1908.77,668.31,356.03,229.34,161.58,144.37,132.42,125.45,90.77,202.15],backgroundColor:['#3b82f6','#10b981','#f59e0b','#8b5cf6','#14b8a6','#ef4444','#6366f1','#ec4899','#f97316','#64748b'],borderWidth:0}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'right',labels:{color:tc,font:{size:10},boxWidth:9,boxHeight:9,padding:5}}}}
+});
+
+new Chart(document.getElementById('productChart'),{
+  type:'doughnut',
+  data:{labels:['Used Car','Used CV','New CV'],datasets:[{data:[3325.98,479.65,213.56],backgroundColor:['#3b82f6','#10b981','#f59e0b'],borderWidth:0}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}
+});
+
+new Chart(document.getElementById('stateChart'),{
+  type:'bar',
+  data:{labels:['Assam','Odisha','Jharkhand','W. Bengal','Bihar'],datasets:[{data:[1551.44,951.41,868.51,526.72,121.10],backgroundColor:['#3b82f6','#10b981','#8b5cf6','#f59e0b','#14b8a6'],borderRadius:5}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:tc,font:{size:10}},grid:{color:gc}},y:{ticks:{color:tc,font:{size:10},callback:v=>'₹'+v+'L'},grid:{color:gc},beginAtZero:true}}}
+});
+
+const bL=['Mukesh K. Ojha','Seraj Ahmed','Md Aminul Haque','Nitish K. Dash','Sudarshan Medhi','Josef Dey','Swadhin Jena','Sidhartha Verma','Anish Khan','Pawan Yadav','P Kanteswar Swamy','Sabir H. Hazarika','Adityanarayan Sahoo','Dhruba j. Parasar','Suswagata Biswas','Shantanu Ghosh','Prasanta Konwar','Sanjib K. Nag','Lucky Gulati','Iftikar Hussain','Kunal Kumar','Aman Kumar','Abhijit Dey','Gourav Ojha','Shivraj Paul','Jiyareja Akhtar','Dipankar Choudhury','Md Aquib Hussain','Arman Ansari','Binay K. Sharma'];
+const bV=[305.92,251.53,227.60,220.21,214.66,174.83,165.81,163.51,157.22,156.79,152.42,146.57,140.24,139.20,127.16,126.32,117.27,115.94,115.72,112.98,101.47,100.79,98.41,97.93,97.40,64.76,63.74,41.83,18.45,2.50];
+const bC=bV.map((_,i)=>i<5?'#3b82f6':i>=bV.length-5?'#ef4444':'#94a3b8');
+
+new Chart(document.getElementById('allBmChart'),{
+  type:'bar',
+  data:{labels:bL,datasets:[{label:'Disbursement (₹L)',data:bV,backgroundColor:bC,borderRadius:4}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>'₹'+c.raw+'L'}}},scales:{x:{ticks:{color:tc,font:{size:9},maxRotation:45},grid:{color:gc}},y:{ticks:{color:tc,font:{size:10},callback:v=>'₹'+v+'L'},grid:{color:gc},beginAtZero:true}}}
+});
+</script>
+</body>
+</html>
