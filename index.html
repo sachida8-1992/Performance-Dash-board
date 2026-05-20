@@ -60,6 +60,33 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .bm-tbl tr:hover td{background:#fafbff;}
 .rnk{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;}
 
+
+/* 3-MONTH COMPARISON */
+.comp-section{background:var(--card);border-radius:10px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.07);border:1px solid var(--border);}
+.comp-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;}
+.prod-tabs{display:flex;gap:4px;background:#f1f5f9;border-radius:8px;padding:3px;}
+.ptab{padding:5px 14px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--muted);transition:all .2s;letter-spacing:.01em;}
+.ptab.active{background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.1);}
+.am-comp-grid{display:flex;flex-direction:column;gap:0;}
+.am-comp-row{display:grid;grid-template-columns:140px 1fr;gap:0;border-bottom:1px solid #f1f5f9;padding:10px 0;}
+.am-comp-row:last-child{border-bottom:none;}
+.am-comp-label{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;padding-right:10px;}
+.am-comp-bars{display:flex;flex-direction:column;gap:6px;}
+.month-bar-row{display:flex;align-items:center;gap:8px;}
+.m-tag{font-size:9px;font-weight:600;min-width:36px;text-align:right;letter-spacing:.03em;}
+.m-tag.mar{color:var(--rp);}
+.m-tag.apr{color:var(--rs);}
+.m-tag.may{color:var(--az);}
+.bar-outer{flex:1;background:#f1f5f9;border-radius:4px;height:9px;overflow:hidden;position:relative;}
+.bar-inner{height:100%;border-radius:4px;transition:width .4s ease;}
+.m-gmv{font-size:11px;font-weight:600;min-width:52px;font-family:monospace;}
+.m-ch{font-size:10px;color:var(--muted);min-width:60px;}
+.m-ch span{display:inline-block;background:#f8fafc;border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:500;}
+.legend-row{display:flex;gap:16px;margin-bottom:14px;}
+.leg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);}
+.leg-dot{width:10px;height:10px;border-radius:2px;}
+.comp-note{font-size:10px;color:var(--muted);font-style:italic;margin-top:12px;padding-top:8px;border-top:1px solid var(--border);}
+
 /* SCOPE */
 .scope-box{border-radius:10px;padding:11px 14px;}
 .scope-row{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.06);align-items:flex-start;}
@@ -247,6 +274,38 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
       </div>
     </div>
   </div>
+
+<!-- 3-MONTH AM COMPARISON -->
+<div class="comp-section">
+  <div class="comp-header">
+    <div>
+      <div class="ct" style="margin-bottom:3px;">📊 3-month AM comparison — GMV &amp; unique channels</div>
+      <div style="font-size:11px;color:var(--muted);">Mar-26 full · Apr-26 full · May-26 MTD (Day 1–19)</div>
+    </div>
+    <div class="prod-tabs">
+      <button class="ptab active" onclick="setFilter('all',this)">All Products</button>
+      <button class="ptab" onclick="setFilter('uc',this)">🚗 Used Car</button>
+      <button class="ptab" onclick="setFilter('ucv',this)">🚛 Used CV</button>
+      <button class="ptab" onclick="setFilter('ncv',this)">🆕 New CV</button>
+    </div>
+  </div>
+
+  <div class="legend-row">
+    <div class="leg"><div class="leg-dot" style="background:#d97706;"></div>Mar-26 Full month</div>
+    <div class="leg"><div class="leg-dot" style="background:#059669;"></div>Apr-26 Full month</div>
+    <div class="leg"><div class="leg-dot" style="background:#2563eb;"></div>May-26 MTD Day 1–19</div>
+    <div style="font-size:11px;color:var(--muted);margin-left:auto;">Bar = GMV · Badge = Unique channels</div>
+  </div>
+
+  <div class="am-comp-grid" id="compGrid"></div>
+
+  <div class="comp-note">
+    ⚠️ Mar-26 channel counts are estimated from comparable month patterns. Apr-26 &amp; May-26 are exact from source files.
+    May-26 MTD pace: ₹94L/day avg — projected full month ₹2,540L+ (vs Apr ₹4,019L).
+  </div>
+</div>
+
+
 </div>
 
 </div>
@@ -390,6 +449,109 @@ function filterBM(){
 }
 
 renderBM(bmAll);
+
+// ── 3-MONTH COMPARISON DATA ──
+const compData = {
+  all: [
+    {am:'Akramuz Zaman',  amC:'#2563eb', amS:'AZ',
+     mar:{gmv:1524,cases:431,ch:85}, apr:{gmv:1551,cases:440,ch:91}, may:{gmv:732,cases:232,ch:66}},
+    {am:'Rosan Kumar Sahoo', amC:'#059669', amS:'RS',
+     mar:{gmv:866,cases:176,ch:41},  apr:{gmv:951,cases:187,ch:43},  may:{gmv:378,cases:88,ch:32}},
+    {am:'Raju Patra',     amC:'#d97706', amS:'RP',
+     mar:{gmv:464,cases:75,ch:40},   apr:{gmv:527,cases:80,ch:43},   may:{gmv:323,cases:48,ch:23}},
+    {am:'Yogender Shukla',amC:'#7c3aed', amS:'YS',
+     mar:{gmv:752,cases:154,ch:41},  apr:{gmv:769,cases:160,ch:43},  may:{gmv:305,cases:75,ch:33}},
+    {am:'Jawed H. Ansari',amC:'#0891b2', amS:'JA',
+     mar:{gmv:195,cases:22,ch:9},    apr:{gmv:220,cases:25,ch:10},   may:{gmv:52,cases:6,ch:5}},
+  ],
+  uc: [
+    {am:'Akramuz Zaman',  amC:'#2563eb', amS:'AZ',
+     mar:{gmv:1380,cases:399,ch:83}, apr:{gmv:1402,cases:410,ch:89}, may:{gmv:652,cases:216,ch:64}},
+    {am:'Rosan Kumar Sahoo', amC:'#059669', amS:'RS',
+     mar:{gmv:803,cases:162,ch:40},  apr:{gmv:876,cases:176,ch:42},  may:{gmv:350,cases:85,ch:31}},
+    {am:'Raju Patra',     amC:'#d97706', amS:'RP',
+     mar:{gmv:329,cases:63,ch:36},   apr:{gmv:329,cases:66,ch:39},   may:{gmv:205,cases:37,ch:19}},
+    {am:'Yogender Shukla',amC:'#7c3aed', amS:'YS',
+     mar:{gmv:672,cases:138,ch:38},  apr:{gmv:678,cases:146,ch:40},  may:{gmv:260,cases:67,ch:32}},
+    {am:'Jawed H. Ansari',amC:'#0891b2', amS:'JA',
+     mar:{gmv:36,cases:9,ch:4},      apr:{gmv:42,cases:11,ch:5},     may:{gmv:10,cases:4,ch:3}},
+  ],
+  ucv: [
+    {am:'Akramuz Zaman',  amC:'#2563eb', amS:'AZ',
+     mar:{gmv:144,cases:28,ch:11},   apr:{gmv:150,cases:30,ch:13},   may:{gmv:80,cases:16,ch:10}},
+    {am:'Rosan Kumar Sahoo', amC:'#059669', amS:'RS',
+     mar:{gmv:63,cases:14,ch:8},     apr:{gmv:76,cases:11,ch:9},     may:{gmv:29,cases:3,ch:3}},
+    {am:'Yogender Shukla',amC:'#7c3aed', amS:'YS',
+     mar:{gmv:80,cases:16,ch:10},    apr:{gmv:91,cases:14,ch:11},    may:{gmv:44,cases:8,ch:7}},
+    {am:'Raju Patra',     amC:'#d97706', amS:'RP',
+     mar:{gmv:27,cases:5,ch:4},      apr:{gmv:49,cases:5,ch:5},      may:{gmv:57,cases:6,ch:5}},
+    {am:'Jawed H. Ansari',amC:'#0891b2', amS:'JA',
+     mar:{gmv:37,cases:8,ch:5},      apr:{gmv:114,cases:12,ch:7},    may:{gmv:42,cases:2,ch:2}},
+  ],
+  ncv: [
+    {am:'Raju Patra',     amC:'#d97706', amS:'RP',
+     mar:{gmv:20,cases:3,ch:2},      apr:{gmv:149,cases:9,ch:3},     may:{gmv:61,cases:5,ch:3}},
+    {am:'Jawed H. Ansari',amC:'#0891b2', amS:'JA',
+     mar:{gmv:0,cases:0,ch:0},       apr:{gmv:65,cases:2,ch:1},      may:{gmv:0,cases:0,ch:0}},
+    {am:'Yogender Shukla',amC:'#7c3aed', amS:'YS',
+     mar:{gmv:0,cases:0,ch:0},       apr:{gmv:0,cases:0,ch:0},       may:{gmv:0,cases:0,ch:0}},
+    {am:'Akramuz Zaman',  amC:'#2563eb', amS:'AZ',
+     mar:{gmv:0,cases:0,ch:0},       apr:{gmv:0,cases:0,ch:0},       may:{gmv:0,cases:0,ch:0}},
+    {am:'Rosan Kumar Sahoo', amC:'#059669', amS:'RS',
+     mar:{gmv:0,cases:0,ch:0},       apr:{gmv:0,cases:0,ch:0},       may:{gmv:0,cases:0,ch:0}},
+  ],
+};
+
+let currentFilter = 'all';
+
+function setFilter(f, el){
+  currentFilter = f;
+  document.querySelectorAll('.ptab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderComp();
+}
+
+function renderComp(){
+  const data = compData[currentFilter];
+  const allVals = data.flatMap(d => [d.mar.gmv, d.apr.gmv, d.may.gmv]);
+  const maxGMV = Math.max(...allVals, 1);
+
+  document.getElementById('compGrid').innerHTML = data.map(d => {
+    const months = [
+      {key:'mar', label:'MAR', color:'#d97706', dat:d.mar},
+      {key:'apr', label:'APR', color:'#059669', dat:d.apr},
+      {key:'may', label:'MAY', color:'#2563eb', dat:d.may},
+    ];
+
+    const barsHtml = months.map(m => {
+      const w = m.dat.gmv > 0 ? Math.max(1, Math.round(m.dat.gmv / maxGMV * 100)) : 0;
+      const chBadge = m.dat.ch > 0
+        ? `<span>${m.dat.ch} ch</span>`
+        : `<span style="color:#cbd5e1;">—</span>`;
+      const caseTxt = m.dat.cases > 0 ? `${m.dat.cases}c` : '—';
+      return `<div class="month-bar-row">
+        <div class="m-tag ${m.key}">${m.label}</div>
+        <div class="bar-outer">
+          <div class="bar-inner" style="width:${w}%;background:${m.color};opacity:${m.key==='may'?1:m.key==='apr'?0.75:0.5};"></div>
+        </div>
+        <div class="m-gmv" style="color:${m.color};">${m.dat.gmv>0?'₹'+m.dat.gmv+'L':'—'}</div>
+        <div class="m-ch">${chBadge}</div>
+        <div style="font-size:10px;color:#94a3b8;min-width:24px;">${caseTxt}</div>
+      </div>`;
+    }).join('');
+
+    return `<div class="am-comp-row">
+      <div class="am-comp-label">
+        <span class="av" style="background:${d.amC};flex-shrink:0;">${d.amS}</span>
+        <span>${d.am.split(' ')[0]}<br><span style="font-size:10px;font-weight:400;color:var(--muted);">${d.am.split(' ').slice(1).join(' ')}</span></span>
+      </div>
+      <div class="am-comp-bars">${barsHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+renderComp();
+
 </script>
 </body>
 </html>
