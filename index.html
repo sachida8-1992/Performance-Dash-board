@@ -1439,6 +1439,7 @@ async function apiPost(payload) {
 function buildIssues(el) {
   const d = currentUser.designation;
   const isBM = d === 'BM';
+  const isRH = d === 'RH';
 
   el.innerHTML = `
     ${isBM ? buildIssueForm() : ''}
@@ -1452,6 +1453,7 @@ function buildIssues(el) {
             <button class="filter-btn" onclick="filterIssues('closed',this)">🟢 Closed</button>
           </div>
           <button onclick="loadIssues()" style="padding:6px 14px;border:1.5px solid #e0e0e0;border-radius:20px;background:#fff;cursor:pointer;font-size:12px;font-weight:600">🔄 Refresh</button>
+          ${isRH ? `<button onclick="downloadIssuesExcel()" style="padding:6px 14px;border:1.5px solid #1a237e;border-radius:20px;background:#1a237e;color:#fff;cursor:pointer;font-size:12px;font-weight:600">⬇️ Download Excel</button>` : ''}
         </div>
       </div>
       <div id="issuesList"><div style="text-align:center;padding:32px;color:#9e9e9e">Loading issues...</div></div>
@@ -1584,15 +1586,40 @@ function filterIssues(type, btn) {
   renderIssues(type);
 }
 
+function getMyBMNames() {
+  // Returns a Set of BM names (lowercase) that report under the current user
+  const d = currentUser.designation;
+  const id = currentUser.id;
+  const bmNames = new Set();
+  if (d === 'BM') {
+    bmNames.add(currentUser.name.toLowerCase());
+    return bmNames;
+  }
+  // For AM/TH/RH: get BM names from myTxns (already filtered to this user's hierarchy)
+  myTxns.forEach(t => {
+    if (t.bm) bmNames.add(t.bm.toLowerCase());
+  });
+  // Also add proper-case names from EMP_DATA for matching
+  myTxns.forEach(t => {
+    const emp = resolveEmpById(t.bm_id);
+    if (emp) bmNames.add(emp.name.toLowerCase());
+  });
+  return bmNames;
+}
+
 function renderIssues(filter) {
   const d = currentUser.designation;
   const canReply = ['TH','RH'].includes(d);
   const isBM = d === 'BM';
 
-  let visible = issuesCache;
-  if (isBM) {
-    visible = issuesCache.filter(i => i.bm && i.bm.toLowerCase() === currentUser.name.toLowerCase());
-  }
+  // Filter issues to only those from BMs in this user's hierarchy
+  const myBMs = getMyBMNames();
+
+  let visible = issuesCache.filter(i => {
+    const bmName = (i.bm || '').toLowerCase();
+    return myBMs.has(bmName);
+  });
+
   if (filter === 'open')   visible = visible.filter(i => i.status === 'open');
   if (filter === 'closed') visible = visible.filter(i => i.status === 'closed');
 
@@ -1641,6 +1668,44 @@ function renderIssues(filter) {
       </div>
     </div>
   `).join('');
+}
+
+function downloadIssuesExcel() {
+  const myBMs = getMyBMNames();
+  const data = issuesCache.filter(i => myBMs.has((i.bm||'').toLowerCase()));
+
+  if (!data.length) {
+    alert('No issues to download.');
+    return;
+  }
+
+  // Build CSV content
+  const headers = ['Issue ID','BM Name','Channel/Dealer','DCID','GST','Month','Product','Remarks','Status','Raised On','Replies'];
+  const rows = data.map(i => {
+    const replies = (i.replies||[]).map(r => `[${r.role}] ${r.by}: ${r.text} (${r.at})`).join(' | ');
+    return [
+      i.id || '',
+      i.bm || '',
+      i.channel || '',
+      i.dcid || '',
+      i.gst || '',
+      i.month || '',
+      i.product || '',
+      (i.remarks || '').replace(/,/g, ';').replace(/\n/g, ' '),
+      i.status || '',
+      i.createdAt || '',
+      replies.replace(/,/g, ';')
+    ];
+  });
+
+  const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Rupyy_Issues_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 async function postReply(issueId) {
