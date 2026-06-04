@@ -347,6 +347,9 @@ function buildPageList() {
   if (d === 'AM') {
     pages.push({id:'team', label:'👥 My Team'});
   }
+  if (d !== 'BM') {
+    pages.push({id:'incentive', label:'💰 Team Incentive'});
+  }
   pages.push({id:'insights', label:'💡 Insights'});
   pages.push({id:'issues', label:'🔔 Issues'});
   return pages;
@@ -1000,32 +1003,393 @@ function buildBanks(el) {
 }
 
 // ========== INCENTIVE (BM Only) ==========
+// ========== TEAM INCENTIVE VIEW (AM / TH / RH) ==========
+function buildTeamIncentive(el) {
+  // Group txns by bm_id
+  const bmMap = {};
+  myTxns.forEach(t => {
+    const key = t.bm_id || t.bm;
+    if (!bmMap[key]) bmMap[key] = [];
+    bmMap[key].push(t);
+  });
+
+  const rows = Object.entries(bmMap).map(([key, txns]) => {
+    const emp = resolveEmpById(txns[0].bm_id) || resolveEmpName(txns[0].bm);
+    const inc = computeBMIncentive(txns, emp);
+    return { emp, txns, inc, key };
+  }).sort((a,b) => (b.inc?.totalIncentive||0) - (a.inc?.totalIncentive||0));
+
+  const totalTeamIncentive = Math.round(rows.reduce((s,r) => s + (r.inc?.totalIncentive||0), 0));
+  const ucBMs   = rows.filter(r => r.inc !== null);
+  const cvBMs   = rows.filter(r => r.inc === null);
+
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg,#1a237e,#283593);color:#fff">
+      <div style="font-size:12px;opacity:.7;font-weight:600;letter-spacing:.5px;text-transform:uppercase">Team Estimated Incentive (May 2026)</div>
+      <div style="font-size:36px;font-weight:800;margin:6px 0">${fmtCr(Math.round(totalTeamIncentive))}</div>
+      <div style="font-size:12px;opacity:.7">${rows.length} BMs · Total estimated incentive</div>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:14px 20px;background:#f5f7ff;font-size:13px;font-weight:700;color:#1a237e;display:flex;justify-content:space-between;align-items:center">
+        <span>BM-wise Incentive Estimate</span>
+        <span style="font-size:11px;color:#9e9e9e;font-weight:400">Based on UC slab + dealer bonus</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>BM Name</th>
+              <th>Tier</th>
+              <th>Eff. GMV</th>
+              <th>Slab</th>
+              <th>Rate</th>
+              <th>UC Dealers</th>
+              <th>Dealer Bonus</th>
+              <th style="color:#1a237e">Est. Incentive</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((r, i) => {
+              const name = r.emp ? r.emp.name : r.txns[0].bm;
+              const tier = r.emp?.tier || '—';
+              if (r.inc === null) {
+                // No emp data — unknown
+                const cvAmt = r.txns.reduce((s,t)=>s+t.amt,0);
+                return `<tr style="background:#fff8f0">
+                  <td style="color:#9e9e9e">${i+1}</td>
+                  <td><b>${name}</b></td>
+                  <td><span class="badge badge-grey">${tier}</span></td>
+                  <td>${fmtCr(cvAmt)}</td>
+                  <td colspan="4" style="color:#9e9e9e;font-size:11px">No emp data</td>
+                  <td><span class="badge badge-grey">—</span></td>
+                </tr>`;
+              }
+              if (r.inc.isCV) {
+                // CV BM — calculated with custom structure
+                const inc = r.inc;
+                return `<tr style="background:#fff8f0">
+                  <td style="color:#9e9e9e">${i+1}</td>
+                  <td><b>${name}</b> <span class="badge" style="background:#fff3e0;color:#e65100;font-size:10px">CV</span></td>
+                  <td><span class="badge badge-grey">${inc.tier}</span></td>
+                  <td>${fmtCr(inc.totalAmt)}</td>
+                  <td style="font-size:11px;color:#555">${inc.activeSlab ? inc.activeSlab.label : 'Below 1Cr'}</td>
+                  <td style="font-size:11px;color:#e65100">Base+NCV</td>
+                  <td style="font-size:11px">${inc.ucCases}UC+${inc.ucvCases}UCV (base) · ${inc.ncvCases} NCV (bonus)</td>
+                  <td style="font-size:12px;color:#880e4f">${inc.ucvBonus>0?'+₹'+inc.ucvBonus.toLocaleString():'—'} UCV / ${inc.ncvBonus>0?'+₹'+inc.ncvBonus.toLocaleString():'—'} NCV</td>
+                  <td><b style="color:#e65100;font-size:14px">₹${inc.totalIncentive.toLocaleString()}</b>
+                    ${inc.totalIncentive===50000?'<div style="font-size:10px;color:#e65100">Capped</div>':''}</td>
+                </tr>`;
+              }
+              const inc = r.inc;
+              return `<tr>
+                <td style="color:#9e9e9e">${i+1}</td>
+                <td><b>${name}</b></td>
+                <td><span class="badge badge-grey">${inc.tier}</span></td>
+                <td>${fmtCr(inc.effGMV)}</td>
+                <td style="font-size:11px;color:#555">${inc.activeSlab ? inc.activeSlab.label : '<span style="color:#e53935">Below threshold</span>'}</td>
+                <td style="font-size:12px;color:#1a237e;font-weight:700">${inc.appliedRate ? inc.appliedRate+'%' : '—'}</td>
+                <td>
+                  <span style="font-weight:700">${inc.ucDealers}</span>
+                  ${inc.dealerBonusPct > 0 ? `<span style="font-size:10px;color:#43a047;margin-left:4px">(+${inc.dealerBonusPct}%)</span>` : ''}
+                </td>
+                <td style="font-size:12px;color:#43a047">${inc.dealerBonus > 0 ? '+'+fmtCr(inc.dealerBonus) : '—'}</td>
+                <td>
+                  <b style="color:${inc.totalIncentive>0?'#1a237e':'#9e9e9e'};font-size:14px">${inc.totalIncentive > 0 ? fmtCr(Math.round(inc.totalIncentive)) : '—'}</b>
+                  ${inc.totalIncentive === 0 ? '<div style="font-size:10px;color:#e53935">Below slab threshold</div>' : ''}
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="background:#f5f7ff;font-weight:700">
+              <td colspan="8" style="text-align:right;color:#1a237e">Total Estimated Incentive (All BMs)</td>
+              <td style="color:#1a237e;font-size:15px">${fmtCr(Math.round(totalTeamIncentive))}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div style="font-size:11px;color:#9e9e9e;margin-top:8px;padding:0 4px">
+      * Incentive calculated on effective GMV (UC 100% · Used CV 50% · New CV 25%). Dealer bonus on UC active DCIDs this month. CV BMs have separate incentive structure not calculated here.
+    </div>
+  `;
+}
+
+// ========== INCENTIVE CALCULATION HELPER ==========
+function computeBMIncentive(bmTxns, bmEmp) {
+  const isCV = bmEmp?.product === 'CV';
+
+  if (isCV) {
+    const totalAmt   = bmTxns.reduce((s,t)=>s+t.amt,0);
+    const ucCases    = bmTxns.filter(t=>t.product==='Used Car').length;
+    const ucvCases   = bmTxns.filter(t=>t.product==='Used Commercial Vehicle').length;
+    const ucvAmt     = bmTxns.filter(t=>t.product==='Used Commercial Vehicle').reduce((s,t)=>s+t.amt,0);
+    const ncvTxns    = bmTxns.filter(t=>t.product==='New Commercial Vehicle');
+    const ucvucCases = ucCases + ucvCases;
+    const amt_cr     = totalAmt / 1e7;
+    const mult       = amt_cr >= 1.5 ? 300 : amt_cr >= 1.0 ? 200 : 0;
+    const base       = mult * ucvucCases;
+
+    // UCV bonus on total UCV GMV slab (tenure-based)
+    const tenMo  = tenureMonths(bmEmp.joining);
+    const ucvLac = ucvAmt / 1e5;
+    let ucvBonus = 0;
+    if (tenMo < 3) {
+      if (ucvLac >= 60) ucvBonus = 7500;
+    } else {
+      if (ucvLac >= 150) ucvBonus = 25000;
+      else if (ucvLac >= 100) ucvBonus = 15000;
+      else if (ucvLac >= 80)  ucvBonus = 10000;
+    }
+
+    // NCV bonus per individual case loan amount
+    function ncvCaseBonus(loanAmt) {
+      const l = loanAmt / 1e5;
+      if (l > 50) return 5000;
+      if (l > 40) return 4000;
+      if (l > 30) return 3000;
+      if (l > 20) return 2000;
+      if (l > 10) return 1000;
+      return 500;
+    }
+    const ncvBonus       = ncvTxns.reduce((s,t) => s + ncvCaseBonus(t.amt), 0);
+    const totalIncentive = Math.min(base + ucvBonus + ncvBonus, 50000);
+
+    return {
+      isCV: true,
+      totalIncentive,
+      base,
+      ucvBonus,
+      ncvBonus,
+      ucCases,
+      ucvCases,
+      ncvCases: ncvTxns.length,
+      ucvucCases,
+      mult,
+      totalAmt,
+      ucvAmt,
+      effGMV: totalAmt,
+      activeSlab: mult > 0 ? { label: amt_cr >= 1.5 ? '1.5Cr+' : '1Cr+' } : null,
+      appliedRate: null,
+      ucDealers: 0,
+      dealerBonusPct: 0,
+      dealerBonus: 0,
+      tier: bmEmp?.tier || '—',
+      ucAmt: bmTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0),
+    };
+  }
+
+  // UC BM incentive
+  if (!bmEmp) return null;
+
+  const tier   = bmEmp.tier || 'T3';
+  const tenMo  = tenureMonths(bmEmp.joining);
+  const gt1yr  = tenMo > 12;
+
+  const ucAmt  = bmTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+  const ucvAmt = bmTxns.filter(t=>t.product==='Used Commercial Vehicle').reduce((s,t)=>s+t.amt,0);
+  const ncvAmt = bmTxns.filter(t=>t.product==='New Commercial Vehicle').reduce((s,t)=>s+t.amt,0);
+  const effGMV = ucAmt + ucvAmt*0.5 + ncvAmt*0.25;
+  const effGMV_Cr = effGMV / 1e7;
+
+  const slabs = [
+    {min:0.8, max:1.0,  rates:{T3:0.03, T2:null, T1:null}, label:'80L-1Cr'},
+    {min:1.0, max:1.25, rates:{T3:0.04, T2:0.04, T1:0.04}, label:'1Cr-1.25Cr'},
+    {min:1.25,max:1.5,  rates:{T3:0.06, T2:0.06, T1:0.06}, label:'1.25-1.5Cr'},
+    {min:1.5, max:1.75, rates:{T3:0.09, T2:0.09, T1:0.09}, label:'1.5-1.75Cr'},
+    {min:1.75,max:2.0,  rates:{T3:0.11, T2:0.11, T1:0.11}, label:'1.75-2Cr'},
+    {min:2.0, max:2.5,  rates:{T3:0.12, T2:0.12, T1:0.12}, label:'2-2.5Cr'},
+    {min:2.5, max:3.0,  rates:{T3:0.14, T2:0.14, T1:0.14}, label:'2.5-3Cr'},
+    {min:3.0, max:999,  rates:{T3:0.15, T2:0.15, T1:0.15}, label:'3Cr+'},
+  ];
+
+  let activeSlab = null, appliedRate = 0;
+  for (const s of slabs) {
+    const tierRate = s.rates[tier];
+    if (gt1yr) {
+      if (tier === 'T3' && s.label === '80L-1Cr') continue;
+      if ((tier === 'T2' || tier === 'T1') && (s.label === '80L-1Cr' || s.label === '1Cr-1.25Cr')) continue;
+    }
+    if (tierRate !== null && effGMV_Cr >= s.min && effGMV_Cr < s.max) { activeSlab = s; appliedRate = tierRate; }
+    if (effGMV_Cr >= 3.0 && s.label === '3Cr+') { activeSlab = s; appliedRate = tierRate; }
+  }
+
+  const baseIncentive = activeSlab ? Math.round(effGMV * (appliedRate / 100)) : 0;
+  const ucDealers = new Set(bmTxns.filter(t=>t.product==='Used Car' && t.dcid).map(t=>t.dcid)).size;
+  let dealerBonusPct = 0;
+  if (ucDealers >= 13) dealerBonusPct = 15;
+  else if (ucDealers >= 11) dealerBonusPct = 12;
+  else if (ucDealers >= 9) dealerBonusPct = 10;
+
+  const dealerBonus    = Math.round(baseIncentive * (dealerBonusPct / 100));
+  const totalIncentive = baseIncentive + dealerBonus;
+
+  return { isCV: false, totalIncentive, baseIncentive, dealerBonus, dealerBonusPct, effGMV, appliedRate, activeSlab, ucDealers, tier, ucAmt };
+}
+
 function buildIncentive(el) {
-  // CV BMs have a different incentive structure — show info message only
+  const role = currentUser.designation;
+
+  // AM / TH / RH — show team BM incentive list
+  if (role !== 'BM') {
+    buildTeamIncentive(el);
+    return;
+  }
+
+  // CV BMs — custom structure message
   const bmProduct = currentUser.product || 'UC';
   if (bmProduct === 'CV') {
     el.innerHTML = `
-      <div class="card" style="text-align:center;padding:48px 32px">
-        <div style="font-size:48px;margin-bottom:16px">📋</div>
-        <div style="font-size:20px;font-weight:700;color:#1a237e;margin-bottom:12px">CV BM — Custom Incentive Structure</div>
-        <div style="font-size:14px;color:#757575;max-width:420px;margin:0 auto;line-height:1.7">
-          Your incentive structure is different from the standard UC slab model.<br>
-          Please check with your manager or HR for your applicable incentive details.
+      <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg,#1a237e,#283593);color:#fff;text-align:center;padding:24px">
+        <div style="font-size:13px;opacity:.7;font-weight:600;letter-spacing:.5px;text-transform:uppercase">Final Incentive = Base + Bonus</div>
+        <div style="font-size:28px;font-weight:800;margin:6px 0">Capped at ₹50,000</div>
+        <div style="font-size:12px;opacity:.7">Bonus over and above base · No conditions</div>
+      </div>
+
+      <div class="grid-2" style="gap:16px;margin-bottom:16px">
+
+        <!-- Base Incentive -->
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="background:#e8eaf6;padding:12px 16px;font-size:13px;font-weight:700;color:#1a237e;text-align:center">📦 Base Incentive (UC Only)</div>
+          <div style="padding:12px 16px">
+            <table style="width:100%">
+              <thead><tr>
+                <th style="text-align:left">Disb (GMV)</th>
+                <th style="text-align:right">Multiplier Per Case</th>
+              </tr></thead>
+              <tbody>
+                <tr><td>1 Cr +</td><td style="text-align:right;font-weight:700;color:#1a237e">₹200</td></tr>
+                <tr><td>1.5 Cr +</td><td style="text-align:right;font-weight:700;color:#1a237e">₹300</td></tr>
+              </tbody>
+            </table>
+            <div style="font-size:11px;color:#9e9e9e;margin-top:10px">Multiplier × (UC + UCV Cases) = Base Incentive</div>
+          </div>
         </div>
-        <div style="margin-top:28px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
-          <div style="background:#f5f7ff;border-radius:10px;padding:16px 24px;min-width:120px">
-            <div style="font-size:22px;font-weight:700;color:#1a237e">${fmtCr(myTxns.reduce((s,t)=>s+t.amt,0))}</div>
-            <div style="font-size:12px;color:#757575;margin-top:4px">Total Disbursement</div>
-          </div>
-          <div style="background:#f5f7ff;border-radius:10px;padding:16px 24px;min-width:120px">
-            <div style="font-size:22px;font-weight:700;color:#1a237e">${myTxns.length}</div>
-            <div style="font-size:12px;color:#757575;margin-top:4px">Total Cases</div>
-          </div>
-          <div style="background:#f5f7ff;border-radius:10px;padding:16px 24px;min-width:120px">
-            <div style="font-size:22px;font-weight:700;color:#1a237e">${new Set(myTxns.filter(t=>t.ch_check>0).map(t=>t.dcid)).size}</div>
-            <div style="font-size:12px;color:#757575;margin-top:4px">Active Channels</div>
-          </div>
+
+        <!-- My Stats -->
+        <div class="card" style="padding:16px">
+          <div class="card-title">My Performance</div>
+          ${(() => {
+            const totalAmt = myTxns.reduce((s,t)=>s+t.amt,0);
+            const ucCases  = myTxns.filter(t=>t.product==='Used Car').length;
+            const ucvCases = myTxns.filter(t=>t.product==='Used Commercial Vehicle').length;
+            const ncvTxns  = myTxns.filter(t=>t.product==='New Commercial Vehicle');
+            const ucvucCases = ucCases + ucvCases; // base: UC + UCV only
+            const amt_cr    = totalAmt/1e7;
+            const mult      = amt_cr >= 1.5 ? 300 : amt_cr >= 1.0 ? 200 : 0;
+            const base      = mult * ucvucCases;
+
+            // UCV bonus on total UCV GMV slab (tenure-based)
+            const tenMo  = tenureMonths(currentUser.joining);
+            const ucvLac = ucvAmt / 1e5;
+            let ucvBonus = 0;
+            if (tenMo < 3) {
+              if (ucvLac >= 60) ucvBonus = 7500;
+            } else {
+              if (ucvLac >= 150) ucvBonus = 25000;
+              else if (ucvLac >= 100) ucvBonus = 15000;
+              else if (ucvLac >= 80)  ucvBonus = 10000;
+            }
+
+            // NCV bonus: per case based on individual loan amount
+            function ncvCaseBonus(loanAmt) {
+              const l = loanAmt/1e5; // in Lacs
+              if (l > 50) return 5000;
+              if (l > 40) return 4000;
+              if (l > 30) return 3000;
+              if (l > 20) return 2000;
+              if (l > 10) return 1000;
+              return 500;
+            }
+            const ncvBonus = ncvTxns.reduce((s,t) => s + ncvCaseBonus(t.amt), 0);
+
+            return `
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+                <div style="background:#f5f7ff;border-radius:8px;padding:10px;text-align:center">
+                  <div style="font-size:16px;font-weight:800;color:#1a237e">${fmtCr(totalAmt)}</div>
+                  <div style="font-size:10px;color:#757575">Total GMV</div>
+                </div>
+                <div style="background:#f5f7ff;border-radius:8px;padding:10px;text-align:center">
+                  <div style="font-size:16px;font-weight:800;color:#1a237e">${ucvucCases}</div>
+                  <div style="font-size:10px;color:#757575">UC+UCV Cases</div>
+                </div>
+                <div style="background:#f5f7ff;border-radius:8px;padding:10px;text-align:center">
+                  <div style="font-size:16px;font-weight:800;color:#880e4f">${ncvTxns.length}</div>
+                  <div style="font-size:10px;color:#757575">NCV Cases</div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="background:${mult>0?'#e8f5e9':'#fff8f0'};border-radius:8px;padding:10px;display:flex;justify-content:space-between;align-items:center">
+                  <div style="font-size:12px;color:#555">Base (₹${mult}/case × ${ucvucCases} cases: ${ucCases} UC + ${ucvCases} UCV)</div>
+                  <b style="color:${mult>0?'#2e7d32':'#e65100'}">${mult>0?'₹'+base.toLocaleString():'Below 1Cr'}</b>
+                </div>
+                <div style="background:${ucvBonus>0?'#e8f5e9':'#f5f5f5'};border-radius:8px;padding:10px;display:flex;justify-content:space-between;align-items:center">
+                  <div style="font-size:12px;color:#555">UCV Bonus (₹${fmtCr(ucvAmt)} UCV GMV · ${tenMo}mo tenure)</div>
+                  <b style="color:#2e7d32">${ucvBonus>0?'₹'+ucvBonus.toLocaleString():'Below threshold'}</b>
+                </div>
+                <div style="background:${ncvBonus>0?'#fce4ec':'#f5f5f5'};border-radius:8px;padding:10px;display:flex;justify-content:space-between;align-items:center">
+                  <div style="font-size:12px;color:#555">NCV Bonus (${ncvTxns.length} cases, per loan amt)</div>
+                  <b style="color:#880e4f">${ncvBonus>0?'₹'+ncvBonus.toLocaleString():'—'}</b>
+                </div>
+                <div style="background:#1a237e;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center">
+                  <div style="font-size:12px;color:rgba(255,255,255,.7)">Est. Total (capped at ₹50K)</div>
+                  <b style="color:#fff;font-size:18px">₹${Math.min(base+ucvBonus+ncvBonus,50000).toLocaleString()}</b>
+                </div>
+              </div>
+            `;
+          })()}
         </div>
+      </div>
+
+      <!-- UCV Bonus -->
+      <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+        <div style="background:#e8f5e9;padding:12px 16px;font-size:13px;font-weight:700;color:#1b5e20;text-align:center">🚛 UCV Bonus Incentive (on Total UCV GMV Slab)</div>
+        <div style="overflow-x:auto">
+          <table style="width:100%">
+            <thead><tr>
+              <th>Tenure</th><th>Floor GMV</th><th style="text-align:right;color:#2e7d32">UCV Bonus</th>
+            </tr></thead>
+            <tbody>
+              <tr style="background:#fffde7"><td rowspan="1"><b style="color:#f57f17">Below 3 months</b></td><td>60 Lac +</td><td style="text-align:right;font-weight:700;color:#2e7d32">₹7,500</td></tr>
+              <tr><td rowspan="3"><b style="color:#388e3c">Above 3 months</b></td><td>80 Lac +</td><td style="text-align:right;font-weight:700;color:#2e7d32">₹10,000</td></tr>
+              <tr><td>100 Lac +</td><td style="text-align:right;font-weight:700;color:#2e7d32">₹15,000</td></tr>
+              <tr><td>1.5 Cr +</td><td style="text-align:right;font-weight:700;color:#2e7d32">₹25,000</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- NCV Bonus -->
+      <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+        <div style="background:#fce4ec;padding:12px 16px;font-size:13px;font-weight:700;color:#880e4f;text-align:center">🚌 NCV Bonus — Per Case (based on individual loan amount)</div>
+        <div style="overflow-x:auto">
+          <table style="width:100%">
+            <thead><tr>
+              <th>Case Loan Amount</th><th style="text-align:right;color:#880e4f">Bonus Per Case</th>
+            </tr></thead>
+            <tbody>
+              <tr><td>&lt; 10 Lac</td><td style="text-align:right;font-weight:700;color:#880e4f">₹500</td></tr>
+              <tr><td>&gt; 10 Lac</td><td style="text-align:right;font-weight:700;color:#880e4f">₹1,000</td></tr>
+              <tr><td>&gt; 20 Lac</td><td style="text-align:right;font-weight:700;color:#880e4f">₹2,000</td></tr>
+              <tr><td>&gt; 30 Lac</td><td style="text-align:right;font-weight:700;color:#880e4f">₹3,000</td></tr>
+              <tr><td>&gt; 40 Lac</td><td style="text-align:right;font-weight:700;color:#880e4f">₹4,000</td></tr>
+              <tr><td>&gt; 50 Lac</td><td style="text-align:right;font-weight:700;color:#880e4f">₹5,000</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- T&C -->
+      <div class="card" style="background:#fffde7;border-left:4px solid #f9a825">
+        <div style="font-size:13px;font-weight:700;color:#f57f17;margin-bottom:8px">📋 Terms & Conditions</div>
+        <ul style="font-size:12px;color:#555;margin:0;padding-left:18px;line-height:2">
+          <li>Minimum <b>80% of target GMV</b> required for bonus eligibility</li>
+          <li>Bonus is over and above base incentive with <b>no additional conditions</b></li>
+          <li>Total incentive (Base + Bonus) is <b>capped at ₹50,000 per BM</b></li>
+        </ul>
       </div>
     `;
     return;
@@ -1078,7 +1442,7 @@ function buildIncentive(el) {
     }
   }
 
-  const baseIncentive = activeSlab ? effGMV * (appliedRate / 100) : 0;
+  const baseIncentive = activeSlab ? Math.round(effGMV * (appliedRate / 100)) : 0;
 
   // Dealer bonus
   const ucDealers = [...new Set(myTxns.filter(t=>t.product==='Used Car').map(t=>t.dealer))].length;
@@ -1087,13 +1451,13 @@ function buildIncentive(el) {
   else if (ucDealers >= 11) dealerBonusPct = 12;
   else if (ucDealers >= 9) dealerBonusPct = 10;
 
-  const dealerBonus = baseIncentive * (dealerBonusPct / 100);
+  const dealerBonus = Math.round(baseIncentive * (dealerBonusPct / 100));
   const totalIncentive = baseIncentive + dealerBonus;
 
   el.innerHTML = `
     <div class="incentive-box">
       <div class="incentive-title">Estimated Incentive (May 2026)</div>
-      <div class="incentive-amount">${fmtCr(totalIncentive)}</div>
+      <div class="incentive-amount">${fmtCr(Math.round(totalIncentive))}</div>
       <div class="incentive-breakdown">
         <div class="incentive-item">
           <div class="ivalue">${fmtCr(effGMV)}</div>
