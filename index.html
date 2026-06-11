@@ -7,6 +7,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js">
 // Fetch live data on page load (non-blocking)
 tryLoadLiveData();
+
+// Auto-refresh every 30 minutes silently while user is logged in
+setInterval(() => {
+  if (currentUser) {
+    console.log('⏰ Auto-refresh triggered at', new Date().toLocaleTimeString());
+    tryLoadLiveData();
+  }
+}, 30 * 60 * 1000); // 30 minutes
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -212,6 +220,7 @@ tbody tr:last-child td{border-bottom:none}
       <div class="user-info">
         <div class="name" id="topName">-</div>
         <div class="role" id="topRole">-</div>
+        <div id="liveIndicator" style="display:none;font-size:10px;color:#a5d6a7;margin-top:2px;font-weight:600"></div>
       </div>
       <button class="logout-btn" onclick="doLogout()">Logout</button>
     </div>
@@ -313,28 +322,24 @@ async function tryLoadLiveData() {
       }
     }
 
-    // If user is already logged in, refresh current page with new data
+    // If user is already logged in, refresh with new data
     if (currentUser) {
-      filterMyTxns(); // re-filter with live June data
-      // Always rebuild overview with fresh data regardless of active page
-      const overviewEl = document.getElementById('page-overview');
-      if (overviewEl) {
-        if (charts.productMix) { try { charts.productMix.destroy(); } catch(e){} delete charts.productMix; }
-        if (charts.trend) { try { charts.trend.destroy(); } catch(e){} delete charts.trend; }
-        if (charts.banks) { try { charts.banks.destroy(); } catch(e){} delete charts.banks; }
-        overviewEl.innerHTML = '';
-        buildPage('overview', overviewEl);
-      }
-      // Also rebuild active page if different from overview
-      const activeBtn = document.querySelector('.nav-btn.active');
-      let pageId = 'overview';
-      if (activeBtn) {
-        const m = activeBtn.getAttribute('onclick').match(/'([^']+)'/);
-        if (m) pageId = m[1];
-      }
-      if (pageId !== 'overview') {
-        const pageEl = document.getElementById('page-' + pageId);
-        if (pageEl) { pageEl.innerHTML = ''; buildPage(pageId, pageEl); }
+      filterMyTxns();
+      // Destroy all charts first
+      Object.keys(charts).forEach(k => { try { charts[k].destroy(); } catch(e){} });
+      charts = {};
+      // Force rebuild all visible pages
+      document.querySelectorAll('.page').forEach(page => {
+        const pageId = page.id.replace('page-','');
+        page.innerHTML = '';
+        buildPage(pageId, page);
+      });
+      // Show live update badge in header
+      const liveEl = document.getElementById('liveIndicator');
+      if (liveEl && data.updated_at) {
+        const d = new Date(data.updated_at);
+        liveEl.textContent = '🟢 ' + d.toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+        liveEl.style.display = 'inline-block';
       }
     }
 
@@ -574,6 +579,8 @@ function buildPage(id, el) {
 
 // ========== OVERVIEW ==========
 function buildOverview(el) {
+  // Always refresh myTxns before building — ensures live data is used
+  if (currentUser) filterMyTxns();
   const d = currentUser.designation;
   const totalAmt = myTxns.reduce((s,t) => s+t.amt, 0);
   const ucAmt = myTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
