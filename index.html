@@ -294,8 +294,11 @@ async function tryLoadLiveData() {
 
     // Parse transactions (current month = June-26)
     window._LIVE_TXN = parseTransactions(data.transactions);
-    window._LIVE_APR = data.apr_data ? parseTransactions(data.apr_data) : APR_DATA;
-    window._LIVE_MAR = data.mar_data ? parseTransactions(data.mar_data) : MAR_DATA;
+
+    // Previous months for comparison
+    window._LIVE_MAY = data.may_data  ? parseTransactions(data.may_data)  : TXN_DATA; // May as prev month
+    window._LIVE_APR = data.apr_data  ? parseTransactions(data.apr_data)  : APR_DATA;
+    window._LIVE_MAR = data.mar_data  ? parseTransactions(data.mar_data)  : MAR_DATA;
     dataLoaded = true;
 
     // Show last updated time on login screen
@@ -308,9 +311,22 @@ async function tryLoadLiveData() {
         el.style.color = '#43a047';
       }
     }
+
+    // If user is already logged in, refresh current page with new data
+    if (currentUser) {
+      filterMyTxns();
+      const activePage = document.querySelector('.page.active');
+      if (activePage) {
+        const pageId = activePage.id.replace('page-','');
+        const el = document.getElementById('page-' + pageId);
+        if (el) { el.innerHTML = ''; buildPage(pageId); }
+      }
+    }
+
     console.log('✅ Live data loaded:', data.updated_at,
       '| Emp:', window._LIVE_EMP.length,
-      '| Txn:', window._LIVE_TXN.length);
+      '| Jun txn:', window._LIVE_TXN.length,
+      '| May txn:', window._LIVE_MAY.length);
   } catch(e) {
     console.log('ℹ️ Using embedded data:', e.message);
   }
@@ -405,6 +421,7 @@ function parseTransactions(rows) {
 
 function getEmpData()  { return (dataLoaded && window._LIVE_EMP) ? window._LIVE_EMP : EMP_DATA; }
 function getTxnData()  { return (dataLoaded && window._LIVE_TXN) ? window._LIVE_TXN : TXN_DATA; }
+function getMayData()  { return (dataLoaded && window._LIVE_MAY) ? window._LIVE_MAY : TXN_DATA; }
 function getAprData()  { return (dataLoaded && window._LIVE_APR) ? window._LIVE_APR : APR_DATA; }
 function getMarData()  { return (dataLoaded && window._LIVE_MAR) ? window._LIVE_MAR : MAR_DATA; }
 
@@ -928,14 +945,14 @@ function renderMonthCompare() {
   const dayVal = parseInt(document.getElementById('mcDay')?.value || new Date().getDate());
   const day = Math.max(1, Math.min(31, dayVal));
 
-  const mayTxns = mcProductFilter(filterHistorical(getTxnData(), day), mcFilter);
+  const junTxns = mcProductFilter(filterHistorical(getTxnData(), day), mcFilter);
+  const mayTxns = mcProductFilter(filterHistorical(getMayData(), day), mcFilter);
   const aprTxns = mcProductFilter(filterHistorical(getAprData(), day), mcFilter);
   const marTxns = mcProductFilter(filterHistorical(getMarData(), day), mcFilter);
 
   function stats(txns) {
     const amt   = txns.reduce((s,t)=>s+t.amt, 0);
     const cases = txns.length;
-    // Active channels: unique DCIDs (UC BMs use ch_check>0, CV use all CV DCIDs)
     const isCV  = (currentUser.product||'UC') === 'CV';
     const chSet = isCV
       ? new Set(txns.filter(t=>t.product!=='Used Car' && t.dcid).map(t=>t.dcid))
@@ -943,16 +960,18 @@ function renderMonthCompare() {
     return { amt, cases, channels: chSet.size };
   }
 
+  const jun = stats(junTxns);
   const may = stats(mayTxns);
   const apr = stats(aprTxns);
   const mar = stats(marTxns);
-  const maxAmt = Math.max(may.amt, apr.amt, mar.amt) || 1;
+  const maxAmt = Math.max(jun.amt, may.amt, apr.amt, mar.amt) || 1;
 
   const label = mcFilter === 'UC' ? 'Used Car' : mcFilter === 'CV' ? 'CV (UCV+NCV)' : 'All Products';
   const months = [
-    { label:'Jun 2026', s:may,  color:'#1a237e' },
-    { label:'Apr 2026', s:apr,  color:'#6a1b9a' },
-    { label:'Mar 2026', s:mar,  color:'#4527a0' },
+    { label:'Jun 2026', s:jun, color:'#1a237e' },
+    { label:'May 2026', s:may, color:'#283593' },
+    { label:'Apr 2026', s:apr, color:'#6a1b9a' },
+    { label:'Mar 2026', s:mar, color:'#4527a0' },
   ];
 
   el.innerHTML = `
@@ -983,21 +1002,21 @@ function renderMonthCompare() {
           </div>`;
       }).join('')}
     </div>
-    ${may.amt > 0 && (apr.amt > 0 || mar.amt > 0) ? `
+    ${jun.amt > 0 && (may.amt > 0 || apr.amt > 0) ? `
     <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+      ${may.amt > 0 ? `<div style="background:#f5f7ff;border-radius:8px;padding:10px 14px;flex:1;min-width:110px">
+        <div style="font-size:11px;color:#9e9e9e;margin-bottom:2px">vs May day ${day}</div>
+        <div style="font-size:20px;font-weight:800;color:${jun.amt>=may.amt?'#2e7d32':'#e53935'}">
+          ${jun.amt>=may.amt?'▲':'▼'} ${Math.abs(Math.round(((jun.amt-may.amt)/may.amt)*100))}%
+        </div>
+        <div style="font-size:11px;color:#555">${jun.amt>=may.amt?'+':''}${fmtCr(jun.amt-may.amt)}</div>
+      </div>` : ''}
       ${apr.amt > 0 ? `<div style="background:#f5f7ff;border-radius:8px;padding:10px 14px;flex:1;min-width:110px">
         <div style="font-size:11px;color:#9e9e9e;margin-bottom:2px">vs Apr day ${day}</div>
-        <div style="font-size:20px;font-weight:800;color:${may.amt>=apr.amt?'#2e7d32':'#e53935'}">
-          ${may.amt>=apr.amt?'▲':'▼'} ${Math.abs(Math.round(((may.amt-apr.amt)/apr.amt)*100))}%
+        <div style="font-size:20px;font-weight:800;color:${jun.amt>=apr.amt?'#2e7d32':'#e53935'}">
+          ${jun.amt>=apr.amt?'▲':'▼'} ${Math.abs(Math.round(((jun.amt-apr.amt)/apr.amt)*100))}%
         </div>
-        <div style="font-size:11px;color:#555">${may.amt>=apr.amt?'+':''}${fmtCr(may.amt-apr.amt)}</div>
-      </div>` : ''}
-      ${mar.amt > 0 ? `<div style="background:#f5f7ff;border-radius:8px;padding:10px 14px;flex:1;min-width:110px">
-        <div style="font-size:11px;color:#9e9e9e;margin-bottom:2px">vs Mar day ${day}</div>
-        <div style="font-size:20px;font-weight:800;color:${may.amt>=mar.amt?'#2e7d32':'#e53935'}">
-          ${may.amt>=mar.amt?'▲':'▼'} ${Math.abs(Math.round(((may.amt-mar.amt)/mar.amt)*100))}%
-        </div>
-        <div style="font-size:11px;color:#555">${may.amt>=mar.amt?'+':''}${fmtCr(may.amt-mar.amt)}</div>
+        <div style="font-size:11px;color:#555">${jun.amt>=apr.amt?'+':''}${fmtCr(jun.amt-apr.amt)}</div>
       </div>` : ''}
     </div>` : ''}
   `;
