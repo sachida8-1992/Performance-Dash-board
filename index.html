@@ -290,6 +290,7 @@ function tenureMonths(joining) {
 // Falls back to embedded data if unavailable (offline / first load before pipeline setup)
 const DATA_JSON_URL = 'https://raw.githubusercontent.com/sachida8-1992/Performance-Dash-board/main/data.json';
 let dataLoaded = false;
+let lastUpdatedAt = '';
 
 async function tryLoadLiveData() {
   try {
@@ -297,6 +298,13 @@ async function tryLoadLiveData() {
     if (!res.ok) throw new Error('Not found');
     const data = await res.json();
     if (!data.employees || !data.transactions) throw new Error('Invalid format');
+
+    // Skip if data hasn't changed since last fetch
+    if (data.updated_at === lastUpdatedAt && dataLoaded) {
+      console.log('ℹ️ Data unchanged, skipping refresh');
+      return;
+    }
+    lastUpdatedAt = data.updated_at;
 
     // Parse employees from Google Sheet format
     window._LIVE_EMP_RAW = data.employees; // store raw for milestone target columns
@@ -322,19 +330,32 @@ async function tryLoadLiveData() {
       }
     }
 
-    // If user is already logged in, refresh with new data
+    // If user is already logged in, refresh data silently
     if (currentUser) {
       filterMyTxns();
-      // Destroy all charts first
-      Object.keys(charts).forEach(k => { try { charts[k].destroy(); } catch(e){} });
-      charts = {};
-      // Force rebuild all visible pages
-      document.querySelectorAll('.page').forEach(page => {
-        const pageId = page.id.replace('page-','');
-        page.innerHTML = '';
-        buildPage(pageId, page);
-      });
-      // Show live update badge in header
+
+      // Only rebuild the currently active page — don't touch others
+      const activeBtn = document.querySelector('.nav-btn.active');
+      let activePageId = 'overview';
+      if (activeBtn) {
+        const m = activeBtn.getAttribute('onclick').match(/'([^']+)'/);
+        if (m) activePageId = m[1];
+      }
+      const activePage = document.getElementById('page-' + activePageId);
+      if (activePage) {
+        // Destroy charts for this page only
+        if (activePageId === 'overview') {
+          if (charts.productMix) { try { charts.productMix.destroy(); } catch(e){} delete charts.productMix; }
+          if (charts.trend)      { try { charts.trend.destroy();      } catch(e){} delete charts.trend; }
+        }
+        if (activePageId === 'banks') {
+          if (charts.banks) { try { charts.banks.destroy(); } catch(e){} delete charts.banks; }
+        }
+        activePage.innerHTML = '';
+        buildPage(activePageId, activePage);
+      }
+
+      // Update live indicator in header
       const liveEl = document.getElementById('liveIndicator');
       if (liveEl && data.updated_at) {
         const d = new Date(data.updated_at);
@@ -458,7 +479,7 @@ function doLogin() {
   filterMyTxns();
   initApp();
 
-  // If live data not yet loaded, re-fetch and refresh once it arrives
+  // If live data not loaded yet, fetch it now (will auto-refresh overview when done)
   if (!dataLoaded) {
     tryLoadLiveData();
   }
