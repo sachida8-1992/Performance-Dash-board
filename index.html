@@ -222,6 +222,9 @@ tbody tr:last-child td{border-bottom:none}
         <div class="role" id="topRole">-</div>
         <div id="liveIndicator" style="display:none;font-size:10px;color:#a5d6a7;margin-top:2px;font-weight:600"></div>
       </div>
+      <button onclick="manualRefresh()" id="refreshBtn"
+        style="background:rgba(255,255,255,.15);border:none;color:#fff;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:16px;margin-right:6px;transition:background .2s"
+        title="Refresh data">🔄</button>
       <button class="logout-btn" onclick="doLogout()">Logout</button>
     </div>
   </div>
@@ -482,6 +485,21 @@ function doLogin() {
   // If live data not loaded yet, fetch it now (will auto-refresh overview when done)
   if (!dataLoaded) {
     tryLoadLiveData();
+  }
+}
+
+async function manualRefresh() {
+  const btn = document.getElementById('refreshBtn');
+  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+
+  // Force re-fetch even if data hasn't changed
+  lastUpdatedAt = '';
+  await tryLoadLiveData();
+
+  if (btn) {
+    btn.textContent = '✅';
+    btn.disabled = false;
+    setTimeout(() => { btn.textContent = '🔄'; }, 2000);
   }
 }
 
@@ -1053,10 +1071,10 @@ function renderMonthCompare() {
   const mayTxns = mcProductFilter(filterHistorical(getMayData(), day), mcFilter);
 
   function stats(txns) {
-    const amt   = txns.reduce((s,t)=>s+t.amt, 0);
-    const cases = txns.length;
-    const isCV  = (currentUser.product||'UC') === 'CV';
-    const chSet = isCV
+    const amt     = txns.reduce((s,t)=>s+t.amt, 0);
+    const cases   = txns.length;
+    const isCV    = (currentUser.product||'UC') === 'CV';
+    const chSet   = isCV
       ? new Set(txns.filter(t=>t.product!=='Used Car' && t.dcid).map(t=>t.dcid))
       : new Set(txns.filter(t=>t.ch_check>0 && t.dcid).map(t=>t.dcid));
     return { amt, cases, channels: chSet.size };
@@ -1064,7 +1082,7 @@ function renderMonthCompare() {
 
   const jun = stats(junTxns);
   const may = stats(mayTxns);
-  const maxAmt = Math.max(jun.amt, may.amt) || 1;
+  const maxAmt = Math.max(jun.amt, may.amt, 1); // always at least 1 to avoid empty bars
 
   const label = mcFilter === 'UC' ? 'Used Car' : mcFilter === 'CV' ? 'CV (UCV+NCV)' : 'All Products';
   const months = [
@@ -3246,11 +3264,38 @@ function buildTHHierarchy(el) {
   if (allDirect) {
     // No AM layer — show BMs directly in a table
     html += `<div class="section-title">BM-wise Performance (Direct to TH)</div>`;
+
+    // Build BM map from transactions
     const bmMap = {};
     myTxns.forEach(t => {
       const key = t.bm_id || t.bm;
       if (!bmMap[key]) bmMap[key] = [];
       bmMap[key].push(t);
+    });
+
+    // Add BMs from employee list who report to this TH but have zero June txns
+    getEmpData().forEach(e => {
+      if (e.designation === 'BM' &&
+          (String(e.th_id||'') === currentUser.id ||
+           String(e.th_name||'').toLowerCase() === currentUser.name.toLowerCase())) {
+        if (!bmMap[e.id]) bmMap[e.id] = []; // zero txns
+      }
+    });
+    // Also check by TH Name field in employee data
+    getEmpData().forEach(e => {
+      if (e.designation === 'BM') {
+        const thName = String(e['TH Name'] || e['TH name'] || e.th_name || '').toLowerCase();
+        if (thName === currentUser.name.toLowerCase() && !bmMap[e.id]) {
+          bmMap[e.id] = [];
+        }
+      }
+    });
+    // Add zero-txn BMs from employee list who report to this TH
+    getEmpData().filter(e => e.designation === 'BM').forEach(e => {
+      const eTH = String(e['TH Name'] || e['TH name'] || e.th_name || '').toLowerCase();
+      if (eTH === currentUser.name.toLowerCase() && !bmMap[e.id]) {
+        bmMap[e.id] = [];
+      }
     });
     const bmRows = Object.entries(bmMap).sort((a,b) =>
       b[1].reduce((s,t)=>s+t.amt,0) - a[1].reduce((s,t)=>s+t.amt,0)
@@ -3554,7 +3599,8 @@ function buildBMTable(bmRows) {
       </tr></thead>
       <tbody>
         ${bmRows.map(([key, bmTxns]) => {
-          const bmEmp   = resolveEmpById(bmTxns[0].bm_id) || resolveEmpName(bmTxns[0].bm);
+          const bmId    = bmTxns.length > 0 ? bmTxns[0].bm_id : key;
+          const bmEmp   = resolveEmpById(bmId) || (bmTxns.length > 0 ? resolveEmpName(bmTxns[0].bm) : null);
           const bmStats = computeStats(bmTxns, bmEmp);
           const tier    = bmEmp ? bmEmp.tier || '—' : '—';
           const ucTgt   = bmEmp ? fmtCr((bmEmp.uc_tgt||0)*1e5) : '—';
@@ -3562,20 +3608,20 @@ function buildBMTable(bmRows) {
           const chTgt   = bmEmp ? (bmEmp.ch_tgt || 0) : 0;
           const bmCh    = new Set(bmTxns.filter(t=>t.ch_check>0).map(t=>t.dcid)).size;
           const chAch   = chTgt > 0 ? Math.round((bmCh/chTgt)*100) : null;
-          const displayName = bmEmp ? bmEmp.name : bmTxns[0].bm;
-          // FTD — today's transactions only
+          const displayName = bmEmp ? bmEmp.name : (bmTxns.length > 0 ? bmTxns[0].bm : key);
           const ftdTxns = bmTxns.filter(t => t.date && t.date.slice(0,10) === todayStr);
           const ftdUC   = ftdTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
           const ftdCV   = ftdTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-          return `<tr>
-            <td><b style="font-size:12px">${displayName}</b></td>
+          const zeroRow = bmTxns.length === 0;
+          return `<tr ${zeroRow?'style="opacity:0.65;background:#fafafa"':''}>
+            <td><b style="font-size:12px">${displayName}</b>${zeroRow?'<span style="font-size:10px;color:#e53935;margin-left:4px">No txns</span>':''}</td>
             <td><span class="badge badge-grey" style="font-size:10px">${tier}</span></td>
-            <td><b>${fmtCr(bmStats.amt)}</b></td>
+            <td><b>${zeroRow?'₹0':fmtCr(bmStats.amt)}</b></td>
             <td style="font-size:11px;color:#666">${ucTgt}</td>
             <td style="font-size:11px;color:#666">${cvTgt}</td>
             <td>${bmStats.tgt>0 ? achBadge(bmStats.ach) : '<span class="badge badge-grey">—</span>'}</td>
-            <td style="font-size:11px">${fmtCr(bmStats.ucAmt)}</td>
-            <td style="font-size:11px">${fmtCr(bmStats.cvAmt)}</td>
+            <td style="font-size:11px">${zeroRow?'—':fmtCr(bmStats.ucAmt)}</td>
+            <td style="font-size:11px">${zeroRow?'—':fmtCr(bmStats.cvAmt)}</td>
             <td>${bmStats.cases}</td>
             <td><b>${bmCh}</b></td>
             <td style="font-size:11px;color:#666">${chTgt || '—'}</td>
@@ -3588,7 +3634,6 @@ function buildBMTable(bmRows) {
     </table>
   `;
 }
-
 // Toggle expand/collapse
 function toggleSection(id) {
   const el = document.getElementById(id);
