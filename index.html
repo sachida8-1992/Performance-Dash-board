@@ -315,15 +315,19 @@ async function tryLoadLiveData() {
 
     // If user is already logged in, refresh current page with new data
     if (currentUser) {
-      filterMyTxns();
+      filterMyTxns(); // re-filter with live June data
+      // Rebuild whichever page is currently active
       const activeBtn = document.querySelector('.nav-btn.active');
+      let pageId = 'overview';
       if (activeBtn) {
-        const pageId = activeBtn.getAttribute('onclick').match(/'([^']+)'/)?.[1];
-        if (pageId) {
-          const el = document.getElementById('page-' + pageId);
-          if (el) { el.innerHTML = ''; buildPage(pageId, el); }
-        }
+        const m = activeBtn.getAttribute('onclick').match(/'([^']+)'/);
+        if (m) pageId = m[1];
       }
+      const pageEl = document.getElementById('page-' + pageId);
+      if (pageEl) { pageEl.innerHTML = ''; buildPage(pageId, pageEl); }
+      // Also destroy cached charts so they re-render with new data
+      Object.keys(charts).forEach(k => { try { charts[k].destroy(); } catch(e){} });
+      charts = {};
     }
 
     console.log('✅ Live data loaded:', data.updated_at,
@@ -440,6 +444,11 @@ function doLogin() {
   currentUser = emp;
   filterMyTxns();
   initApp();
+
+  // If live data not yet loaded, re-fetch and refresh once it arrives
+  if (!dataLoaded) {
+    tryLoadLiveData();
+  }
 }
 
 function doLogout() {
