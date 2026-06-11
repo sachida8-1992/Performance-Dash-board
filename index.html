@@ -316,18 +316,26 @@ async function tryLoadLiveData() {
     // If user is already logged in, refresh current page with new data
     if (currentUser) {
       filterMyTxns(); // re-filter with live June data
-      // Rebuild whichever page is currently active
+      // Always rebuild overview with fresh data regardless of active page
+      const overviewEl = document.getElementById('page-overview');
+      if (overviewEl) {
+        if (charts.productMix) { try { charts.productMix.destroy(); } catch(e){} delete charts.productMix; }
+        if (charts.trend) { try { charts.trend.destroy(); } catch(e){} delete charts.trend; }
+        if (charts.banks) { try { charts.banks.destroy(); } catch(e){} delete charts.banks; }
+        overviewEl.innerHTML = '';
+        buildPage('overview', overviewEl);
+      }
+      // Also rebuild active page if different from overview
       const activeBtn = document.querySelector('.nav-btn.active');
       let pageId = 'overview';
       if (activeBtn) {
         const m = activeBtn.getAttribute('onclick').match(/'([^']+)'/);
         if (m) pageId = m[1];
       }
-      const pageEl = document.getElementById('page-' + pageId);
-      if (pageEl) { pageEl.innerHTML = ''; buildPage(pageId, pageEl); }
-      // Also destroy cached charts so they re-render with new data
-      Object.keys(charts).forEach(k => { try { charts[k].destroy(); } catch(e){} });
-      charts = {};
+      if (pageId !== 'overview') {
+        const pageEl = document.getElementById('page-' + pageId);
+        if (pageEl) { pageEl.innerHTML = ''; buildPage(pageId, pageEl); }
+      }
     }
 
     console.log('✅ Live data loaded:', data.updated_at,
@@ -779,7 +787,8 @@ function buildOverview(el) {
   // Product pie
   setTimeout(() => {
     const ctx1 = document.getElementById('chartProductMix');
-    if (ctx1 && !charts.productMix) {
+    if (ctx1) {
+      if (charts.productMix) { try { charts.productMix.destroy(); } catch(e){} delete charts.productMix; }
       const total = ucAmt + cvAmt + ncvAmt;
       const pxColors = ['#1565c0','#7b1fa2','#e65100'];
       const pxLabels = ['Used Car','Used CV','New CV'];
@@ -865,7 +874,8 @@ function buildOverview(el) {
     const barBorders = allDates.map(d => (byDate[d]||0) === 0 ? '#c62828' : '#1a237e');
 
     const ctx2 = document.getElementById('chartTrend');
-    if (ctx2 && !charts.trend) {
+    if (ctx2) {
+      if (charts.trend) { try { charts.trend.destroy(); } catch(e){} delete charts.trend; }
       charts.trend = new Chart(ctx2, {
         type:'bar',
         data:{
