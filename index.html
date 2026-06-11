@@ -306,7 +306,7 @@ async function tryLoadLiveData() {
     window._LIVE_TXN = parseTransactions(data.transactions);
 
     // Previous months for comparison
-    window._LIVE_MAY = data.may_data  ? parseTransactions(data.may_data)  : TXN_DATA; // May as prev month
+    window._LIVE_MAY = data.may_data  ? data.may_data  : TXN_DATA; // already slim-parsed by Apps Script
     window._LIVE_APR = data.apr_data  ? parseTransactions(data.apr_data)  : APR_DATA;
     window._LIVE_MAR = data.mar_data  ? parseTransactions(data.mar_data)  : MAR_DATA;
     dataLoaded = true;
@@ -478,17 +478,12 @@ function doLogout() {
 function filterMyTxns() {
   const d = currentUser.designation;
   const id = currentUser.id;
-  const n = currentUser.name;
-  if (d === 'BM') {
-    // Match by Employee ID — 100% reliable, no name casing issues
-    myTxns = getTxnData().filter(t => t.bm_id === id);
-  } else if (d === 'AM') {
-    myTxns = getTxnData().filter(t => t.am_id === id);
-  } else if (d === 'TH') {
-    myTxns = getTxnData().filter(t => t.th_id === id);
-  } else if (d === 'RH') {
-    myTxns = getTxnData().filter(t => t.rh_id === id);
-  }
+  // Only include June 2026 transactions (exclude May 31 spillover)
+  const juneTxns = getTxnData().filter(t => t.date && t.date.startsWith('2026-06'));
+  if (d === 'BM')      myTxns = juneTxns.filter(t => t.bm_id === id);
+  else if (d === 'AM') myTxns = juneTxns.filter(t => t.am_id === id);
+  else if (d === 'TH') myTxns = juneTxns.filter(t => t.th_id === id);
+  else if (d === 'RH') myTxns = juneTxns.filter(t => t.rh_id === id);
 }
 
 // ========== INIT APP ==========
@@ -671,6 +666,42 @@ function buildOverview(el) {
           </div>
         </div>
       </div>
+      ${currentUser.designation !== 'BM' ? `
+      <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="font-size:12px;color:#757575;font-weight:600">Filter:</label>
+        <select id="mcHierFilter" onchange="renderMonthCompare()"
+          style="padding:6px 10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:12px;color:#1a237e;font-weight:600;background:#fff;cursor:pointer">
+          <option value="all">All Team</option>
+          ${(() => {
+            const d = currentUser.designation;
+            const opts = [];
+            // Add TH options for RH
+            if (d === 'RH') {
+              const ths = [...new Set(myTxns.map(t=>t.th_id).filter(Boolean))];
+              ths.forEach(thId => {
+                const emp = resolveEmpById(thId);
+                if (emp) opts.push('<optgroup label="── TH ──"></optgroup><option value="th_' + thId + '">TH: ' + emp.name + '</option>');
+              });
+            }
+            // Add AM options for RH/TH
+            if (d === 'RH' || d === 'TH') {
+              const ams = [...new Set(myTxns.map(t=>t.am_id).filter(id=>id&&id!=='0'))];
+              ams.forEach(amId => {
+                const emp = resolveEmpById(amId);
+                if (emp) opts.push('<option value="am_' + amId + '">AM: ' + emp.name + '</option>');
+              });
+            }
+            // Add BM options for all non-BM roles
+            const bms = [...new Set(myTxns.map(t=>t.bm_id).filter(Boolean))];
+            bms.forEach(bmId => {
+              const emp = resolveEmpById(bmId);
+              if (emp) opts.push('<option value="bm_' + bmId + '">BM: ' + emp.name + '</option>');
+            });
+            return opts.join('');
+          })()}
+        </select>
+        <span id="mcFilterLabel" style="font-size:11px;color:#9e9e9e"></span>
+      </div>` : ''}
       <div id="monthCompareBody"></div>
     </div>
 
@@ -953,15 +984,34 @@ function setMCFilter(f) {
 }
 
 function filterHistorical(dataset, dayLimit) {
-  const d = currentUser.designation;
+  const d  = currentUser.designation;
   const id = currentUser.id;
+
+  // Check hierarchy filter dropdown
+  const sel = document.getElementById('mcHierFilter');
+  const filterVal = sel ? sel.value : 'all';
+
+  // Update label
+  const lbl = document.getElementById('mcFilterLabel');
+  if (lbl) lbl.textContent = filterVal === 'all' ? '' : 'Filtered view';
+
   return dataset.filter(t => {
     if (t.day <= 0 || t.day > dayLimit) return false;
-    if (d === 'BM')  return t.bm_id === id;
-    if (d === 'AM')  return t.am_id === id;
-    if (d === 'TH')  return t.th_id === id;
-    if (d === 'RH')  return t.rh_id === id;
-    return false;
+
+    // First apply user's own hierarchy scope
+    let inScope = false;
+    if (d === 'BM')      inScope = t.bm_id === id;
+    else if (d === 'AM') inScope = t.am_id === id;
+    else if (d === 'TH') inScope = t.th_id === id;
+    else if (d === 'RH') inScope = t.rh_id === id;
+    if (!inScope) return false;
+
+    // Then apply dropdown filter
+    if (filterVal === 'all') return true;
+    if (filterVal.startsWith('th_')) return t.th_id === filterVal.slice(3);
+    if (filterVal.startsWith('am_')) return t.am_id === filterVal.slice(3);
+    if (filterVal.startsWith('bm_')) return t.bm_id === filterVal.slice(3);
+    return true;
   });
 }
 
@@ -3195,6 +3245,7 @@ function buildTHHierarchy(el) {
               <th>BM Name</th><th>Tier</th>
               <th>Disbursement</th><th>UC Tgt</th><th>CV Tgt</th><th>% Ach</th>
               <th>UC</th><th>CV</th><th>Cases</th><th>Active Ch</th><th>Ch Target</th><th>Ch Ach%</th>
+              <th style="color:#1565c0">FTD UC</th><th style="color:#880e4f">FTD CV</th>
             </tr></thead>
             <tbody>
               ${bmRows.map(([key, bmTxns]) => {
@@ -3207,6 +3258,10 @@ function buildTHHierarchy(el) {
                 const bmCh    = new Set(bmTxns.filter(t=>t.ch_check>0).map(t=>t.dcid)).size;
                 const chAch   = chTgt > 0 ? Math.round((bmCh/chTgt)*100) : null;
                 const displayName = bmEmp ? bmEmp.name : bmTxns[0].bm;
+                const todayStr = new Date().toISOString().slice(0,10);
+                const ftdTxns = bmTxns.filter(t => t.date && t.date.slice(0,10) === todayStr);
+                const ftdUC   = ftdTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+                const ftdCV   = ftdTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
                 return `<tr>
                   <td><b style="font-size:12px">${displayName}</b></td>
                   <td><span class="badge badge-grey">${tier}</span></td>
@@ -3220,6 +3275,8 @@ function buildTHHierarchy(el) {
                   <td><b>${bmCh}</b></td>
                   <td style="font-size:12px;color:#666">${chTgt || '—'}</td>
                   <td>${chAch !== null ? achBadge(chAch) : '<span class="badge badge-grey">—</span>'}</td>
+                  <td style="font-size:11px;color:#1565c0;font-weight:700">${ftdUC>0?fmtCr(ftdUC):'<span style="color:#9e9e9e">—</span>'}</td>
+                  <td style="font-size:11px;color:#880e4f;font-weight:700">${ftdCV>0?fmtCr(ftdCV):'<span style="color:#9e9e9e">—</span>'}</td>
                 </tr>`;
               }).join('')}
             </tbody>
@@ -3465,12 +3522,14 @@ function buildTHCard(thName, thEmp, thStats, thId, amEntries) {
 // ── Helper: BM rows table ─────────────────────────────
 function buildBMTable(bmRows) {
   if (!bmRows.length) return '<div class="empty">No BMs found.</div>';
+  const todayStr = new Date().toISOString().slice(0,10);
   return `
     <table>
       <thead><tr>
         <th>BM Name</th><th>Tier</th>
         <th>Disbursement</th><th>UC Tgt</th><th>CV Tgt</th><th>% Ach</th>
         <th>UC</th><th>CV</th><th>Cases</th><th>Active Ch</th><th>Ch Tgt</th><th>Ch Ach%</th>
+        <th style="color:#1565c0">FTD UC</th><th style="color:#880e4f">FTD CV</th>
       </tr></thead>
       <tbody>
         ${bmRows.map(([key, bmTxns]) => {
@@ -3483,6 +3542,10 @@ function buildBMTable(bmRows) {
           const bmCh    = new Set(bmTxns.filter(t=>t.ch_check>0).map(t=>t.dcid)).size;
           const chAch   = chTgt > 0 ? Math.round((bmCh/chTgt)*100) : null;
           const displayName = bmEmp ? bmEmp.name : bmTxns[0].bm;
+          // FTD — today's transactions only
+          const ftdTxns = bmTxns.filter(t => t.date && t.date.slice(0,10) === todayStr);
+          const ftdUC   = ftdTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+          const ftdCV   = ftdTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
           return `<tr>
             <td><b style="font-size:12px">${displayName}</b></td>
             <td><span class="badge badge-grey" style="font-size:10px">${tier}</span></td>
@@ -3496,6 +3559,8 @@ function buildBMTable(bmRows) {
             <td><b>${bmCh}</b></td>
             <td style="font-size:11px;color:#666">${chTgt || '—'}</td>
             <td>${chAch !== null ? achBadge(chAch) : '<span class="badge badge-grey">—</span>'}</td>
+            <td style="font-size:11px;color:#1565c0;font-weight:700">${ftdUC>0?fmtCr(ftdUC):'<span style="color:#9e9e9e">—</span>'}</td>
+            <td style="font-size:11px;color:#880e4f;font-weight:700">${ftdCV>0?fmtCr(ftdCV):'<span style="color:#9e9e9e">—</span>'}</td>
           </tr>`;
         }).join('')}
       </tbody>
