@@ -279,7 +279,7 @@ function tenureMonths(joining) {
 // ========== LIVE DATA FETCH ==========
 // Tries to load fresh data from data.json (pushed by Google Sheets → Apps Script)
 // Falls back to embedded data if unavailable (offline / first load before pipeline setup)
-const DATA_JSON_URL = 'data.json';
+const DATA_JSON_URL = 'https://raw.githubusercontent.com/sachida8-1992/Performance-Dash-board/main/data.json';
 let dataLoaded = false;
 
 async function tryLoadLiveData() {
