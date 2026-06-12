@@ -378,28 +378,67 @@ async function tryLoadLiveData() {
 
 // Parse employee rows from Google Sheet columns → dashboard format
 function parseEmployees(rows) {
-  return rows.map(r => {
-    const id = String(r['E Code'] || r['e_code'] || r['ECode'] || '').split('.')[0].trim();
+  function sid(v) {
+    if (!v && v !== 0) return '';
+    const s = String(v).split('.')[0].trim();
+    return (s === '' || s === 'nan' || s === 'undefined') ? '' : s;
+  }
+
+  const parsed = rows.map(r => {
+    // Col A: 'Employee Code' (new sheet) OR 'E Code' (old/fallback)
+    const id = sid(r['Employee Code'] || r['E Code'] || '');
+
+    // Col J: 'AM Employee Code' (new) | Col L: 'TH Employee Code' | Col N: 'RH Employee Code'
+    const am_id = sid(r['AM Employee Code'] || r['AM Code'] || r['am_id'] || '');
+    const th_id = sid(r['TH Employee Code'] || r['TH Code'] || r['th_id'] || '');
+    const rh_id = sid(r['RH Employee Code'] || r['RH Code'] || r['rh_id'] || '');
+
     return {
       id,
-      name:        String(r['Emp Name'] || r['emp_name'] || '').trim(),
-      designation: String(r['Designation'] || r['designation'] || '').trim(),
-      email:       String(r['Email ID'] || r['email'] || r['Email'] || '').trim().toLowerCase(),
-      password:    id, // password = E Code
-      city:        String(r['City Name'] || r['city_name'] || r['city'] || '').trim(),
-      tier:        String(r['Tier'] || r['tier'] || '').trim(),
-      joining:     String(r['Date of Joining'] || r['date_of_joining'] || '').toString().slice(0,10),
-      product:     String(r['Product'] || r['product'] || 'UC').trim(),
-      uc_tgt:      parseFloat(r['UC TGT'] || r['uc_tgt'] || 0) || 0,
-      cv_tgt:      parseFloat(r['CV TGT'] || r['cv_tgt'] || 0) || 0,
-      ch_tgt:      parseFloat(r['Channel tgt'] || r['channel_tgt'] || r['ch_tgt'] || 0) || 0,
-      th_name:     String(r['TH Name'] || r['TH name'] || r['th_name'] || '').trim(),
-      th_id:       String(r['TH Code'] || r['TH code'] || r['th_id'] || r['th_code'] || '').split('.')[0].trim(),
-      am_name:     String(r['AM Name'] || r['AM name'] || r['am_name'] || '').trim(),
-      am_id:       String(r['AM Code'] || r['AM code'] || r['am_id'] || r['am_code'] || '').split('.')[0].trim(),
-      rh_name:     String(r['RH Name'] || r['RH name'] || r['rh_name'] || '').trim(),
+      name:        String(r['Emp Name'] || '').trim(),
+      designation: String(r['Designation'] || '').trim(),
+      email:       String(r['Email ID'] || '').trim().toLowerCase(),
+      password:    id,
+      city:        String(r['City Name'] || '').trim(),
+      tier:        String(r['Tier'] || '').trim(),
+      joining:     String(r['Date of Joining'] || '').toString().slice(0,10),
+      product:     String(r['Product'] || 'UC').trim(),
+      uc_tgt:      parseFloat(r['UC TGT'] || 0) || 0,
+      cv_tgt:      parseFloat(r['CV TGT'] || 0) || 0,
+      ch_tgt:      parseFloat(r['Channel tgt'] || r['ch_tgt'] || 0) || 0,
+      am_name:     String(r['AM Name'] || '').trim(),
+      am_id,
+      th_name:     String(r['TH Name'] || '').trim(),
+      th_id,
+      rh_name:     String(r['RH Name'] || '').trim(),
+      rh_id,
     };
   }).filter(e => e.id && e.name);
+
+  // Second pass: if am_id/th_id still missing, resolve from email in AM Name/TH Name columns
+  // (current sheet stores emails in those columns — extract prefix and match to employee)
+  const emailToId = {};
+  const nameToId  = {};
+  parsed.forEach(e => {
+    if (e.email) emailToId[e.email] = e.id;
+    if (e.name)  nameToId[e.name.toLowerCase()] = e.id;
+  });
+
+  parsed.forEach(e => {
+    if (!e.am_id && e.am_name) {
+      // am_name may be an email like 'jawed.ansari@rupyy.com' OR a real name
+      e.am_id = emailToId[e.am_name.toLowerCase()]
+             || nameToId[e.am_name.toLowerCase()]
+             || '';
+    }
+    if (!e.th_id && e.th_name) {
+      e.th_id = emailToId[e.th_name.toLowerCase()]
+             || nameToId[e.th_name.toLowerCase()]
+             || '';
+    }
+  });
+
+  return parsed;
 }
 
 // Parse transaction rows from Google Sheet columns → dashboard format
@@ -478,7 +517,14 @@ function getMarData()  { return (dataLoaded && window._LIVE_MAR) ? window._LIVE_
 function doLogin() {
   const name = document.getElementById('loginName').value.trim().toLowerCase();
   const pass = document.getElementById('loginPass').value.trim();
-  const emp = getEmpData().find(e => e.email.toLowerCase() === name && String(e.password) === String(pass));
+  // Primary: email = username, password = Employee Code
+  let emp = getEmpData().find(e => e.email === name && String(e.password) === String(pass));
+  // Fallback: if Employee Codes are all wrong/same in sheet, login with email only
+  if (!emp) {
+    const ids = getEmpData().map(e => e.id).filter(Boolean);
+    const allSameCode = ids.length > 1 && new Set(ids).size <= 1;
+    if (allSameCode) emp = getEmpData().find(e => e.email === name);
+  }
   if (!emp) {
     document.getElementById('loginErr').textContent = 'Invalid email or password';
     return;
@@ -1582,7 +1628,7 @@ function buildTeamIncentive(el) {
 
   el.innerHTML = `
     <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg,#1a237e,#283593);color:#fff">
-      <div style="font-size:12px;opacity:.7;font-weight:600;letter-spacing:.5px;text-transform:uppercase">Team Estimated Incentive (May 2026)</div>
+      <div style="font-size:12px;opacity:.7;font-weight:600;letter-spacing:.5px;text-transform:uppercase">Team Estimated Incentive (June 2026)</div>
       <div style="font-size:36px;font-weight:800;margin:6px 0">${fmtCr(Math.round(totalTeamIncentive))}</div>
       <div style="font-size:12px;opacity:.7">${rows.length} BMs · Total estimated incentive</div>
     </div>
@@ -2014,7 +2060,7 @@ function buildIncentive(el) {
 
   el.innerHTML = `
     <div class="incentive-box">
-      <div class="incentive-title">Estimated Incentive (May 2026)</div>
+      <div class="incentive-title">Estimated Incentive (June 2026)</div>
       <div class="incentive-amount">${fmtCr(Math.round(totalIncentive))}</div>
       <div class="incentive-breakdown">
         <div class="incentive-item">
@@ -2121,7 +2167,7 @@ function buildTeam(el) {
       </div>
     </div>
     <div class="card">
-      <div class="card-title">BM Performance — May 2026</div>
+      <div class="card-title">BM Performance — June 2026</div>
       <table>
         <thead><tr>
           <th>BM Name</th><th>Tier</th>
@@ -3295,27 +3341,9 @@ function buildTHHierarchy(el) {
       bmMap[key].push(t);
     });
 
-    // Add BMs from employee list who report to this TH but have zero June txns
+    // Add zero-txn BMs who report to this TH — match by th_id (E Code) only
     getEmpData().forEach(e => {
-      if (e.designation === 'BM' &&
-          (String(e.th_id||'') === currentUser.id ||
-           String(e.th_name||'').toLowerCase() === currentUser.name.toLowerCase())) {
-        if (!bmMap[e.id]) bmMap[e.id] = []; // zero txns
-      }
-    });
-    // Also check by TH Name field in employee data
-    getEmpData().forEach(e => {
-      if (e.designation === 'BM') {
-        const thName = String(e['TH Name'] || e['TH name'] || e.th_name || '').toLowerCase();
-        if (thName === currentUser.name.toLowerCase() && !bmMap[e.id]) {
-          bmMap[e.id] = [];
-        }
-      }
-    });
-    // Add zero-txn BMs from employee list who report to this TH
-    getEmpData().filter(e => e.designation === 'BM').forEach(e => {
-      const eTH = String(e['TH Name'] || e['TH name'] || e.th_name || '').toLowerCase();
-      if (eTH === currentUser.name.toLowerCase() && !bmMap[e.id]) {
+      if (e.designation === 'BM' && e.th_id === currentUser.id && !bmMap[e.id]) {
         bmMap[e.id] = [];
       }
     });
@@ -3409,9 +3437,9 @@ function buildTHHierarchy(el) {
                 <span style="font-size:12px;color:#666">BMs: <b>${bmRows.length}</b></span>
               </div>
             </div>
-            <div style="font-size:20px;color:#9e9e9e;margin-left:12px" id="arr_${cardId}">▼</div>
+            <div style="font-size:20px;color:#9e9e9e;margin-left:12px" id="arr_${cardId}">▲</div>
           </div>
-          <div id="${cardId}" style="display:none;padding:0 20px 16px;overflow-x:auto">
+          <div id="${cardId}" style="padding:0 20px 16px;overflow-x:auto">
             ${buildBMTable(bmRows)}
           </div>
         </div>
@@ -3509,8 +3537,15 @@ function buildRHHierarchy(el) {
       // BMs under this AM
       const bmMap = {};
       amTxns.forEach(t => {
-        if (!bmMap[t.bm]) bmMap[t.bm] = [];
-        bmMap[t.bm].push(t);
+        const key = t.bm_id || t.bm;
+        if (!bmMap[key]) bmMap[key] = [];
+        bmMap[key].push(t);
+      });
+      // Inject zero-txn BMs from employee sheet reporting to this AM (match by AM E Code)
+      getEmpData().forEach(e => {
+        if (e.designation === 'BM' && e.am_id && e.am_id === amId && !bmMap[e.id]) {
+          bmMap[e.id] = [];
+        }
       });
       const bmRows = Object.entries(bmMap).sort((a,b) =>
         b[1].reduce((s,t)=>s+t.amt,0) - a[1].reduce((s,t)=>s+t.amt,0)
