@@ -2623,7 +2623,7 @@ function getMilestoneEmpTargets(emp, ms) {
   const liveEmp = liveEmps.find(e => e.id === emp?.id);
   // Milestone targets come from raw Google Sheets data
   const raw = (window._LIVE_EMP_RAW || []).find(r => {
-    const id = String(r['E Code']||'').split('.')[0].trim();
+    const id = String(r['Employee Code'] || r['E Code'] || '').split('.')[0].trim();
     return id === emp?.id;
   });
   if (!raw) {
@@ -2807,6 +2807,16 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
     const key = t.bm_id || t.bm;
     if (!bmMap[key]) bmMap[key] = [];
     bmMap[key].push(t);
+  });
+
+  // Include zero-txn BMs from employee sheet (they have targets but no disbursals yet)
+  getEmpData().forEach(e => {
+    if (e.designation === 'BM') {
+      const inScope = role === 'RH' ? e.rh_id === currentUser.id
+                    : role === 'TH' ? e.th_id === currentUser.id
+                    : role === 'AM' ? e.am_id === currentUser.id : false;
+      if (inScope && !bmMap[e.id]) bmMap[e.id] = [];
+    }
   });
 
   const bmRows = Object.entries(bmMap).map(([key, txns]) => {
