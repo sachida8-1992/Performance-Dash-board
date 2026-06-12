@@ -393,6 +393,11 @@ function parseEmployees(rows) {
       uc_tgt:      parseFloat(r['UC TGT'] || r['uc_tgt'] || 0) || 0,
       cv_tgt:      parseFloat(r['CV TGT'] || r['cv_tgt'] || 0) || 0,
       ch_tgt:      parseFloat(r['Channel tgt'] || r['channel_tgt'] || r['ch_tgt'] || 0) || 0,
+      th_name:     String(r['TH Name'] || r['TH name'] || r['th_name'] || '').trim(),
+      th_id:       String(r['TH Code'] || r['TH code'] || r['th_id'] || r['th_code'] || '').split('.')[0].trim(),
+      am_name:     String(r['AM Name'] || r['AM name'] || r['am_name'] || '').trim(),
+      am_id:       String(r['AM Code'] || r['AM code'] || r['am_id'] || r['am_code'] || '').split('.')[0].trim(),
+      rh_name:     String(r['RH Name'] || r['RH name'] || r['rh_name'] || '').trim(),
     };
   }).filter(e => e.id && e.name);
 }
@@ -548,9 +553,10 @@ function buildPageList() {
   const pages = [
     {id:'overview', label:'📊 Overview'},
   ];
-  // Hierarchy placed right after Overview for TH and RH
+  // Hierarchy + Weekly Review placed right after Overview for TH and RH
   if (d === 'TH' || d === 'RH') {
     pages.push({id:'hierarchy', label:'🏗️ Hierarchy View'});
+    pages.push({id:'weekly', label:'📊 Weekly Review'});
   }
   if (d === 'BM') {
     pages.push(
@@ -574,7 +580,9 @@ function buildPageList() {
     pages.push({id:'incentive', label:'💰 Team Incentive'});
   }
   pages.push({id:'insights', label:'💡 Insights'});
-  pages.push({id:'weekly', label:'📊 Weekly Review'});
+  if (d === 'BM' || d === 'AM') {
+    pages.push({id:'weekly', label:'📊 Weekly Review'});
+  }
   pages.push({id:'deviation', label:'📋 Deviation Matrix'});
   pages.push({id:'issues', label:'🔔 Issues'});
   return pages;
@@ -1460,25 +1468,25 @@ function switchCityTab(btn, panelId) {
 
 // ========== BANKS ==========
 function buildBanks(el) {
-  const LOAN_LABELS = {
-    'purchase':'Purchase','refinance':'Refinance','refinancehp':'Refinance HP',
-    'topup':'Top Up','BTtopup':'BT Top Up','BTinternal':'BT Internal',
-    'ucvpurchase':'UCV Purchase','ucvrefinance':'UCV Refinance',
-    'ucvrefinancehp':'UCV Refinance HP','ucvBTtopup':'UCV BT Top Up','ncvpurchase':'NCV Purchase',
-  };
-
-  const loanTypes = ['all', ...Object.keys(
-    myTxns.reduce((m,t) => { if(t.loan_type) m[t.loan_type]=1; return m; }, {})
-  ).sort()];
-
-  // Build shell first
+  // Build shell with two dropdowns: Product (UC/CV/All) + Loan Type (Purchase/Others/All)
   el.innerHTML = `
-    <div style="margin-bottom:16px;overflow-x:auto;white-space:nowrap;padding-bottom:4px" id="bankFilterBar">
-      ${loanTypes.map(lt => {
-        const label = lt==='all' ? '🏦 All Loans' : (LOAN_LABELS[lt]||lt);
-        const active = lt==='all' ? 'active' : '';
-        return '<button class="city-tab-btn ' + active + '" data-lt="' + lt + '" onclick="document.getElementById(\'bankFilterBar\').querySelectorAll(\'.city-tab-btn\').forEach(b=>b.classList.remove(\'active\'));this.classList.add(\'active\');renderBanksFilter(this.dataset.lt)">' + label + '</button>';
-      }).join('')}
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:12px;font-weight:600;color:#555">Product:</label>
+        <select id="bankProdFilter" onchange="renderBanksFilter()" style="padding:6px 10px;border:1.5px solid #c5cae9;border-radius:8px;font-size:13px;background:#fff;cursor:pointer">
+          <option value="all">All</option>
+          <option value="uc">UC (Used Car)</option>
+          <option value="cv">CV (Commercial Vehicle)</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:12px;font-weight:600;color:#555">Loan Type:</label>
+        <select id="bankLoanFilter" onchange="renderBanksFilter()" style="padding:6px 10px;border:1.5px solid #c5cae9;border-radius:8px;font-size:13px;background:#fff;cursor:pointer">
+          <option value="all">All</option>
+          <option value="purchase">Purchase</option>
+          <option value="others">Others</option>
+        </select>
+      </div>
     </div>
     <div id="bankTotal" style="font-size:12px;color:#9e9e9e;margin-bottom:12px"></div>
     <div class="grid-2">
@@ -1496,8 +1504,15 @@ function buildBanks(el) {
     </div>
   `;
 
-  window.renderBanksFilter = function(filter) {
-    const filtered = filter === 'all' ? myTxns : myTxns.filter(t => t.loan_type === filter);
+  window.renderBanksFilter = function() {
+    const prod  = (document.getElementById('bankProdFilter')  || {value:'all'}).value;
+    const loan  = (document.getElementById('bankLoanFilter')  || {value:'all'}).value;
+    let filtered = myTxns;
+    if (prod === 'uc')  filtered = filtered.filter(t => t.product === 'Used Car');
+    if (prod === 'cv')  filtered = filtered.filter(t => t.product !== 'Used Car');
+    if (loan === 'purchase') filtered = filtered.filter(t => (t.loan_type||'').toLowerCase().includes('purchase') && !(t.loan_type||'').toLowerCase().startsWith('ucv') && !(t.loan_type||'').toLowerCase().startsWith('ncv'));
+    if (loan === 'others')   filtered = filtered.filter(t => !((t.loan_type||'').toLowerCase().includes('purchase') && !(t.loan_type||'').toLowerCase().startsWith('ucv') && !(t.loan_type||'').toLowerCase().startsWith('ncv')));
+    const filter = 'custom';  // keep below code compatible
     const bankMap = {};
     filtered.forEach(t => {
       if (!bankMap[t.bank]) bankMap[t.bank] = {name:t.bank, amt:0, cases:0};
@@ -1541,7 +1556,7 @@ function buildBanks(el) {
     }, 50);
   };
 
-  window.renderBanksFilter('all');
+  window.renderBanksFilter();
 }
 
 // ========== INCENTIVE (BM Only) ==========
@@ -2549,9 +2564,16 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
   function bmTableRows(rows) {
     return rows.map((r,i)=>{
       const name=r.emp?r.emp.name:r.txns[0].bm;
+      const hasTgt = r.tgts.uc+r.tgts.cv > 0;
+      const statusBadge = !hasTgt
+        ? '<span style="font-size:10px;color:#9e9e9e">—</span>'
+        : r.totAch >= 70
+          ? '<span style="background:#e8f5e9;color:#2e7d32;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap">🟢 On Track</span>'
+          : '<span style="background:#ffebee;color:#c62828;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap">🔴 Off Track</span>';
       return '<tr>'
         +'<td style="color:#9e9e9e">'+(i+1)+'</td>'
         +'<td><b style="font-size:12px">'+name+'</b></td>'
+        +'<td style="text-align:center">'+statusBadge+'</td>'
         +'<td><span class="badge badge-grey" style="font-size:10px">'+(r.emp&&r.emp.tier?r.emp.tier:'—')+'</span></td>'
         +'<td style="font-size:11px;color:#555">'+fmtCr(r.tgts.uc)+'</td>'
         +'<td style="font-size:11px"><b>'+fmtCr(r.ucAmt)+'</b></td>'
@@ -2563,12 +2585,12 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
         +'<td style="font-size:11px"><b>'+r.chAct+'</b></td>'
         +'<td>'+(r.tgts.ch>0?weeklyBadge(r.chAch):'—')+'</td>'
         +'<td><b>'+fmtCr(r.totAmt)+'</b></td>'
-        +'<td>'+(r.tgts.uc+r.tgts.cv>0?weeklyBadge(r.totAch):'<span class="badge badge-grey">No Tgt</span>')+'</td>'
+        +'<td>'+(hasTgt?weeklyBadge(r.totAch):'<span class="badge badge-grey">No Tgt</span>')+'</td>'
         +'</tr>';
     }).join('');
   }
 
-  const bmTableHead = '<thead><tr><th>#</th><th>BM Name</th><th>Tier</th><th>UC Tgt</th><th>UC Ach</th><th>UC%</th><th>CV Tgt</th><th>CV Ach</th><th>CV%</th><th>Ch Tgt</th><th>Ch</th><th>Ch%</th><th>Total</th><th>Overall%</th></tr></thead>';
+  const bmTableHead = '<thead><tr><th>#</th><th>BM Name</th><th>Status</th><th>Tier</th><th>UC Tgt</th><th>UC Ach</th><th>UC%</th><th>CV Tgt</th><th>CV Ach</th><th>CV%</th><th>Ch Tgt</th><th>Ch</th><th>Ch%</th><th>Total</th><th>Overall%</th></tr></thead>';
 
   // AM drill-down section for RH/TH
   let amSection = '';
