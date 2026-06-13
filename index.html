@@ -1550,43 +1550,89 @@ function buildChannels(el) {
       `;
     }
   } else {
-    // Show BM-level channel summary
+    // Show BM-level channel summary with May comparison
+    const mayData = getMayData();
     const bmMap = {};
+
+    // June data
     myTxns.forEach(t => {
       const key = t.bm_id || t.bm;
-      if (!bmMap[key]) bmMap[key] = {bm_id:t.bm_id, bm:t.bm, chDealers:new Set(), ucDealers:new Set(), amt:0};
-      if (t.ch_check > 0) bmMap[key].chDealers.add(t.dcid);
-      if (t.product==='Used Car') bmMap[key].ucDealers.add(t.dealer);
+      if (!bmMap[key]) bmMap[key] = {bm_id:t.bm_id, bm:t.bm, ucChJune:new Set(), cvChJune:new Set(), amt:0};
+      // UC active channels (ch_check > 0, UC product)
+      if (t.product==='Used Car' && t.ch_check > 0 && t.dcid) bmMap[key].ucChJune.add(t.dcid);
+      // CV unique channels (any CV/NCV dcid)
+      if (t.product!=='Used Car' && t.dcid) bmMap[key].cvChJune.add(t.dcid);
       bmMap[key].amt += t.amt;
     });
+
+    // Also add zero-txn BMs in scope
+    getEmpData().forEach(e => {
+      if (e.designation !== 'BM') return;
+      const d2 = currentUser.designation;
+      const inScope = d2==='RH' ? e.rh_id===currentUser.id
+                    : d2==='TH' ? e.th_id===currentUser.id
+                    : d2==='AM' ? e.am_id===currentUser.id : false;
+      if (inScope && !bmMap[e.id]) bmMap[e.id] = {bm_id:e.id, bm:e.name.toLowerCase(), ucChJune:new Set(), cvChJune:new Set(), amt:0};
+    });
+
     const rows = Object.values(bmMap);
-    // Find emp data by ID — reliable, no name-casing issues
     rows.forEach(r => {
-      const emp = resolveEmpById(r.bm_id) || getEmpData().find(e => e.name.toLowerCase()===r.bm.toLowerCase());
+      const emp = resolveEmpById(r.bm_id);
       r.chTgt    = emp ? (emp.ch_tgt || 0) : 0;
       r.dispName = emp ? emp.name : r.bm;
+      // May UC active channels
+      const mayBM = mayData.filter(m => m.bm_id === r.bm_id);
+      r.ucChMay = new Set(mayBM.filter(m => m.product==='Used Car' && m.ch_check > 0 && m.dcid).map(m => m.dcid));
     });
-    rows.sort((a,b) => b.ch - a.ch);
+
+    // Sort by June UC channels desc
+    rows.sort((a,b) => b.ucChJune.size - a.ucChJune.size);
 
     el.innerHTML = `
-      <div class="card">
-        <div class="card-title">BM Channel Performance</div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:14px 20px;background:#f5f7ff;font-size:13px;font-weight:700;color:#1a237e">
+          BM Channel Performance — June 2026
+        </div>
+        <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>BM Name</th><th>Active Ch</th><th>CH Target</th><th>% Ach</th><th>UC Dealers</th><th>Disbursement</th></tr></thead>
+          <thead>
+            <tr style="background:#e8eaf6">
+              <th style="text-align:left">BM Name</th>
+              <th style="text-align:center">CH Target</th>
+              <th style="text-align:center">June UC Ch</th>
+              <th style="text-align:center">Ach%</th>
+              <th style="text-align:center">May UC Ch</th>
+              <th style="text-align:center">Growth</th>
+              <th style="text-align:center">June CV Ch</th>
+              <th style="text-align:right">Disbursement</th>
+            </tr>
+          </thead>
           <tbody>
             ${rows.map(r => {
-              const p = r.chTgt>0 ? pct(r.chDealers.size,r.chTgt) : 0;
-              return `<tr>
-                <td><b>${r.dispName}</b></td>
-                <td>${r.chDealers.size}</td>
-                <td>${r.chTgt||'—'}</td>
-                <td><span class="badge ${p>=100?'badge-green':p>=70?'badge-blue':'badge-orange'}">${r.chTgt>0?p+'%':'—'}</span></td>
-                <td>${r.ucDealers.size}</td>
-                <td>${fmtCr(r.amt)}</td>
+              const juneUC = r.ucChJune.size;
+              const mayUC  = r.ucChMay.size;
+              const juneCVch = r.cvChJune.size;
+              const p = r.chTgt > 0 ? Math.round((juneUC / r.chTgt) * 100) : 0;
+              const growth = juneUC - mayUC;
+              const growthColor = growth > 0 ? '#2e7d32' : growth < 0 ? '#c62828' : '#757575';
+              const growthStr  = growth > 0 ? '+'+growth : growth === 0 ? '=' : ''+growth;
+              const badgeCls = p>=100?'badge-green':p>=70?'badge-blue':p>=50?'badge-orange':'badge-red';
+              return `<tr style="border-bottom:1px solid #f0f0f0">
+                <td style="padding:8px 12px"><b style="font-size:12px">${r.dispName}</b></td>
+                <td style="text-align:center;padding:8px 12px;color:#546e7a;font-weight:600">${r.chTgt||'—'}</td>
+                <td style="text-align:center;padding:8px 12px;font-weight:700;color:#1a237e;font-size:15px">${juneUC}</td>
+                <td style="text-align:center;padding:8px 12px">
+                  ${r.chTgt>0 ? `<span class="badge ${badgeCls}">${p}%</span>` : '—'}
+                </td>
+                <td style="text-align:center;padding:8px 12px;color:#546e7a">${mayUC}</td>
+                <td style="text-align:center;padding:8px 12px;font-weight:700;color:${growthColor};font-size:14px">${growthStr}</td>
+                <td style="text-align:center;padding:8px 12px;color:#6a1b9a;font-weight:600">${juneCVch > 0 ? juneCVch : '—'}</td>
+                <td style="text-align:right;padding:8px 12px"><b>${fmtCr(r.amt)}</b></td>
               </tr>`;
             }).join('')}
           </tbody>
         </table>
+        </div>
       </div>
     `;
   }
@@ -1646,22 +1692,27 @@ function buildDealers(el) {
 }
 
 function buildDealersRH(el) {
-  // Get all states that have data, sorted by total disbursement
+  // Build May GMV map keyed by DCID (may_data has no dealer name, use dcid)
+  const mayDcidMap = {};
+  getMayData().filter(t => t.rh_id === currentUser.id).forEach(t => {
+    if (t.dcid) mayDcidMap[t.dcid] = (mayDcidMap[t.dcid] || 0) + (t.amt || 0);
+  });
+  // Build June DCID→dealer map so we can look up May GMV per dealer
+  const dcidToDealerJune = {};
+  myTxns.forEach(t => { if (t.dcid && t.dealer) dcidToDealerJune[t.dcid] = t.dealer.toLowerCase().trim(); });
+  // Roll up May GMV by dealer name (via DCID bridge)
+  const mayDealerMap = {};
+  Object.entries(mayDcidMap).forEach(([dcid, amt]) => {
+    const dealer = dcidToDealerJune[dcid];
+    if (dealer) mayDealerMap[dealer] = (mayDealerMap[dealer] || 0) + amt;
+  });
+
   const cityTotals = {};
   myTxns.forEach(t => {
     const c = t.state || t.city || 'Unknown';
     cityTotals[c] = (cityTotals[c] || 0) + t.amt;
   });
-  const cities = Object.keys(cityTotals).filter(c => c && c !== 'nan').sort((a,b) => cityTotals[b] - cityTotals[a]);
-
-  // Also build overall top 15
-  const dealerMapAll = {};
-  myTxns.forEach(t => {
-    if (!dealerMapAll[t.dealer]) dealerMapAll[t.dealer] = {name:t.dealer, amt:0, cases:0, city:t.city||'', products:new Set()};
-    dealerMapAll[t.dealer].amt += t.amt;
-    dealerMapAll[t.dealer].cases++;
-    dealerMapAll[t.dealer].products.add(t.product);
-  });
+  const cities = Object.keys(cityTotals).filter(c => c && c !== 'nan').sort((a,b) => cityTotals[b]-cityTotals[a]);
 
   function dealerChips(products) {
     return [...products].map(p => {
@@ -1683,29 +1734,51 @@ function buildDealersRH(el) {
     const maxA = list[0]?.amt || 1;
     if (!list.length) return '<div class="empty">No data for this city.</div>';
     return `<table>
-      <thead><tr><th>#</th><th>Dealer Name</th><th>Products</th><th>Cases</th><th>Disbursement</th><th>Share</th></tr></thead>
+      <thead>
+        <tr style="background:#e8eaf6">
+          <th style="padding:8px 10px">#</th>
+          <th style="padding:8px 10px;text-align:left">Dealer Name</th>
+          <th style="padding:8px 10px">Products</th>
+          <th style="padding:8px 10px">Cases</th>
+          <th style="padding:8px 10px;text-align:right">June GMV</th>
+          <th style="padding:8px 10px;text-align:right">May GMV</th>
+          <th style="padding:8px 10px;text-align:center">Growth</th>
+          <th style="padding:8px 10px;min-width:80px">Share</th>
+        </tr>
+      </thead>
       <tbody>
-        ${list.map((d,i) => `<tr>
-          <td style="color:#9e9e9e">${i+1}</td>
-          <td><b>${d.name}</b></td>
-          <td>${dealerChips(d.products)}</td>
-          <td>${d.cases}</td>
-          <td><b>${fmtCr(d.amt)}</b></td>
-          <td style="min-width:100px"><div class="progress-wrap"><div class="progress-bar bar-green" style="width:${pct(d.amt,maxA)}%"></div></div></td>
-        </tr>`).join('')}
+        ${list.map((d,i) => {
+          const mayAmt    = mayDealerMap[d.name.toLowerCase().trim()] || 0;
+          const growth    = d.amt - mayAmt;
+          const growthPct = mayAmt > 0 ? Math.round((growth/mayAmt)*100) : null;
+          const gColor    = growth > 0 ? '#2e7d32' : growth < 0 ? '#c62828' : '#757575';
+          const gCell     = mayAmt === 0
+            ? '<span style="color:#9e9e9e;font-size:11px">New</span>'
+            : `<span style="color:${gColor};font-weight:700">${growth>=0?'+':''}${fmtCr(growth)}</span>`
+              + (growthPct!==null ? `<div style="font-size:10px;color:${gColor}">${growthPct>=0?'+':''}${growthPct}%</div>` : '');
+          return `<tr style="border-bottom:1px solid #f0f0f0">
+            <td style="color:#9e9e9e;padding:8px 10px">${i+1}</td>
+            <td style="padding:8px 10px"><b>${d.name}</b></td>
+            <td style="padding:8px 10px">${dealerChips(d.products)}</td>
+            <td style="text-align:center;padding:8px 10px">${d.cases}</td>
+            <td style="text-align:right;padding:8px 10px;font-weight:700"><b>${fmtCr(d.amt)}</b></td>
+            <td style="text-align:right;padding:8px 10px;color:#546e7a">${mayAmt>0?fmtCr(mayAmt):'<span style="color:#9e9e9e">—</span>'}</td>
+            <td style="text-align:center;padding:8px 10px">${gCell}</td>
+            <td style="padding:8px 10px;min-width:80px"><div class="progress-wrap"><div class="progress-bar bar-green" style="width:${pct(d.amt,maxA)}%"></div></div></td>
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>`;
   }
 
-  // Build city tabs HTML
-  const tabBtns = ['🌐 All', ...cities].map((c, i) => 
+  const tabBtns = ['🌐 All', ...cities].map((c, i) =>
     `<button class="city-tab-btn ${i===0?'active':''}" onclick="switchCityTab(this,'city_tab_${i}')">${c === '🌐 All' ? c : '🗺️ '+c}</button>`
   ).join('');
 
   const tabPanels = ['🌐 All'].concat(cities).map((c, i) => {
     const txns = c === '🌐 All' ? myTxns : myTxns.filter(t => (t.state||t.city||'Unknown') === c);
-    const top = c === '🌐 All' ? 15 : 10;
-    const title = c === '🌐 All' ? 'Top 15 Channels — All States' : `Top 10 Channels — ${c} (₹${fmtCr(cityTotals[c])} | ${txns.length} cases)`;
+    const top   = c === '🌐 All' ? 15 : 10;
+    const title = c === '🌐 All' ? 'Top 15 Channels — All States' : `Top 10 Channels — ${c} (${fmtCr(cityTotals[c])} | ${txns.length} cases)`;
     return `<div id="city_tab_${i}" class="city-tab-panel" style="display:${i===0?'block':'none'}">
       <div class="card-title" style="margin-bottom:12px">${title}</div>
       ${dealerTable(txns, top)}
@@ -1723,19 +1796,6 @@ function buildDealersRH(el) {
   `;
 }
 
-function switchCityTab(btn, panelId) {
-  // Deactivate all tabs
-  btn.parentElement.querySelectorAll('.city-tab-btn').forEach(b => b.classList.remove('active'));
-  // Hide all panels
-  btn.closest('.card').querySelectorAll('.city-tab-panel').forEach(p => p.style.display='none');
-  // Activate clicked
-  btn.classList.add('active');
-  document.getElementById(panelId).style.display = 'block';
-}
-
-// ========== PRODUCTS ==========
-
-// ========== BANKS ==========
 function buildBanks(el) {
   // Build shell with two dropdowns: Product (UC/CV/All) + Loan Type (Purchase/Others/All)
   el.innerHTML = `
@@ -1766,7 +1826,7 @@ function buildBanks(el) {
       <div class="card">
         <div class="card-title">Lender Breakdown</div>
         <table>
-          <thead><tr><th>Bank / NBFC</th><th>Cases</th><th>Disbursement</th><th>Share</th></tr></thead>
+          <thead><tr><th>Bank / NBFC</th><th>Cases</th><th style="text-align:right">June GMV</th><th style="text-align:right">May GMV</th><th style="text-align:center">Growth</th><th>Share</th></tr></thead>
           <tbody id="bankTableBody"></tbody>
         </table>
       </div>
@@ -1791,18 +1851,52 @@ function buildBanks(el) {
     const banks = Object.values(bankMap).sort((a,b)=>b.amt-a.amt);
     const total = banks.reduce((s,b)=>s+b.amt,0)||1;
 
+    // Build May bank map (filtered same way as June)
+    const mayPool = getMayData().filter(t => {
+      const d2=currentUser.designation,id2=currentUser.id;
+      if(d2==='BM') return t.bm_id===id2;
+      if(d2==='AM') return t.am_id===id2;
+      if(d2==='TH') return t.th_id===id2;
+      if(d2==='RH') return t.rh_id===id2;
+      return false;
+    });
+    // May data has no bank field — use bm_id+dcid bridge via June txns
+    // Build dcid→bank map from June filtered txns
+    const dcidToBank = {};
+    filtered.forEach(t => { if(t.dcid && t.bank) dcidToBank[t.dcid] = t.bank; });
+    const mayBankMap = {};
+    mayPool.forEach(m => {
+      const bank = m.dcid ? dcidToBank[m.dcid] : null;
+      if (bank) {
+        if (!mayBankMap[bank]) mayBankMap[bank] = 0;
+        mayBankMap[bank] += m.amt || 0;
+      }
+    });
+
     const tbody = document.getElementById('bankTableBody');
-    if (tbody) tbody.innerHTML = banks.map(b => `<tr>
-      <td style="font-size:12px">${b.name||'Unknown'}</td>
-      <td>${b.cases}</td>
-      <td><b>${fmtCr(b.amt)}</b></td>
-      <td>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="progress-wrap" style="flex:1"><div class="progress-bar bar-green" style="width:${pct(b.amt,total)}%"></div></div>
-          <span style="font-size:11px;width:32px;text-align:right">${pct(b.amt,total)}%</span>
-        </div>
-      </td>
-    </tr>`).join('');
+    if (tbody) tbody.innerHTML = banks.map(b => {
+      const mayAmt  = mayBankMap[b.name] || 0;
+      const growth  = b.amt - mayAmt;
+      const gPct    = mayAmt > 0 ? Math.round((growth/mayAmt)*100) : null;
+      const gColor  = growth > 0 ? '#2e7d32' : growth < 0 ? '#c62828' : '#757575';
+      const gCell   = mayAmt === 0
+        ? '<span style="color:#9e9e9e;font-size:11px">New</span>'
+        : `<span style="color:${gColor};font-weight:700">${growth>=0?'+':''}${fmtCr(growth)}</span>`
+          + (gPct!==null?`<div style="font-size:10px;color:${gColor}">${gPct>=0?'+':''}${gPct}%</div>`:'');
+      return `<tr>
+        <td style="font-size:12px">${b.name||'Unknown'}</td>
+        <td>${b.cases}</td>
+        <td style="text-align:right"><b>${fmtCr(b.amt)}</b></td>
+        <td style="text-align:right;color:#546e7a">${mayAmt>0?fmtCr(mayAmt):'<span style="color:#9e9e9e">—</span>'}</td>
+        <td style="text-align:center">${gCell}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="progress-wrap" style="flex:1"><div class="progress-bar bar-green" style="width:${pct(b.amt,total)}%"></div></div>
+            <span style="font-size:11px;width:32px;text-align:right">${pct(b.amt,total)}%</span>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
 
     const totalEl = document.getElementById('bankTotal');
     if (totalEl) totalEl.textContent = `${filtered.length} cases · ${fmtCr(total)}`;
