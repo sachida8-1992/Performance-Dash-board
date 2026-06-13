@@ -283,7 +283,7 @@ function pct(a,b) { return b>0 ? Math.min(Math.round(a/b*100),999) : 0; }
 function tenureMonths(joining) {
   if (!joining || joining==='NaT') return 0;
   const d = new Date(joining);
-  const now = new Date('2026-05-31');
+  const now = new Date();
   return (now.getFullYear()-d.getFullYear())*12 + (now.getMonth()-d.getMonth());
 }
 
@@ -2085,6 +2085,8 @@ function computeBMIncentive(bmTxns, bmEmp, opts) {
   if (!bmEmp) return null;
 
   const tier   = bmEmp.tier || 'T3';
+  const tenMo  = tenureMonths(bmEmp.joining);
+  const gt1yr  = tenMo > 12;
 
   const ucAmt  = bmTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
   const ucvAmt = bmTxns.filter(t=>t.product==='Used Commercial Vehicle').reduce((s,t)=>s+t.amt,0);
@@ -2094,7 +2096,10 @@ function computeBMIncentive(bmTxns, bmEmp, opts) {
   const effGMV    = ucAmt + ucvAmt + ncvAmt * 0.5;
   const effGMV_Cr = effGMV / 1e7;
 
-  // Slab rates as per scheme (T2/T1: NA below 80L-1Cr slab only)
+  // Slab rates as per scheme
+  // Tenure rule (>1 year in company):
+  //   T3: skip 80L-1Cr slab → starts from 1Cr-1.25Cr
+  //   T2/T1: skip 80L-1Cr AND 1Cr-1.25Cr → starts from 1.25Cr-1.5Cr
   const slabs = [
     {min:0.8, max:1.0,  rates:{T3:0.03, T2:null, T1:null}, label:'80L-1Cr'},
     {min:1.0, max:1.25, rates:{T3:0.04, T2:0.04, T1:0.04}, label:'1Cr-1.25Cr'},
@@ -2109,7 +2114,9 @@ function computeBMIncentive(bmTxns, bmEmp, opts) {
   let activeSlab = null, appliedRate = 0;
   for (const s of slabs) {
     const tierRate = s.rates[tier];
-    if (tierRate === null) continue; // T2/T1 not eligible for 80L-1Cr slab
+    if (tierRate === null) continue;                              // T2/T1 never eligible for 80L-1Cr
+    if (gt1yr && tier === 'T3' && s.label === '80L-1Cr') continue;             // T3 >1yr: skip 80L-1Cr
+    if (gt1yr && (tier === 'T2' || tier === 'T1') && (s.label === '80L-1Cr' || s.label === '1Cr-1.25Cr')) continue; // T2/T1 >1yr: skip both
     if (effGMV_Cr >= s.min && (effGMV_Cr < s.max || s.label === '3Cr+')) {
       activeSlab = s;
       appliedRate = tierRate;
@@ -2372,9 +2379,12 @@ function buildIncentive(el) {
   const effGMV    = ucAmt + ucvAmt + ncvAmt * 0.5;
   const effGMV_Cr = effGMV / 1e7;
 
-  const tier = currentUser.tier || 'T3';
+  const tier  = currentUser.tier || 'T3';
+  const tenMo = tenureMonths(currentUser.joining);
+  const gt1yr = tenMo > 12;
 
-  // Incentive slabs as per scheme (T2/T1: NA for 80L-1Cr only)
+  // Incentive slabs as per scheme
+  // Tenure rule (>1 year): T3 skips 80L-1Cr · T2/T1 skip 80L-1Cr AND 1Cr-1.25Cr
   const slabs = [
     {min:0.8, max:1.0,  rates:{T3:0.03, T2:null, T1:null}, label:'80L - 1Cr'},
     {min:1.0, max:1.25, rates:{T3:0.04, T2:0.04, T1:0.04}, label:'1Cr - 1.25Cr'},
@@ -2386,12 +2396,13 @@ function buildIncentive(el) {
     {min:3.0, max:999,  rates:{T3:0.15, T2:0.15, T1:0.15}, label:'3Cr+'},
   ];
 
-  // Find applicable slab (no tenure-based skipping per scheme)
   let activeSlab = null;
   let appliedRate = 0;
   for (const s of slabs) {
     const tierRate = s.rates[tier];
-    if (tierRate === null) continue; // T2/T1 not eligible for 80L-1Cr
+    if (tierRate === null) continue;
+    if (gt1yr && tier === 'T3' && s.label === '80L - 1Cr') continue;
+    if (gt1yr && (tier === 'T2' || tier === 'T1') && (s.label === '80L - 1Cr' || s.label === '1Cr - 1.25Cr')) continue;
     if (effGMV_Cr >= s.min && (effGMV_Cr < s.max || s.label === '3Cr+')) {
       activeSlab = s;
       appliedRate = tierRate;
@@ -2427,8 +2438,14 @@ function buildIncentive(el) {
       {min:2.5,max:3.0,rates:{T3:0.14,T2:0.14,T1:0.14},label:'2.5-3Cr'},
       {min:3.0,max:999,rates:{T3:0.15,T2:0.15,T1:0.15},label:'3Cr+'},
     ];
+    const gt1yrB = tenureMonths(currentUser.joining) > 12;
     let slab=null,rate=0;
-    for(const s of slabDef){const r=s.rates[tier];if(r===null)continue;if(gmvCr>=s.min&&(gmvCr<s.max||s.label==='3Cr+')){slab=s;rate=r;}}
+    for(const s of slabDef){
+      const r=s.rates[tier];if(r===null)continue;
+      if(gt1yrB && tier==='T3' && s.label==='80L-1Cr') continue;
+      if(gt1yrB && (tier==='T2'||tier==='T1') && (s.label==='80L-1Cr'||s.label==='1Cr-1.25Cr')) continue;
+      if(gmvCr>=s.min&&(gmvCr<s.max||s.label==='3Cr+')){slab=s;rate=r;}
+    }
     const base = slab ? Math.round(gmv*rate) : 0;
     const ch   = new Set(txns.filter(t=>t.product==='Used Car'&&t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
     const pct  = ch>=13?15:ch>=11?12:ch>=9?10:0;
@@ -2446,7 +2463,7 @@ function buildIncentive(el) {
         <div class="incentive-amount" style="font-size:36px">${fmtCr(Math.round(mCalc.total))}</div>
         <div class="incentive-breakdown">
           <div class="incentive-item"><div class="ivalue">${fmtCr(mCalc.gmv)}</div><div class="ilabel">Eff. GMV</div></div>
-          <div class="incentive-item"><div class="ivalue">${mCalc.slab?mCalc.rate*100+'%':'—'}</div><div class="ilabel">${mCalc.slab?.label||'Below threshold'}</div></div>
+          <div class="incentive-item"><div class="ivalue">${mCalc.slab?mCalc.rate+'%':'—'}</div><div class="ilabel">${mCalc.slab?.label||'Below threshold'}</div></div>
           <div class="incentive-item"><div class="ivalue">${mCalc.pct>0?'+'+mCalc.pct+'%':'None'}</div><div class="ilabel">Dealer Bonus (${mCalc.ch} ch)</div></div>
         </div>
       </div>
@@ -2455,7 +2472,7 @@ function buildIncentive(el) {
         <div class="incentive-amount" style="font-size:36px">${fmtCr(Math.round(totalIncentive))}</div>
       <div class="incentive-breakdown">
         <div class="incentive-item"><div class="ivalue">${fmtCr(effGMV)}</div><div class="ilabel">Eff. GMV</div></div>
-        <div class="incentive-item"><div class="ivalue">${activeSlab?appliedRate*100+'%':'—'}</div><div class="ilabel">${activeSlab?.label||'Below threshold'}</div></div>
+        <div class="incentive-item"><div class="ivalue">${activeSlab?appliedRate+'%':'—'}</div><div class="ilabel">${activeSlab?.label||'Below threshold'}</div></div>
         <div class="incentive-item"><div class="ivalue">${dealerBonusPct>0?'+'+dealerBonusPct+'%':'None'}</div><div class="ilabel">Dealer Bonus (${ucDealers} ch)</div></div>
       </div>
     </div>
@@ -2471,7 +2488,7 @@ function buildIncentive(el) {
           <tr><td>NCV GMV</td><td style="text-align:right">${fmtCr(mCalc.ncvA)}</td><td style="text-align:right">${fmtCr(ncvAmt)}</td></tr>
           <tr style="font-weight:700"><td>Eff. GMV (UC+UCV+NCV×50%)</td><td style="text-align:right">${fmtCr(mCalc.gmv)}</td><td style="text-align:right">${fmtCr(effGMV)}</td></tr>
           <tr><td>Slab</td><td style="text-align:right">${mCalc.slab?.label||'—'}</td><td style="text-align:right">${activeSlab?.label||'—'}</td></tr>
-          <tr><td>Rate</td><td style="text-align:right">${mCalc.rate?mCalc.rate*100+'%':'—'}</td><td style="text-align:right">${appliedRate?appliedRate*100+'%':'—'}</td></tr>
+          <tr><td>Rate</td><td style="text-align:right">${mCalc.rate?mCalc.rate+'%':'—'}</td><td style="text-align:right">${appliedRate?appliedRate+'%':'—'}</td></tr>
           <tr><td>Base Incentive</td><td style="text-align:right">${fmtCr(mCalc.base)}</td><td style="text-align:right">${fmtCr(baseIncentive)}</td></tr>
           <tr><td>UC Active Channels</td><td style="text-align:right">${mCalc.ch}</td><td style="text-align:right">${ucDealers}</td></tr>
           <tr><td>Dealer Bonus</td><td style="text-align:right;color:#2e7d32">${mCalc.db>0?'+'+fmtCr(mCalc.db):'—'}</td><td style="text-align:right;color:#2e7d32">${dealerBonus>0?'+'+fmtCr(dealerBonus):'—'}</td></tr>
