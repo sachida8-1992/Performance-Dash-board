@@ -3038,9 +3038,14 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
     return {emp,txns,ucAmt,cvAmt,totAmt,totTgt,chAct,ucAch,cvAch,totAch,chAch,tgts,amId};
   }).sort((a,b)=>b.totAmt-a.totAmt);
 
-  const teamUC  = bmRows.reduce((s,r)=>s+r.ucAmt,0);
-  const teamCV  = bmRows.reduce((s,r)=>s+r.cvAmt,0);
-  const teamTot = teamUC+teamCV;
+  const teamUC     = bmRows.reduce((s,r)=>s+r.ucAmt,0);
+  const teamCV     = bmRows.reduce((s,r)=>s+r.cvAmt,0);
+  const teamTot    = teamUC+teamCV;
+  const teamUCTgt  = bmRows.reduce((s,r)=>s+r.tgts.uc,0);
+  const teamCVTgt  = bmRows.reduce((s,r)=>s+r.tgts.cv,0);
+  const teamChTgt  = bmRows.reduce((s,r)=>s+(r.tgts.ch||0),0);
+  const teamTotTgt = teamUCTgt + teamCVTgt;
+  const teamTotAch = teamTotTgt > 0 ? Math.round((teamTot/teamTotTgt)*100) : 0;
   const onTrack = bmRows.filter(r=>r.totAch>=70).length;
   const behind  = bmRows.filter(r=>r.tgts.uc+r.tgts.cv>0&&r.totAch<70).length;
 
@@ -3124,8 +3129,30 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
     const mCV = mTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
     const isFut = today2 < m.day;
     const isCur = m.day === ms.day;
+    // Compute team targets for this milestone from all BMs in scope
+    const allBMsInScope = getEmpData().filter(e => {
+      if (e.designation !== 'BM') return false;
+      if (role==='RH') return e.rh_id === currentUser.id;
+      if (role==='TH') return e.th_id === currentUser.id;
+      if (role==='AM') return e.am_id === currentUser.id;
+      return false;
+    });
+    const rawBMs = window._LIVE_EMP_RAW || [];
+    let mUCTgt=0, mCVTgt=0, mChTgt=0;
+    allBMsInScope.forEach(e => {
+      const raw = rawBMs.find(r => String(r['Employee Code']||r['E Code']||'').split('.')[0].trim() === e.id);
+      if (raw) {
+        mUCTgt += (parseFloat(raw[m.ucCol])||0) * 1e5;
+        mCVTgt += (parseFloat(raw[m.cvCol])||0) * 1e5;
+        mChTgt += parseFloat(raw[m.chCol])||0;
+      }
+    });
+    const mTotTgt = mUCTgt + mCVTgt;
+    const mTotAch = mTotTgt > 0 ? Math.round(((mUC+mCV)/mTotTgt)*100) : 0;
     const bm2={};
     mTxns.forEach(t=>{if(!bm2[t.bm_id])bm2[t.bm_id]=[];bm2[t.bm_id].push(t);});
+    // Also include zero-txn BMs
+    allBMsInScope.forEach(e=>{ if(!bm2[e.id]) bm2[e.id]=[]; });
     let onT=0,beh2=0;
     Object.entries(bm2).forEach(([bid,txns])=>{
       const e=resolveEmpById(bid);
@@ -3133,11 +3160,18 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
       const tot=txns.reduce((s,t)=>s+t.amt,0),totT=tg.uc+tg.cv;
       if(totT>0){tot/totT>=0.7?onT++:beh2++;}
     });
+    // Channel achieved
+    const mChAch = new Set(mTxns.filter(t=>t.ch_check>0&&t.product==='Used Car'&&t.dcid).map(t=>t.dcid)).size;
     return '<tr style="'+(isCur?'background:#f5f7ff':'')+'">'
       +'<td><b style="color:#1a237e">'+m.label+'</b>'+(isCur?' 🎯':isFut?' ⏳':' ✅')+'</td>'
+      +'<td style="color:#546e7a">'+fmtCr(mUCTgt)+'</td>'
       +'<td>'+(isFut?'—':fmtCr(mUC))+'</td>'
+      +'<td style="color:#546e7a">'+fmtCr(mCVTgt)+'</td>'
       +'<td>'+(isFut?'—':fmtCr(mCV))+'</td>'
-      +'<td>'+(isFut?'—':'<b>'+fmtCr(mUC+mCV)+'</b>')+'</td>'
+      +'<td style="color:#546e7a">'+Math.round(mChTgt)+'</td>'
+      +'<td>'+(isFut?'—':mChAch)+'</td>'
+      +'<td style="color:#546e7a;font-weight:700">'+fmtCr(mTotTgt)+'</td>'
+      +'<td>'+(isFut?'—':'<b style="color:'+(mTotAch>=70?'#2e7d32':'#e53935')+'">'+fmtCr(mUC+mCV)+'  ('+mTotAch+'%)</b>')+'</td>'
       +'<td>'+(isFut?'—':'<span style="color:#2e7d32;font-weight:700">'+onT+' BMs</span>')+'</td>'
       +'<td>'+(isFut?'—':'<span style="color:'+(beh2>0?'#e53935':'#2e7d32')+';font-weight:700">'+beh2+' BMs</span>')+'</td>'
       +'</tr>';
@@ -3145,9 +3179,15 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
 
   return '<div style="background:linear-gradient(135deg,#1a237e,#283593);color:#fff;border-radius:14px;padding:20px;margin-bottom:16px">'
     +'<div style="font-size:12px;opacity:.7;font-weight:600;text-transform:uppercase">Team Achievement till '+ms.label+'</div>'
-    +'<div style="font-size:40px;font-weight:800;margin:6px 0">'+fmtCr(teamTot)+'</div>'
+    +'<div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin:4px 0 6px">'
+    +'<div style="font-size:40px;font-weight:800;line-height:1">'+fmtCr(teamTot)+'</div>'
+    +(teamTotTgt>0?'<div style="font-size:13px;opacity:.85">of '+fmtCr(teamTotTgt)+' &nbsp;<b style="background:rgba(255,255,255,.2);padding:2px 8px;border-radius:10px">'+teamTotAch+'%</b></div>':'')
+    +'</div>'
     +'<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;opacity:.85;margin-top:4px">'
-    +'<span>UC: '+fmtCr(teamUC)+'</span><span>CV: '+fmtCr(teamCV)+'</span><span>Cases: '+periodTxns.length+'</span>'
+    +'<span>UC: '+fmtCr(teamUC)+' / '+fmtCr(teamUCTgt)+'</span>'
+    +'<span>CV: '+fmtCr(teamCV)+' / '+fmtCr(teamCVTgt)+'</span>'
+    +'<span>CH: '+bmRows.reduce((s,r)=>s+r.chAct,0)+' / '+teamChTgt+'</span>'
+    +'<span>Cases: '+periodTxns.length+'</span>'
     +'<span style="color:#a5d6a7">✅ '+onTrack+' on track</span>'
     +(behind>0?'<span style="color:#ef9a9a">⚠️ '+behind+' behind</span>':'')
     +'</div></div>'
@@ -3158,7 +3198,7 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
     +'<span style="font-size:11px;color:#9e9e9e;font-weight:400">'+bmRows.length+' BMs</span></div>'
     +'<div style="overflow-x:auto"><table>'+bmTableHead+'<tbody>'+bmTableRows(bmRows)+'</tbody></table></div></div>'
     +'<div class="card"><div class="card-title">All 3 Milestones — Team Summary</div>'
-    +'<table><thead><tr><th>Milestone</th><th>UC Achieved</th><th>CV Achieved</th><th>Total</th><th>On Track (≥70%)</th><th>Behind</th></tr></thead>'
+    +'<table><thead><tr><th>Milestone</th><th>UC Target</th><th>UC Achieved</th><th>CV Target</th><th>CV Achieved</th><th>CH Target</th><th>CH Achieved</th><th>Total Target</th><th>Total Ach</th><th>On Track (≥70%)</th><th>Behind</th></tr></thead>'
     +'<tbody>'+msSummary+'</tbody></table></div>';
 }
 
