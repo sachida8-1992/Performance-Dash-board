@@ -3031,7 +3031,10 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
     const cvAch = tgts.cv>0?Math.round((cvAmt/tgts.cv)*100):0;
     const totAch= totTgt>0?Math.round((totAmt/totTgt)*100):0;
     const chAch = tgts.ch>0?Math.round((chAct/tgts.ch)*100):0;
-    const amId  = txns.length ? (txns[0].am_id||'__direct__') : (emp?.am_id||'__direct__');
+    // If am_id equals the current TH's own ID (TH acts as AM for direct BMs),
+    // treat as '__direct__' to avoid showing TH as a fake AM group
+    const rawAmId = txns.length ? (txns[0].am_id||'') : (emp?.am_id||'');
+    const amId = (!rawAmId || rawAmId === currentUser.id) ? '__direct__' : rawAmId;
     return {emp,txns,ucAmt,cvAmt,totAmt,totTgt,chAct,ucAch,cvAch,totAch,chAch,tgts,amId};
   }).sort((a,b)=>b.totAmt-a.totAmt);
 
