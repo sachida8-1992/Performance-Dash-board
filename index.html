@@ -1437,7 +1437,7 @@ function buildChannels(el) {
     const isCV = (currentUser.product || 'UC') === 'CV';
     const chActive  = new Set(myTxns.filter(t=>t.ch_check>0).map(t=>t.dcid)).size;
     const chTgt     = currentUser.ch_tgt || 0;
-    const ucDealers = new Set(myTxns.filter(t=>t.product==='Used Car' && t.dcid).map(t=>t.dcid)).size;
+    const ucDealers = new Set(bmTxns.filter(t=>t.product==='Used Car' && t.dcid).map(t=>t.dcid)).size;
     const ucvDealers= new Set(myTxns.filter(t=>t.product==='Used Commercial Vehicle' && t.dcid).map(t=>t.dcid)).size;
     const allDealers= new Set(myTxns.filter(t=>t.dcid).map(t=>t.dcid)).size;
 
@@ -1831,34 +1831,84 @@ function buildBanks(el) {
 // ========== INCENTIVE (BM Only) ==========
 // ========== TEAM INCENTIVE VIEW (AM / TH / RH) ==========
 function buildTeamIncentive(el) {
-  // Group txns by bm_id
+  // Default to June, remember selection
+  const savedMonth = el.dataset.month || 'june';
+  el.dataset.month = savedMonth;
+  _renderTeamIncentive(el, savedMonth);
+}
+
+function _renderTeamIncentive(el, month) {
+  el.dataset.month = month;
+  const d   = currentUser.designation;
+  const id  = currentUser.id;
+
+  // ── Pick transaction set ──
+  let txnPool;
+  if (month === 'may') {
+    txnPool = getMayData();
+  } else {
+    txnPool = getTxnData().filter(t => t.date && t.date.startsWith('2026-06'));
+  }
+
+  // ── Filter to this user's scope ──
+  let scopeTxns;
+  if (d === 'RH')      scopeTxns = txnPool.filter(t => t.rh_id === id);
+  else if (d === 'TH') scopeTxns = txnPool.filter(t => t.th_id === id);
+  else if (d === 'AM') scopeTxns = txnPool.filter(t => t.am_id === id);
+  else                 scopeTxns = txnPool.filter(t => t.bm_id === id || t.bm === currentUser.name?.toLowerCase());
+
+  // ── Group by BM ──
   const bmMap = {};
-  myTxns.forEach(t => {
+  scopeTxns.forEach(t => {
     const key = t.bm_id || t.bm;
     if (!bmMap[key]) bmMap[key] = [];
     bmMap[key].push(t);
   });
 
+  // Include zero-txn BMs in scope
+  getEmpData().forEach(e => {
+    if (e.designation !== 'BM') return;
+    const inScope = d === 'RH' ? e.rh_id === id
+                  : d === 'TH' ? e.th_id === id
+                  : d === 'AM' ? e.am_id === id : false;
+    if (inScope && !bmMap[e.id]) bmMap[e.id] = [];
+  });
+
   const rows = Object.entries(bmMap).map(([key, txns]) => {
-    const emp = resolveEmpById(txns[0].bm_id) || resolveEmpName(txns[0].bm);
+    const emp = resolveEmpById(key) || (txns.length ? resolveEmpName(txns[0].bm) : null);
     const inc = computeBMIncentive(txns, emp);
     return { emp, txns, inc, key };
   }).sort((a,b) => (b.inc?.totalIncentive||0) - (a.inc?.totalIncentive||0));
 
   const totalTeamIncentive = Math.round(rows.reduce((s,r) => s + (r.inc?.totalIncentive||0), 0));
-  const ucBMs   = rows.filter(r => r.inc !== null);
-  const cvBMs   = rows.filter(r => r.inc === null);
+  const monthLabel = month === 'may' ? 'May 2026' : 'June 2026';
+
+  // ── Month tabs ──
+  const tabs = ['june','may'].map(m => `
+    <button onclick="_renderTeamIncentive(this.closest('[data-month]'), '${m}')"
+      style="padding:6px 18px;border-radius:20px;border:none;cursor:pointer;font-size:12px;font-weight:700;
+             background:${month===m?'#fff':'transparent'};color:${month===m?'#1a237e':'rgba(255,255,255,0.7)'};
+             box-shadow:${month===m?'0 2px 8px rgba(0,0,0,0.15)':'none'};transition:all .2s">
+      ${m === 'june' ? 'June 2026' : 'May 2026'}
+    </button>`).join('');
 
   el.innerHTML = `
     <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg,#1a237e,#283593);color:#fff">
-      <div style="font-size:12px;opacity:.7;font-weight:600;letter-spacing:.5px;text-transform:uppercase">Team Estimated Incentive (June 2026)</div>
-      <div style="font-size:36px;font-weight:800;margin:6px 0">${fmtCr(Math.round(totalTeamIncentive))}</div>
-      <div style="font-size:12px;opacity:.7">${rows.length} BMs · Total estimated incentive</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:12px;opacity:.7;font-weight:600;letter-spacing:.5px;text-transform:uppercase">Team Estimated Incentive</div>
+          <div style="font-size:36px;font-weight:800;margin:6px 0">${fmtCr(totalTeamIncentive)}</div>
+          <div style="font-size:12px;opacity:.7">${rows.length} BMs · ${monthLabel}</div>
+        </div>
+        <div style="display:flex;gap:4px;background:rgba(255,255,255,0.15);padding:4px;border-radius:24px;align-self:flex-start;margin-top:4px">
+          ${tabs}
+        </div>
+      </div>
     </div>
 
     <div class="card" style="padding:0;overflow:hidden">
       <div style="padding:14px 20px;background:#f5f7ff;font-size:13px;font-weight:700;color:#1a237e;display:flex;justify-content:space-between;align-items:center">
-        <span>BM-wise Incentive Estimate</span>
+        <span>BM-wise Incentive Estimate — ${monthLabel}</span>
         <span style="font-size:11px;color:#9e9e9e;font-weight:400">Based on UC slab + dealer bonus</span>
       </div>
       <div style="overflow-x:auto">
@@ -1878,10 +1928,19 @@ function buildTeamIncentive(el) {
           </thead>
           <tbody>
             ${rows.map((r, i) => {
-              const name = r.emp ? r.emp.name : r.txns[0].bm;
+              const name = r.emp ? r.emp.name : (r.txns[0]?.bm || r.key);
               const tier = r.emp?.tier || '—';
+              if (!r.emp && !r.txns.length) {
+                // zero-txn BM
+                return `<tr style="opacity:.5">
+                  <td style="color:#9e9e9e">${i+1}</td>
+                  <td><b>${name || r.key}</b></td>
+                  <td><span class="badge badge-grey">${tier}</span></td>
+                  <td colspan="5" style="color:#9e9e9e;font-size:11px">No disbursals this month</td>
+                  <td><span class="badge badge-grey">—</span></td>
+                </tr>`;
+              }
               if (r.inc === null) {
-                // No emp data — unknown
                 const cvAmt = r.txns.reduce((s,t)=>s+t.amt,0);
                 return `<tr style="background:#fff8f0">
                   <td style="color:#9e9e9e">${i+1}</td>
@@ -1893,7 +1952,6 @@ function buildTeamIncentive(el) {
                 </tr>`;
               }
               if (r.inc.isCV) {
-                // CV BM — calculated with custom structure
                 const inc = r.inc;
                 return `<tr style="background:#fff8f0">
                   <td style="color:#9e9e9e">${i+1}</td>
@@ -1902,8 +1960,8 @@ function buildTeamIncentive(el) {
                   <td>${fmtCr(inc.totalAmt)}</td>
                   <td style="font-size:11px;color:#555">${inc.activeSlab ? inc.activeSlab.label : 'Below 1Cr'}</td>
                   <td style="font-size:11px;color:#e65100">Base+NCV</td>
-                  <td style="font-size:11px">${inc.ucCases}UC+${inc.ucvCases}UCV (base) · ${inc.ncvCases} NCV (bonus)</td>
-                  <td style="font-size:12px;color:#880e4f">${inc.ucvBonus>0?'+₹'+inc.ucvBonus.toLocaleString():'—'} UCV / ${inc.ncvBonus>0?'+₹'+inc.ncvBonus.toLocaleString():'—'} NCV</td>
+                  <td style="font-size:11px">${inc.ucCases}UC+${inc.ucvCases}UCV · ${inc.ncvCases}NCV</td>
+                  <td style="font-size:12px;color:#880e4f">${inc.ucvBonus>0?'+₹'+inc.ucvBonus.toLocaleString():'—'} / ${inc.ncvBonus>0?'+₹'+inc.ncvBonus.toLocaleString():'—'}</td>
                   <td><b style="color:#e65100;font-size:14px">₹${inc.totalIncentive.toLocaleString()}</b>
                     ${inc.totalIncentive===50000?'<div style="font-size:10px;color:#e65100">Capped</div>':''}</td>
                 </tr>`;
@@ -1930,7 +1988,7 @@ function buildTeamIncentive(el) {
           </tbody>
           <tfoot>
             <tr style="background:#f5f7ff;font-weight:700">
-              <td colspan="8" style="text-align:right;color:#1a237e">Total Estimated Incentive (All BMs)</td>
+              <td colspan="8" style="text-align:right;color:#1a237e">Total Estimated Incentive (All BMs) — ${monthLabel}</td>
               <td style="color:#1a237e;font-size:15px">${fmtCr(Math.round(totalTeamIncentive))}</td>
             </tr>
           </tfoot>
@@ -1939,10 +1997,11 @@ function buildTeamIncentive(el) {
     </div>
 
     <div style="font-size:11px;color:#9e9e9e;margin-top:8px;padding:0 4px">
-      * Incentive calculated on effective GMV (UC 100% · Used CV 50% · New CV 25%). Dealer bonus on UC active DCIDs this month. CV BMs have separate incentive structure not calculated here.
+      * Incentive on effective GMV (UC 100% · Used CV 50% · New CV 25%). Dealer bonus on UC active DCIDs. CV BMs have separate structure.
     </div>
   `;
 }
+
 
 // ========== INCENTIVE CALCULATION HELPER ==========
 function computeBMIncentive(bmTxns, bmEmp) {
@@ -2059,18 +2118,38 @@ function computeBMIncentive(bmTxns, bmEmp) {
 function buildIncentive(el) {
   const role = currentUser.designation;
 
-  // AM / TH / RH — show team BM incentive list
+  // AM / TH / RH — show team BM incentive list (with month tabs)
   if (role !== 'BM') {
     buildTeamIncentive(el);
     return;
   }
 
+  // BM — show own incentive with month tab
+  const month = el.dataset.month || 'june';
+  el.dataset.month = month;
+  const bmTxns = month === 'may'
+    ? getMayData().filter(t => t.bm_id === currentUser.id || t.bm === currentUser.name?.toLowerCase())
+    : myTxns;
+  const monthLabel = month === 'may' ? 'May 2026' : 'June 2026';
+
+  // Month switcher tabs (inject after computing, at top of BM incentive card)
+  const monthTabsHtml = `
+    <div style="display:flex;gap:4px;background:#e8eaf6;padding:4px;border-radius:24px;width:fit-content;margin-bottom:16px">
+      ${['june','may'].map(m => `
+        <button onclick="(function(){const el=document.getElementById('page_incentive');el.dataset.month='${m}';buildIncentive(el);})()"
+          style="padding:6px 18px;border-radius:20px;border:none;cursor:pointer;font-size:12px;font-weight:700;
+                 background:${month===m?'#1a237e':'transparent'};color:${month===m?'#fff':'#1a237e'};transition:all .2s">
+          ${m==='june'?'June 2026':'May 2026'}
+        </button>`).join('')}
+    </div>`;
+
   // CV BMs — custom structure message
   const bmProduct = currentUser.product || 'UC';
   if (bmProduct === 'CV') {
     el.innerHTML = `
+      ${monthTabsHtml}
       <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg,#1a237e,#283593);color:#fff;text-align:center;padding:24px">
-        <div style="font-size:13px;opacity:.7;font-weight:600;letter-spacing:.5px;text-transform:uppercase">Final Incentive = Base + Bonus</div>
+        <div style="font-size:13px;opacity:.7;font-weight:600;letter-spacing:.5px;text-transform:uppercase">Final Incentive = Base + Bonus — ${monthLabel}</div>
         <div style="font-size:28px;font-weight:800;margin:6px 0">Capped at ₹50,000</div>
         <div style="font-size:12px;opacity:.7">Bonus over and above base · No conditions</div>
       </div>
@@ -2099,11 +2178,11 @@ function buildIncentive(el) {
         <div class="card" style="padding:16px">
           <div class="card-title">My Performance</div>
           ${(() => {
-            const totalAmt = myTxns.reduce((s,t)=>s+t.amt,0);
-            const ucCases  = myTxns.filter(t=>t.product==='Used Car').length;
-            const ucvCases = myTxns.filter(t=>t.product==='Used Commercial Vehicle').length;
-            const ucvAmt   = myTxns.filter(t=>t.product==='Used Commercial Vehicle').reduce((s,t)=>s+t.amt,0);
-            const ncvTxns  = myTxns.filter(t=>t.product==='New Commercial Vehicle');
+            const totalAmt = bmTxns.reduce((s,t)=>s+t.amt,0);
+            const ucCases  = bmTxns.filter(t=>t.product==='Used Car').length;
+            const ucvCases = bmTxns.filter(t=>t.product==='Used Commercial Vehicle').length;
+            const ucvAmt   = bmTxns.filter(t=>t.product==='Used Commercial Vehicle').reduce((s,t)=>s+t.amt,0);
+            const ncvTxns  = bmTxns.filter(t=>t.product==='New Commercial Vehicle');
             const ucvucCases = ucCases + ucvCases; // base: UC + UCV only
             const amt_cr    = totalAmt/1e7;
             const mult      = amt_cr >= 1.5 ? 300 : amt_cr >= 1.0 ? 200 : 0;
@@ -2223,9 +2302,9 @@ function buildIncentive(el) {
   }
 
 
-  const ucAmt = myTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
-  const ucvAmt = myTxns.filter(t=>t.product==='Used Commercial Vehicle').reduce((s,t)=>s+t.amt,0);
-  const ncvAmt = myTxns.filter(t=>t.product==='New Commercial Vehicle').reduce((s,t)=>s+t.amt,0);
+  const ucAmt = bmTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+  const ucvAmt = bmTxns.filter(t=>t.product==='Used Commercial Vehicle').reduce((s,t)=>s+t.amt,0);
+  const ncvAmt = bmTxns.filter(t=>t.product==='New Commercial Vehicle').reduce((s,t)=>s+t.amt,0);
 
   // Effective GMV
   const effGMV = ucAmt + ucvAmt + (ncvAmt * 0.5);
@@ -2283,7 +2362,8 @@ function buildIncentive(el) {
 
   el.innerHTML = `
     <div class="incentive-box">
-      <div class="incentive-title">Estimated Incentive (June 2026)</div>
+      ${monthTabsHtml}
+      <div class="incentive-title">Estimated Incentive (${monthLabel})</div>
       <div class="incentive-amount">${fmtCr(Math.round(totalIncentive))}</div>
       <div class="incentive-breakdown">
         <div class="incentive-item">
@@ -2820,7 +2900,8 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
   });
 
   const bmRows = Object.entries(bmMap).map(([key, txns]) => {
-    const emp   = resolveEmpById(txns[0].bm_id) || resolveEmpName(txns[0].bm);
+    // key may be an employee ID (for zero-txn BMs injected from employee sheet)
+    const emp   = resolveEmpById(key) || (txns.length ? resolveEmpById(txns[0].bm_id) || resolveEmpName(txns[0].bm) : null);
     const tgts  = getMilestoneEmpTargets(emp, ms);
     const ucAmt = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
     const cvAmt = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
@@ -2831,7 +2912,8 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
     const cvAch = tgts.cv>0?Math.round((cvAmt/tgts.cv)*100):0;
     const totAch= totTgt>0?Math.round((totAmt/totTgt)*100):0;
     const chAch = tgts.ch>0?Math.round((chAct/tgts.ch)*100):0;
-    return {emp,txns,ucAmt,cvAmt,totAmt,totTgt,chAct,ucAch,cvAch,totAch,chAch,tgts,amId:txns[0].am_id||'__direct__'};
+    const amId  = txns.length ? (txns[0].am_id||'__direct__') : (emp?.am_id||'__direct__');
+    return {emp,txns,ucAmt,cvAmt,totAmt,totTgt,chAct,ucAch,cvAch,totAch,chAch,tgts,amId};
   }).sort((a,b)=>b.totAmt-a.totAmt);
 
   const teamUC  = bmRows.reduce((s,r)=>s+r.ucAmt,0);
@@ -2842,7 +2924,7 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
 
   function bmTableRows(rows) {
     return rows.map((r,i)=>{
-      const name=r.emp?r.emp.name:r.txns[0].bm;
+      const name=r.emp?r.emp.name:(r.txns[0]?.bm||r.key||'Unknown');
       const hasTgt = r.tgts.uc+r.tgts.cv > 0;
       const statusBadge = !hasTgt
         ? '<span style="font-size:10px;color:#9e9e9e">—</span>'
@@ -3598,7 +3680,7 @@ function buildTHHierarchy(el) {
             </tr></thead>
             <tbody>
               ${bmRows.map(([key, bmTxns]) => {
-                const bmEmp   = resolveEmpById(bmTxns[0].bm_id) || resolveEmpName(bmTxns[0].bm);
+                const bmEmp   = resolveEmpById(key) || (bmTxns.length ? resolveEmpById(bmTxns[0].bm_id) || resolveEmpName(bmTxns[0].bm) : null);
                 const bmStats = computeStats(bmTxns, bmEmp);
                 const tier    = bmEmp ? bmEmp.tier || '—' : '—';
                 const ucTgt   = bmEmp ? fmtCr((bmEmp.uc_tgt||0)*1e5) : '—';
@@ -3606,7 +3688,7 @@ function buildTHHierarchy(el) {
                 const chTgt   = bmEmp ? (bmEmp.ch_tgt || 0) : 0;
                 const bmCh    = new Set(bmTxns.filter(t=>t.ch_check>0).map(t=>t.dcid)).size;
                 const chAch   = chTgt > 0 ? Math.round((bmCh/chTgt)*100) : null;
-                const displayName = bmEmp ? bmEmp.name : bmTxns[0].bm;
+                const displayName = bmEmp ? bmEmp.name : (bmTxns[0]?.bm || key);
                 const todayStr = new Date().toISOString().slice(0,10);
                 const ftdTxns = bmTxns.filter(t => t.date && t.date.slice(0,10) === todayStr);
                 const ftdUC   = ftdTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
@@ -3637,8 +3719,8 @@ function buildTHHierarchy(el) {
     // Has AM layer — show AM cards with BMs inside
     html += `<div class="section-title">AM-wise Performance</div>`;
     amEntries.forEach(([amId, amTxns]) => {
-      const displayName = amId === '__direct__' ? 'Direct to TH (No AM)' : amTxns[0].am;
       const amEmp   = amId !== '__direct__' ? getEmpData().find(e => e.id === amId) : null;
+      const displayName = amId === '__direct__' ? 'Direct to TH (No AM)' : (amEmp?.name || amTxns[0]?.am || amId);
       const amStats = computeStats(amTxns, amEmp);
       const cardId  = 'am_' + amId.replace(/[^a-zA-Z0-9]/g,'_');
 
