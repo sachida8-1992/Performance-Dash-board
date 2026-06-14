@@ -59,9 +59,9 @@ body{font-family:'Segoe UI',sans-serif;background:var(--bg);color:var(--text);mi
 .page.active{display:block}
 
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
-.kpi{background:var(--card);border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
-.kpi-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
-.kpi-value{font-size:28px;font-weight:800;color:var(--primary);line-height:1}
+.kpi{background:var(--card);border-radius:12px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.kpi-label{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.kpi-value{font-size:24px;font-weight:800;color:var(--primary);line-height:1}
 .kpi-sub{font-size:12px;color:var(--muted);margin-top:6px}
 .kpi-bar{height:6px;background:#e0e0e0;border-radius:3px;margin-top:12px;overflow:hidden}
 .kpi-bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#1a237e,#e53935);transition:width 1s}
@@ -693,8 +693,37 @@ function buildOverview(el) {
   // Channel count: max ch_check per BM (for BM view, or across BMs for higher roles)
   const chActive = getActiveChannels();
 
+  // BM Productivity calculation (for AM/TH/RH only)
+  let bmProdCard = '';
+  if (d !== 'BM') {
+    const bmIds = new Set(myTxns.map(t => t.bm_id).filter(Boolean));
+    const activeBMCount = bmIds.size || 1;
+    const allBMsInScope = getEmpData().filter(e => {
+      if (e.designation !== 'BM') return false;
+      if (d === 'AM') return e.am_id === currentUser.id;
+      if (d === 'TH') return e.th_id === currentUser.id;
+      if (d === 'RH') return e.rh_id === currentUser.id;
+      return false;
+    });
+    const totalBMCount = Math.max(allBMsInScope.length, activeBMCount) || 1;
+    const PROD_BENCH = 1.75e7;
+    const bmProd = totalAmt / totalBMCount;
+    const bmProdPct = Math.round((bmProd / PROD_BENCH) * 100);
+    const bmProdColor = bmProd >= PROD_BENCH ? '#2e7d32' : bmProd >= PROD_BENCH * 0.7 ? '#f57f17' : '#e53935';
+    bmProdCard = `
+      <div class="kpi">
+        <div class="kpi-label">BM Productivity</div>
+        <div class="kpi-value" style="font-size:22px;color:${bmProdColor}">${fmtCr(bmProd)}</div>
+        <div class="kpi-sub" style="color:${bmProdColor};font-weight:700">${bmProdPct}% of ₹1.75 Cr</div>
+        <div class="kpi-sub" style="font-size:10px;color:#9e9e9e">${totalBMCount} BMs</div>
+        <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${Math.min(bmProdPct,100)}%;background:${bmProdColor}"></div></div>
+      </div>`;
+  }
+
+  const colCount = d === 'BM' ? 5 : 6;
+
   el.innerHTML = `
-    <div class="kpi-grid">
+    <div class="kpi-grid" style="grid-template-columns:repeat(${colCount},1fr);gap:12px">
       <div class="kpi">
         <div class="kpi-label">MTD Disbursement</div>
         <div class="kpi-value">${fmtCr(totalAmt)}</div>
@@ -723,22 +752,7 @@ function buildOverview(el) {
         <div class="kpi-sub">Target: ${chTgt > 0 ? chTgt : '—'} &nbsp;|&nbsp; <b>${chTgt>0?pct(chActive,chTgt)+'%':'—'}</b></div>
         ${chTgt>0?`<div class="kpi-bar"><div class="kpi-bar-fill" style="width:${Math.min(pct(chActive,chTgt),100)}%"></div></div>`:''}
       </div>
-      ${d !== 'BM' ? (() => {
-        // BM Productivity: total disbursement ÷ BM count under this manager
-        const bmIds = new Set(myTxns.map(t => t.bm_id).filter(Boolean));
-        const bmCount = bmIds.size || 1;
-        const bmProd = totalAmt / bmCount;
-        const BENCHMARK = 1.75e7; // ₹1.75 Cr
-        const prodPct = Math.round((bmProd / BENCHMARK) * 100);
-        const prodColor = bmProd >= BENCHMARK ? '#2e7d32' : bmProd >= BENCHMARK * 0.7 ? '#f57f17' : '#e53935';
-        const prodBar = Math.min(prodPct, 100);
-        return `<div class="kpi">
-          <div class="kpi-label">BM Productivity</div>
-          <div class="kpi-value" style="color:${prodColor}">${fmtCr(bmProd)}</div>
-          <div class="kpi-sub">${bmCount} BMs &nbsp;|&nbsp; <b style="color:${prodColor}">${prodPct}% of ₹1.75 Cr benchmark</b></div>
-          <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${prodBar}%;background:${prodColor}"></div></div>
-        </div>`;
-      })() : ''}
+      ${bmProdCard}
     </div>
 
     <!-- DRR & Shortfall Row -->
@@ -2895,9 +2909,6 @@ function buildInsights(el) {
     }
 
     // BM Productivity
-    const bmIdSet = new Set(bms.map(b => b.bm_id).filter(Boolean));
-    const activeBMCount = bmIdSet.size || bms.length || 1;
-    // Also count zero-txn BMs in scope for a more accurate denominator
     const allBMsInScope = getEmpData().filter(e => {
       if (e.designation !== 'BM') return false;
       const id = currentUser.id, des = currentUser.designation;
@@ -2906,24 +2917,25 @@ function buildInsights(el) {
       if (des === 'RH') return e.rh_id === id;
       return false;
     });
-    const totalBMCount = Math.max(allBMsInScope.length, activeBMCount);
-    const BENCHMARK = 1.75e7; // ₹1.75 Cr per BM
-    const bmProductivity = totalAmt / (totalBMCount || 1);
-    const prodPct = Math.round((bmProductivity / BENCHMARK) * 100);
-    const belowBenchmark = allBMsInScope.filter(e => {
-      const bmAmt = bms.find(b => b.bm_id === e.id)?.amt || 0;
-      return bmAmt < BENCHMARK;
-    });
-    if (bmProductivity >= BENCHMARK) {
-      insights.push({type:'good', title:`👥 BM Productivity: ${fmtCr(bmProductivity)}/BM (${prodPct}% of benchmark)`, body:`Avg disbursement per BM is ${fmtCr(bmProductivity)} across ${totalBMCount} BMs — above the ₹1.75 Cr benchmark. Excellent team efficiency!`});
+    const activeBMIds  = new Set(bms.map(b => b.bm_id).filter(Boolean));
+    const totalBMCount = Math.max(allBMsInScope.length, activeBMIds.size) || 1;
+    const PROD_BENCH   = 1.75e7;
+    const bmProdAvg    = totalAmt / totalBMCount;
+    const bmProdPct    = Math.round((bmProdAvg / PROD_BENCH) * 100);
+    const belowBench   = allBMsInScope.filter(e => (bms.find(b => b.bm_id === e.id)?.amt || 0) < PROD_BENCH);
+    if (bmProdAvg >= PROD_BENCH) {
+      insights.push({type:'good',
+        title:`👥 BM Productivity: ${fmtCr(bmProdAvg)}/BM (${bmProdPct}% of ₹1.75 Cr)`,
+        body:`Avg disbursement per BM is ${fmtCr(bmProdAvg)} across ${totalBMCount} BMs — above the ₹1.75 Cr benchmark. Excellent team efficiency!`
+      });
     } else {
-      const gap = BENCHMARK - bmProductivity;
-      insights.push({type: prodPct >= 70 ? 'warn' : 'action',
-        title:`👥 BM Productivity: ${fmtCr(bmProductivity)}/BM (${prodPct}% of benchmark)`,
-        body:`Avg disbursement per BM is ${fmtCr(bmProductivity)} vs ₹1.75 Cr benchmark. Gap: ${fmtCr(gap)}/BM. ${belowBenchmark.length > 0 ? belowBenchmark.length + ' BM(s) below benchmark: ' + belowBenchmark.map(e => (resolveEmpById(e.id)?.name || e.name) + ' (' + fmtCr(bms.find(b=>b.bm_id===e.id)?.amt||0) + ')').join(', ') + '.' : ''}`
+      insights.push({type: bmProdPct >= 70 ? 'warn' : 'action',
+        title:`👥 BM Productivity: ${fmtCr(bmProdAvg)}/BM (${bmProdPct}% of ₹1.75 Cr benchmark)`,
+        body:`Avg per BM is ${fmtCr(bmProdAvg)} vs ₹1.75 Cr target across ${totalBMCount} BMs. Gap: ${fmtCr(PROD_BENCH - bmProdAvg)}/BM.`
+          + (belowBench.length > 0 ? ` BMs below benchmark: ${belowBench.map(e => {const n=resolveEmpById(e.id)?.name||e.name; const a=bms.find(b=>b.bm_id===e.id)?.amt||0; return n+' ('+fmtCr(a)+')';}).join(', ')}.` : '')
       });
     }
-  } // end else (team insights)
+  }
 
   el.innerHTML = `
     <div class="section-title">Business Insights — June 2026</div>
