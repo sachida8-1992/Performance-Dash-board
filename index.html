@@ -723,6 +723,22 @@ function buildOverview(el) {
         <div class="kpi-sub">Target: ${chTgt > 0 ? chTgt : '—'} &nbsp;|&nbsp; <b>${chTgt>0?pct(chActive,chTgt)+'%':'—'}</b></div>
         ${chTgt>0?`<div class="kpi-bar"><div class="kpi-bar-fill" style="width:${Math.min(pct(chActive,chTgt),100)}%"></div></div>`:''}
       </div>
+      ${d !== 'BM' ? (() => {
+        // BM Productivity: total disbursement ÷ BM count under this manager
+        const bmIds = new Set(myTxns.map(t => t.bm_id).filter(Boolean));
+        const bmCount = bmIds.size || 1;
+        const bmProd = totalAmt / bmCount;
+        const BENCHMARK = 1.75e7; // ₹1.75 Cr
+        const prodPct = Math.round((bmProd / BENCHMARK) * 100);
+        const prodColor = bmProd >= BENCHMARK ? '#2e7d32' : bmProd >= BENCHMARK * 0.7 ? '#f57f17' : '#e53935';
+        const prodBar = Math.min(prodPct, 100);
+        return `<div class="kpi">
+          <div class="kpi-label">BM Productivity</div>
+          <div class="kpi-value" style="color:${prodColor}">${fmtCr(bmProd)}</div>
+          <div class="kpi-sub">${bmCount} BMs &nbsp;|&nbsp; <b style="color:${prodColor}">${prodPct}% of ₹1.75 Cr benchmark</b></div>
+          <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${prodBar}%;background:${prodColor}"></div></div>
+        </div>`;
+      })() : ''}
     </div>
 
     <!-- DRR & Shortfall Row -->
@@ -2877,7 +2893,37 @@ function buildInsights(el) {
     if (topBank && pct(topBank[1],totalAmt) > 40) {
       insights.push({type:'warn', title:`🏦 High Bank Concentration`, body:`${topBank[0].slice(0,40)} accounts for ${pct(topBank[1],totalAmt)}% of disbursements. Consider diversifying lender mix.`});
     }
-  }
+
+    // BM Productivity
+    const bmIdSet = new Set(bms.map(b => b.bm_id).filter(Boolean));
+    const activeBMCount = bmIdSet.size || bms.length || 1;
+    // Also count zero-txn BMs in scope for a more accurate denominator
+    const allBMsInScope = getEmpData().filter(e => {
+      if (e.designation !== 'BM') return false;
+      const id = currentUser.id, des = currentUser.designation;
+      if (des === 'AM') return e.am_id === id;
+      if (des === 'TH') return e.th_id === id;
+      if (des === 'RH') return e.rh_id === id;
+      return false;
+    });
+    const totalBMCount = Math.max(allBMsInScope.length, activeBMCount);
+    const BENCHMARK = 1.75e7; // ₹1.75 Cr per BM
+    const bmProductivity = totalAmt / (totalBMCount || 1);
+    const prodPct = Math.round((bmProductivity / BENCHMARK) * 100);
+    const belowBenchmark = allBMsInScope.filter(e => {
+      const bmAmt = bms.find(b => b.bm_id === e.id)?.amt || 0;
+      return bmAmt < BENCHMARK;
+    });
+    if (bmProductivity >= BENCHMARK) {
+      insights.push({type:'good', title:`👥 BM Productivity: ${fmtCr(bmProductivity)}/BM (${prodPct}% of benchmark)`, body:`Avg disbursement per BM is ${fmtCr(bmProductivity)} across ${totalBMCount} BMs — above the ₹1.75 Cr benchmark. Excellent team efficiency!`});
+    } else {
+      const gap = BENCHMARK - bmProductivity;
+      insights.push({type: prodPct >= 70 ? 'warn' : 'action',
+        title:`👥 BM Productivity: ${fmtCr(bmProductivity)}/BM (${prodPct}% of benchmark)`,
+        body:`Avg disbursement per BM is ${fmtCr(bmProductivity)} vs ₹1.75 Cr benchmark. Gap: ${fmtCr(gap)}/BM. ${belowBenchmark.length > 0 ? belowBenchmark.length + ' BM(s) below benchmark: ' + belowBenchmark.map(e => (resolveEmpById(e.id)?.name || e.name) + ' (' + fmtCr(bms.find(b=>b.bm_id===e.id)?.amt||0) + ')').join(', ') + '.' : ''}`
+      });
+    }
+  } // end else (team insights)
 
   el.innerHTML = `
     <div class="section-title">Business Insights — June 2026</div>
