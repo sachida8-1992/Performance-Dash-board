@@ -618,7 +618,7 @@ function buildPageList() {
   } else {
     pages.push(
       {id:'channels', label:'🔗 Channels'},
-      {id:'dealers', label:'🏪 Top Dealers'},
+      {id:'dealers', label:'🏪 Top Channels'},
       {id:'banks', label:'🏦 Banks'}
     );
   }
@@ -693,11 +693,10 @@ function buildOverview(el) {
   // Channel count: max ch_check per BM (for BM view, or across BMs for higher roles)
   const chActive = getActiveChannels();
 
-  // BM Productivity calculation (for AM/TH/RH only)
+  // BM Productivity (AM/TH/RH only)
   let bmProdCard = '';
   if (d !== 'BM') {
     const bmIds = new Set(myTxns.map(t => t.bm_id).filter(Boolean));
-    const activeBMCount = bmIds.size || 1;
     const allBMsInScope = getEmpData().filter(e => {
       if (e.designation !== 'BM') return false;
       if (d === 'AM') return e.am_id === currentUser.id;
@@ -705,11 +704,11 @@ function buildOverview(el) {
       if (d === 'RH') return e.rh_id === currentUser.id;
       return false;
     });
-    const totalBMCount = Math.max(allBMsInScope.length, activeBMCount) || 1;
-    const PROD_BENCH = 1.75e7;
-    const bmProd = totalAmt / totalBMCount;
-    const bmProdPct = Math.round((bmProd / PROD_BENCH) * 100);
-    const bmProdColor = bmProd >= PROD_BENCH ? '#2e7d32' : bmProd >= PROD_BENCH * 0.7 ? '#f57f17' : '#e53935';
+    const totalBMCount = Math.max(allBMsInScope.length, bmIds.size) || 1;
+    const PROD_BENCH   = 1.75e7;
+    const bmProd       = totalAmt / totalBMCount;
+    const bmProdPct    = Math.round((bmProd / PROD_BENCH) * 100);
+    const bmProdColor  = bmProd >= PROD_BENCH ? '#2e7d32' : bmProd >= PROD_BENCH * 0.7 ? '#f57f17' : '#e53935';
     bmProdCard = `
       <div class="kpi">
         <div class="kpi-label">BM Productivity</div>
@@ -1697,7 +1696,7 @@ function buildDealers(el) {
 
   el.innerHTML = `
     <div class="card">
-      <div class="card-title">Top Dealers by Disbursement</div>
+      <div class="card-title">Top Channels by Disbursement</div>
       <table>
         <thead><tr><th>#</th><th>Dealer Name</th><th>Products</th><th>Cases</th><th>Disbursement</th><th>Share</th></tr></thead>
         <tbody>
@@ -1801,6 +1800,15 @@ function buildDealersRH(el) {
     </table>`;
   }
 
+  // Define tab switcher scoped to this page render
+  window.switchCityTab = function(btn, panelId) {
+    btn.parentElement.querySelectorAll('.city-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.city-tab-panel').forEach(p => p.style.display = 'none');
+    const panel = document.getElementById(panelId);
+    if (panel) panel.style.display = 'block';
+  };
+
   const tabBtns = ['🌐 All', ...cities].map((c, i) =>
     `<button class="city-tab-btn ${i===0?'active':''}" onclick="switchCityTab(this,'city_tab_${i}')">${c === '🌐 All' ? c : '🗺️ '+c}</button>`
   ).join('');
@@ -1827,7 +1835,13 @@ function buildDealersRH(el) {
 }
 
 function buildBanks(el) {
-  // Build shell with two dropdowns: Product (UC/CV/All) + Loan Type (Purchase/Others/All)
+  // Build state options dynamically from myTxns
+  const stateSet = {};
+  myTxns.forEach(t => { if (t.state && t.state !== 'nan') stateSet[t.state] = (stateSet[t.state]||0) + t.amt; });
+  const stateList = Object.keys(stateSet).sort((a,b) => stateSet[b] - stateSet[a]);
+  const stateOptions = stateList.map(s => `<option value="${s}">${s}</option>`).join('');
+
+  // Build shell with three dropdowns: Product + Loan Type + State
   el.innerHTML = `
     <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
       <div style="display:flex;align-items:center;gap:8px">
@@ -1844,6 +1858,13 @@ function buildBanks(el) {
           <option value="all">All</option>
           <option value="purchase">Purchase</option>
           <option value="others">Others</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:12px;font-weight:600;color:#555">State:</label>
+        <select id="bankStateFilter" onchange="renderBanksFilter()" style="padding:6px 10px;border:1.5px solid #c5cae9;border-radius:8px;font-size:13px;background:#fff;cursor:pointer">
+          <option value="all">All States</option>
+          ${stateOptions}
         </select>
       </div>
     </div>
@@ -1866,9 +1887,11 @@ function buildBanks(el) {
   window.renderBanksFilter = function() {
     const prod  = (document.getElementById('bankProdFilter')  || {value:'all'}).value;
     const loan  = (document.getElementById('bankLoanFilter')  || {value:'all'}).value;
+    const state = (document.getElementById('bankStateFilter') || {value:'all'}).value;
     let filtered = myTxns;
-    if (prod === 'uc')  filtered = filtered.filter(t => t.product === 'Used Car');
-    if (prod === 'cv')  filtered = filtered.filter(t => t.product !== 'Used Car');
+    if (prod  === 'uc')       filtered = filtered.filter(t => t.product === 'Used Car');
+    if (prod  === 'cv')       filtered = filtered.filter(t => t.product !== 'Used Car');
+    if (state !== 'all')      filtered = filtered.filter(t => t.state === state);
     if (loan === 'purchase') filtered = filtered.filter(t => (t.loan_type||'').toLowerCase().includes('purchase') && !(t.loan_type||'').toLowerCase().startsWith('ucv') && !(t.loan_type||'').toLowerCase().startsWith('ncv'));
     if (loan === 'others')   filtered = filtered.filter(t => !((t.loan_type||'').toLowerCase().includes('purchase') && !(t.loan_type||'').toLowerCase().startsWith('ucv') && !(t.loan_type||'').toLowerCase().startsWith('ncv')));
     const filter = 'custom';  // keep below code compatible
@@ -1881,7 +1904,7 @@ function buildBanks(el) {
     const banks = Object.values(bankMap).sort((a,b)=>b.amt-a.amt);
     const total = banks.reduce((s,b)=>s+b.amt,0)||1;
 
-    // Build May bank map (filtered same way as June)
+    // Build May bank map (filtered same way as June, including state filter)
     const mayPool = getMayData().filter(t => {
       const d2=currentUser.designation,id2=currentUser.id;
       if(d2==='BM') return t.bm_id===id2;
@@ -1889,7 +1912,7 @@ function buildBanks(el) {
       if(d2==='TH') return t.th_id===id2;
       if(d2==='RH') return t.rh_id===id2;
       return false;
-    });
+    }).filter(t => state === 'all' || t.state === state);
     // May data has no bank field — use bm_id+dcid bridge via June txns
     // Build dcid→bank map from June filtered txns
     const dcidToBank = {};
@@ -1929,7 +1952,7 @@ function buildBanks(el) {
     }).join('');
 
     const totalEl = document.getElementById('bankTotal');
-    if (totalEl) totalEl.textContent = `${filtered.length} cases · ${fmtCr(total)}`;
+    if (totalEl) totalEl.textContent = `${filtered.length} cases · ${fmtCr(total)}` + (state !== 'all' ? ` · 📍 ${state}` : '');
 
     if (charts.banks) { try { charts.banks.destroy(); } catch(e){} delete charts.banks; }
     setTimeout(() => {
@@ -2908,7 +2931,7 @@ function buildInsights(el) {
       insights.push({type:'warn', title:`🏦 High Bank Concentration`, body:`${topBank[0].slice(0,40)} accounts for ${pct(topBank[1],totalAmt)}% of disbursements. Consider diversifying lender mix.`});
     }
 
-    // BM Productivity
+    // BM Productivity vs ₹1.75 Cr benchmark
     const allBMsInScope = getEmpData().filter(e => {
       if (e.designation !== 'BM') return false;
       const id = currentUser.id, des = currentUser.designation;
@@ -2932,7 +2955,7 @@ function buildInsights(el) {
       insights.push({type: bmProdPct >= 70 ? 'warn' : 'action',
         title:`👥 BM Productivity: ${fmtCr(bmProdAvg)}/BM (${bmProdPct}% of ₹1.75 Cr benchmark)`,
         body:`Avg per BM is ${fmtCr(bmProdAvg)} vs ₹1.75 Cr target across ${totalBMCount} BMs. Gap: ${fmtCr(PROD_BENCH - bmProdAvg)}/BM.`
-          + (belowBench.length > 0 ? ` BMs below benchmark: ${belowBench.map(e => {const n=resolveEmpById(e.id)?.name||e.name; const a=bms.find(b=>b.bm_id===e.id)?.amt||0; return n+' ('+fmtCr(a)+')';}).join(', ')}.` : '')
+          + (belowBench.length > 0 ? ` BMs below benchmark: ${belowBench.map(e => { const n=resolveEmpById(e.id)?.name||e.name; const a=bms.find(b=>b.bm_id===e.id)?.amt||0; return n+' ('+fmtCr(a)+')'; }).join(', ')}.` : '')
       });
     }
   }
@@ -3329,7 +3352,13 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
       +'</tr>';
   }).join('');
 
-  return '<div style="background:linear-gradient(135deg,#1a237e,#283593);color:#fff;border-radius:14px;padding:20px;margin-bottom:16px">'
+  return '<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">'
+    +'<div style="padding:14px 20px;background:linear-gradient(135deg,#1a237e,#283593);font-size:13px;font-weight:700;color:#fff">📊 All 3 Milestones — Team Summary</div>'
+    +'<div style="overflow-x:auto"><table><thead><tr>'
+    +'<th>Milestone</th><th>UC Target</th><th>UC Achieved</th><th>CV Target</th><th>CV Achieved</th><th>CH Target</th><th>CH Achieved</th><th>Total Target</th><th>Total Ach</th><th>On Track (≥70%)</th><th>Behind</th>'
+    +'</tr></thead>'
+    +'<tbody>'+msSummary+'</tbody></table></div></div>'
+    +'<div style="background:linear-gradient(135deg,#1a237e,#283593);color:#fff;border-radius:14px;padding:20px;margin-bottom:16px">'
     +'<div style="font-size:12px;opacity:.7;font-weight:600;text-transform:uppercase">Team Achievement till '+ms.label+'</div>'
     +'<div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin:4px 0 6px">'
     +'<div style="font-size:40px;font-weight:800;line-height:1">'+fmtCr(teamTot)+'</div>'
@@ -3343,15 +3372,7 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
     +'<span style="color:#a5d6a7">✅ '+onTrack+' on track</span>'
     +(behind>0?'<span style="color:#ef9a9a">⚠️ '+behind+' behind</span>':'')
     +'</div></div>'
-    + amSection
-    +'<div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">'
-    +'<div style="padding:14px 20px;background:#f5f7ff;font-size:13px;font-weight:700;color:#1a237e;display:flex;justify-content:space-between">'
-    +'<span>BM-wise Achievement — '+ms.label+'</span>'
-    +'<span style="font-size:11px;color:#9e9e9e;font-weight:400">'+bmRows.length+' BMs</span></div>'
-    +'<div style="overflow-x:auto"><table>'+bmTableHead+'<tbody>'+bmTableRows(bmRows)+'</tbody></table></div></div>'
-    +'<div class="card"><div class="card-title">All 3 Milestones — Team Summary</div>'
-    +'<table><thead><tr><th>Milestone</th><th>UC Target</th><th>UC Achieved</th><th>CV Target</th><th>CV Achieved</th><th>CH Target</th><th>CH Achieved</th><th>Total Target</th><th>Total Ach</th><th>On Track (≥70%)</th><th>Behind</th></tr></thead>'
-    +'<tbody>'+msSummary+'</tbody></table></div>';
+    + amSection;
 }
 
 function buildWeeklyAM(ms, periodTxns) {
