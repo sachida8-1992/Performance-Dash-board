@@ -731,18 +731,27 @@ function showPage(id, btn) {
 
 // ========== PAGE BUILDERS ==========
 function buildPage(id, el) {
-  switch(id) {
-    case 'overview':  buildOverview(el); break;
-    case 'channels':  buildChannels(el); break;
-    case 'dealers':   buildDealers(el); break;
-    case 'banks':     buildBanks(el); break;
-    case 'incentive': buildIncentive(el); break;
-    case 'team':      buildTeam(el); break;
-    case 'insights':  buildInsights(el); break;
-    case 'weekly':    buildWeekly(el); break;
-    case 'issues':    buildIssues(el); break;
-    case 'deviation': buildDeviation(el); break;
-    case 'hierarchy': buildHierarchy(el); break;
+  try {
+    switch(id) {
+      case 'overview':  buildOverview(el); break;
+      case 'channels':  buildChannels(el); break;
+      case 'dealers':   buildDealers(el); break;
+      case 'banks':     buildBanks(el); break;
+      case 'incentive': buildIncentive(el); break;
+      case 'team':      buildTeam(el); break;
+      case 'insights':  buildInsights(el); break;
+      case 'weekly':    buildWeekly(el); break;
+      case 'issues':    buildIssues(el); break;
+      case 'deviation': buildDeviation(el); break;
+      case 'hierarchy': buildHierarchy(el); break;
+    }
+  } catch(err) {
+    console.error('[buildPage:'+id+']', err);
+    el.innerHTML = '<div style="padding:20px;color:#c62828;background:#fff3e0;border-radius:8px;margin:16px">'
+      + '<b>⚠️ Error loading ' + id + ' tab</b><br><br>'
+      + '<code style="font-size:12px">' + err.message + '</code><br><br>'
+      + '<pre style="font-size:10px;overflow:auto;max-height:200px;color:#555">' + err.stack + '</pre>'
+      + '</div>';
   }
 }
 
