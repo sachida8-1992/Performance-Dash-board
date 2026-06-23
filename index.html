@@ -292,7 +292,13 @@ const MAR_DATA = [{"bm_id": "10071856", "am_id": "10059066", "th_id": "", "rh_id
 // Name aliases: txn name → emp name (spelling mismatches)
 // Name aliases no longer needed — using employee ID for all matching
 
+const NAME_ALIASES = {
+  'sabir hussain hazarika': 'sabir husain hazarika',
+  'aman kumar p.': 'aman kumar',
+};
+
 function resolveEmpName(txnBmName) {
+  if (!txnBmName) return null;
   const key = txnBmName.toLowerCase();
   const resolved = NAME_ALIASES[key] || key;
   return getEmpData().find(e => e.name.toLowerCase() === resolved);
@@ -492,10 +498,7 @@ function parseEmployees(rows) {
 
 // Parse transaction rows from Google Sheet columns → dashboard format
 function parseTransactions(rows) {
-  const NAME_ALIASES = {
-    'sabir hussain hazarika': 'sabir husain hazarika',
-    'aman kumar p.': 'aman kumar',
-  };
+  // NAME_ALIASES is now global (defined near resolveEmpName)
   function safeId(v) {
     if (!v && v !== 0) return '';
     const s = String(v).split('.')[0].trim();
