@@ -1358,6 +1358,8 @@ function buildRHPerfTable() {
   const filter    = (document.getElementById('rhPerfFilter') || {}).value || 'all';
   const today     = new Date();
   const todayStr  = today.toISOString().slice(0,10);
+  const yest      = new Date(today); yest.setDate(yest.getDate() - 1);
+  const yesterdayStr = yest.toISOString().slice(0,10);
   const mtdDay    = today.getDate();
   const remaining = getRemainingWorkingDays();
 
@@ -1408,34 +1410,38 @@ function buildRHPerfTable() {
       const jTxns  = pf(juneTxns.filter(t => t.th_id === thId));
       const mTxns  = pf(mayTxns.filter(t => t.th_id === thId && (t.day||0) <= mtdDay));
       const ftTxns = pf(juneTxns.filter(t => t.th_id === thId && t.date === todayStr));
+      const ypTxns = pf(juneTxns.filter(t => t.th_id === thId && t.date === yesterdayStr));
 
       const mtd    = jTxns.reduce((s,t) => s+t.amt, 0);
       const lmtd   = mTxns.reduce((s,t) => s+t.amt, 0);
       const ftd    = ftTxns.reduce((s,t) => s+t.amt, 0);
+      const yp     = ypTxns.reduce((s,t) => s+t.amt, 0);
       const tgt    = getTgt(thId); // TH's own target
       const short  = Math.max(tgt - mtd, 0);
       const drr    = remaining > 0 && short > 0 ? short / remaining : 0;
       const vLMTD  = mtd - lmtd;
       const states = [...new Set(jTxns.map(t => t.state||'').filter(Boolean))].join(', ') || '—';
 
-      rows.push({ label: thEmp.name, subLabel: '(TH)', thName: '', states, tgt, mtd, lmtd, ftd, short, vLMTD, drr, cases: jTxns.length, isTH: true });
+      rows.push({ label: thEmp.name, subLabel: '(TH)', thName: '', states, tgt, mtd, lmtd, ftd, yp, short, vLMTD, drr, cases: jTxns.length, isTH: true });
 
     } else {
       // ── AM-direct row: AM reports directly to RH ──
       const jTxns  = pf(juneTxns.filter(t => t.am_id === amEmp.id));
       const mTxns  = pf(mayTxns.filter(t => t.am_id === amEmp.id && (t.day||0) <= mtdDay));
       const ftTxns = pf(juneTxns.filter(t => t.am_id === amEmp.id && t.date === todayStr));
+      const ypTxns = pf(juneTxns.filter(t => t.am_id === amEmp.id && t.date === yesterdayStr));
 
       const mtd    = jTxns.reduce((s,t) => s+t.amt, 0);
       const lmtd   = mTxns.reduce((s,t) => s+t.amt, 0);
       const ftd    = ftTxns.reduce((s,t) => s+t.amt, 0);
+      const yp     = ypTxns.reduce((s,t) => s+t.amt, 0);
       const tgt    = getTgt(amEmp.id); // AM's own target
       const short  = Math.max(tgt - mtd, 0);
       const drr    = remaining > 0 && short > 0 ? short / remaining : 0;
       const vLMTD  = mtd - lmtd;
       const states = [...new Set(jTxns.map(t => t.state||'').filter(Boolean))].join(', ') || '—';
 
-      rows.push({ label: amEmp.name, subLabel: '(AM)', thName: 'Sachidananda panigrahy', states, tgt, mtd, lmtd, ftd, short, vLMTD, drr, cases: jTxns.length, isTH: false });
+      rows.push({ label: amEmp.name, subLabel: '(AM)', thName: 'Sachidananda panigrahy', states, tgt, mtd, lmtd, ftd, yp, short, vLMTD, drr, cases: jTxns.length, isTH: false });
     }
   });
 
@@ -1445,17 +1451,19 @@ function buildRHPerfTable() {
     const jTxns  = pf(juneTxns.filter(t => t.th_id === thEmp.id));
     const mTxns  = pf(mayTxns.filter(t => t.th_id === thEmp.id && (t.day||0) <= mtdDay));
     const ftTxns = pf(juneTxns.filter(t => t.th_id === thEmp.id && t.date === todayStr));
+    const ypTxns = pf(juneTxns.filter(t => t.th_id === thEmp.id && t.date === yesterdayStr));
 
     const mtd   = jTxns.reduce((s,t) => s+t.amt, 0);
     const lmtd  = mTxns.reduce((s,t) => s+t.amt, 0);
     const ftd   = ftTxns.reduce((s,t) => s+t.amt, 0);
+    const yp    = ypTxns.reduce((s,t) => s+t.amt, 0);
     const tgt   = getTgt(thEmp.id);
     const short = Math.max(tgt - mtd, 0);
     const drr   = remaining > 0 && short > 0 ? short / remaining : 0;
     const vLMTD = mtd - lmtd;
     const states = [...new Set(jTxns.map(t => t.state||'').filter(Boolean))].join(', ') || '—';
 
-    rows.push({ label: thEmp.name, subLabel: '(TH)', thName: '', states, tgt, mtd, lmtd, ftd, short, vLMTD, drr, cases: jTxns.length, isTH: true });
+    rows.push({ label: thEmp.name, subLabel: '(TH)', thName: '', states, tgt, mtd, lmtd, ftd, yp, short, vLMTD, drr, cases: jTxns.length, isTH: true });
   });
 
   // Sort by MTD desc
@@ -1470,6 +1478,7 @@ function buildRHPerfTable() {
   const totMTD   = rows.reduce((s,r) => s+r.mtd, 0);
   const totLMTD  = rows.reduce((s,r) => s+r.lmtd, 0);
   const totFTD   = rows.reduce((s,r) => s+r.ftd, 0);
+  const totYP    = rows.reduce((s,r) => s+(r.yp||0), 0);
   const totTGT   = rows.reduce((s,r) => s+r.tgt, 0);
   const totShort = rows.reduce((s,r) => s+r.short, 0);
   const totCases = rows.reduce((s,r) => s+r.cases, 0);
@@ -1498,6 +1507,7 @@ function buildRHPerfTable() {
         <th style="padding:8px 10px;text-align:right;white-space:nowrap">LMTD ACH</th>
         <th style="padding:8px 10px;text-align:right;white-space:nowrap">MTD vs LMTD</th>
         <th style="padding:8px 10px;text-align:right;white-space:nowrap">DRR</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap">YP</th>
         <th style="padding:8px 10px;text-align:right;border-radius:0 6px 0 0;white-space:nowrap">FTD Ach</th>
       </tr>
     </thead>
@@ -1520,6 +1530,7 @@ function buildRHPerfTable() {
         <td style="padding:7px 10px;text-align:right;color:#546e7a">${fmtL(r.lmtd)}</td>
         <td style="padding:7px 10px;text-align:right">${diffCell(r.vLMTD)}</td>
         <td style="padding:7px 10px;text-align:right;color:#e65100;font-weight:600">${r.drr > 0 ? fmtL(r.drr)+'/day' : '—'}</td>
+        <td style="padding:7px 10px;text-align:right;font-weight:700;color:${(r.yp||0)>0?'#6a1b9a':'#9e9e9e'}">${(r.yp||0)>0?fmtL(r.yp):'—'}</td>
         <td style="padding:7px 10px;text-align:right;font-weight:700;color:${r.ftd>0?'#2e7d32':'#9e9e9e'}">${r.ftd>0?fmtL(r.ftd):'—'}</td>
       </tr>`;
   });
@@ -1533,12 +1544,13 @@ function buildRHPerfTable() {
         <td style="padding:8px 10px;text-align:right;color:#546e7a">${fmtL(totLMTD)}</td>
         <td style="padding:8px 10px;text-align:right">${diffCell(totMTD-totLMTD)}</td>
         <td></td>
+        <td style="padding:8px 10px;text-align:right;color:#6a1b9a;font-weight:700">${totYP>0?fmtL(totYP):'—'}</td>
         <td style="padding:8px 10px;text-align:right;color:#2e7d32">${totFTD>0?fmtL(totFTD):'—'}</td>
       </tr>
     </tbody>
   </table>
   <div style="font-size:10px;color:#9e9e9e;margin-top:8px;padding-left:4px">
-    MTD = Month till date &nbsp;|&nbsp; LMTD = Last month same days (till ${mtdDay}) &nbsp;|&nbsp; FTD = Today &nbsp;|&nbsp; DRR = Daily Required Rate (Shortfall ÷ Remaining working days)
+    MTD = Month till date &nbsp;|&nbsp; LMTD = Last month same days (till ${mtdDay}) &nbsp;|&nbsp; FTD = Today &nbsp;|&nbsp; YP = Yesterday Performance &nbsp;|&nbsp; DRR = Daily Required Rate (Shortfall ÷ Remaining working days)
   </div>`;
 
   el.innerHTML = html;
