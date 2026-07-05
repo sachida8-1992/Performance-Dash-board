@@ -368,11 +368,13 @@ async function tryLoadLiveData() {
     window._LIVE_EMP_RAW = data.employees; // store raw for milestone target columns
     window._LIVE_EMP = parseEmployees(data.employees);
 
-    // Parse transactions (current month = June-26)
+    // Parse transactions (current month = July-26)
     window._LIVE_TXN = parseTransactions(data.transactions);
 
-    // Previous months for comparison
-    window._LIVE_MAY = data.may_data  ? data.may_data  : TXN_DATA; // already slim-parsed by Apps Script
+    // Previous months for comparison (LMTD = June, june_data or may_data as fallback)
+    window._LIVE_MAY = data.june_data ? data.june_data
+                     : data.may_data  ? data.may_data
+                     : TXN_DATA; // already slim-parsed by Apps Script
     window._LIVE_APR = data.apr_data  ? parseTransactions(data.apr_data)  : APR_DATA;
     window._LIVE_MAR = data.mar_data  ? parseTransactions(data.mar_data)  : MAR_DATA;
     dataLoaded = true;
@@ -639,8 +641,8 @@ function doLogout() {
 function filterMyTxns() {
   const d = currentUser.designation;
   const id = currentUser.id;
-  // Only include June 2026 transactions (exclude May 31 spillover)
-  const juneTxns = getTxnData().filter(t => t.date && t.date.startsWith('2026-06'));
+  // Only include July 2026 transactions (exclude May 31 spillover)
+  const juneTxns = getTxnData().filter(t => t.date && t.date.startsWith('2026-07'));
   if (d === 'BM')      myTxns = juneTxns.filter(t => t.bm_id === id);
   else if (d === 'AM') myTxns = juneTxns.filter(t => t.am_id === id);
   else if (d === 'TH') myTxns = juneTxns.filter(t => t.th_id === id);
@@ -1125,7 +1127,7 @@ function buildOverview(el) {
     // Daily trend — June 1–30 only
     const byDate = {};
     // Only include June dates (ignore May spill-over)
-    myTxns.filter(t => t.date && t.date.slice(0,7) === '2026-06').forEach(t => {
+    myTxns.filter(t => t.date && t.date.slice(0,7) === '2026-07').forEach(t => {
       const d = t.date.slice(0,10);
       byDate[d] = (byDate[d]||0) + t.amt;
     });
@@ -1133,7 +1135,7 @@ function buildOverview(el) {
     // Build full working-day range Jun 1 → today (or last txn date)
     const isBM = currentUser.designation === 'BM';
     let allDates = [];
-    const junStart = new Date('2026-06-01');
+    const junStart = new Date('2026-07-01');
     const today2   = new Date();
     const lastTxnDates = Object.keys(byDate).sort();
     const rangeEnd = lastTxnDates.length > 0
@@ -1285,7 +1287,7 @@ function renderMonthCompare() {
   const label = mcFilter === 'UC' ? 'Used Car' : mcFilter === 'CV' ? 'CV (UCV+NCV)' : 'All Products';
   const months = [
     { label:'Jun 2026', s:jun, color:'#1a237e' },
-    { label:'May 2026', s:may, color:'#283593' },
+    { label:'June 2026', s:may, color:'#283593' },
   ];
 
   el.innerHTML = `
@@ -1364,7 +1366,7 @@ function buildRHPerfTable() {
   const remaining = getRemainingWorkingDays();
 
   const allEmps  = getEmpData();
-  const juneTxns = getTxnData().filter(t => t.date && t.date.startsWith('2026-06'));
+  const juneTxns = getTxnData().filter(t => t.date && t.date.startsWith('2026-07'));
   const mayTxns  = getMayData();
 
   // Product filter
@@ -1719,7 +1721,7 @@ function buildChannels(el) {
     el.innerHTML = `
       <div class="card" style="padding:0;overflow:hidden">
         <div style="padding:14px 20px;background:#f5f7ff;font-size:13px;font-weight:700;color:#1a237e">
-          BM Channel Performance — June 2026
+          BM Channel Performance — July 2026
         </div>
         <div style="overflow-x:auto">
         <table>
@@ -2099,7 +2101,7 @@ function buildTeamIncentive(el) {
     return pool.filter(t => t.bm_id===id || t.bm===currentUser.name?.toLowerCase());
   }
 
-  const juneTxns = scopeFilter(getTxnData().filter(t => t.date && t.date.startsWith('2026-06')));
+  const juneTxns = scopeFilter(getTxnData().filter(t => t.date && t.date.startsWith('2026-07')));
   const mayTxns  = scopeFilter(getMayData());
 
   const juneMap = getBmMap(juneTxns);
@@ -2162,7 +2164,7 @@ function buildTeamIncentive(el) {
         <div style="font-size:12px;opacity:.7">${rows.filter(r=>r.mInc?.totalIncentive>0).length} BMs earned · ${rows.length} total</div>
       </div>
       <div class="card" style="background:linear-gradient(135deg,#1a237e,#283593);color:#fff;padding:18px 20px">
-        <div style="font-size:11px;opacity:.7;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Team Incentive · June 2026 (ongoing)</div>
+        <div style="font-size:11px;opacity:.7;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Team Incentive · July 2026 (ongoing)</div>
         <div style="font-size:30px;font-weight:800;margin:4px 0">${fmtCr(totJune)}</div>
         <div style="font-size:12px;opacity:.7">${rows.filter(r=>r.jInc?.totalIncentive>0).length} BMs earned · ${rows.length} total</div>
       </div>
@@ -2182,7 +2184,7 @@ function buildTeamIncentive(el) {
               <th rowspan="2" style="vertical-align:middle">BM Name</th>
               <th rowspan="2" style="vertical-align:middle">Tier</th>
               <th colspan="2" style="text-align:center;background:#e3f2fd;color:#1565c0;border-bottom:2px solid #90caf9">May 2026</th>
-              <th colspan="2" style="text-align:center;background:#e8eaf6;color:#1a237e;border-bottom:2px solid #9fa8da">June 2026</th>
+              <th colspan="2" style="text-align:center;background:#e8eaf6;color:#1a237e;border-bottom:2px solid #9fa8da">July 2026</th>
               <th rowspan="2" style="vertical-align:middle;text-align:center">Trend</th>
             </tr>
             <tr style="background:#f5f9ff">
@@ -2531,7 +2533,7 @@ function buildIncentive(el) {
                     <thead><tr>
                       <th style="text-align:left">Metric</th>
                       <th style="text-align:right;color:#1565c0">May 2026</th>
-                      <th style="text-align:right;color:#1a237e">June 2026</th>
+                      <th style="text-align:right;color:#1a237e">July 2026</th>
                     </tr></thead>
                     <tbody>
                       <tr><td>Total GMV</td><td style="text-align:right">${fmtCr(mS.totalAmt)}</td><td style="text-align:right">${fmtCr(jS.totalAmt)}</td></tr>
@@ -2708,7 +2710,7 @@ function buildIncentive(el) {
         </div>
       </div>
       <div class="incentive-box" style="margin-bottom:0;background:linear-gradient(135deg,#283593,#3949ab)">
-        <div class="incentive-title">June 2026 — Ongoing</div>
+        <div class="incentive-title">July 2026 — Ongoing</div>
         <div class="incentive-amount" style="font-size:36px">${fmtCr(Math.round(totalIncentive))}</div>
       <div class="incentive-breakdown">
         <div class="incentive-item"><div class="ivalue">${fmtCr(effGMV)}</div><div class="ilabel">Eff. GMV</div></div>
@@ -2721,7 +2723,7 @@ function buildIncentive(el) {
     <div class="card" style="margin-bottom:16px">
       <div class="card-title">May vs June Comparison</div>
       <table style="width:100%">
-        <thead><tr><th>Metric</th><th style="text-align:right;color:#1565c0">May 2026</th><th style="text-align:right;color:#1a237e">June 2026</th></tr></thead>
+        <thead><tr><th>Metric</th><th style="text-align:right;color:#1565c0">May 2026</th><th style="text-align:right;color:#1a237e">July 2026</th></tr></thead>
         <tbody>
           <tr><td>UC GMV</td><td style="text-align:right">${fmtCr(mCalc.ucA)}</td><td style="text-align:right">${fmtCr(ucAmt)}</td></tr>
           <tr><td>UCV GMV</td><td style="text-align:right">${fmtCr(mCalc.ucvA)}</td><td style="text-align:right">${fmtCr(ucvAmt)}</td></tr>
@@ -2847,7 +2849,7 @@ function buildTeam(el) {
     </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div style="padding:14px 20px;background:#e8eaf6;font-size:13px;font-weight:700;color:#1a237e">
-        👥 BM Performance — June 2026
+        👥 BM Performance — July 2026
         <span style="font-weight:400;font-size:11px;margin-left:10px;color:#3949ab">UC: ${fmtCr(teamUC)} | CV: ${fmtCr(teamCV)}</span>
       </div>
       <div style="overflow-x:auto">
@@ -3079,7 +3081,7 @@ function buildInsights(el) {
   }
 
   el.innerHTML = `
-    <div class="section-title">Business Insights — June 2026</div>
+    <div class="section-title">Business Insights — July 2026</div>
     ${insights.length === 0 ? '<div class="empty">No transactions found to generate insights.</div>' : `
     <div class="insight-list">
       ${insights.map(i => `
@@ -3140,7 +3142,7 @@ function buildWeekly(el) {
 
   el.innerHTML = `
     <div style="margin-bottom:16px">
-      <div style="font-size:20px;font-weight:800;color:#1a237e">📊 Weekly Review — June 2026</div>
+      <div style="font-size:20px;font-weight:800;color:#1a237e">📊 Weekly Review — July 2026</div>
       <div style="font-size:12px;color:#9e9e9e;margin-top:2px">Milestone targets & achievement by disbursed date</div>
     </div>
 
@@ -3185,7 +3187,7 @@ function buildWeekly(el) {
     });
 
     const periodTxns = allTxns.filter(t =>
-      t.date && t.date.startsWith('2026-06') && t.day > 0 && t.day <= ms.day
+      t.date && t.date.startsWith('2026-07') && t.day > 0 && t.day <= ms.day
     );
 
     bodyEl.innerHTML = role==='BM'
@@ -3267,7 +3269,7 @@ function buildWeeklyBM(ms, periodTxns, allTxns) {
         <tbody>
           ${MILESTONES.map(m => {
             const today = new Date().getDate();
-            const mTxns = (allTxns||myTxns).filter(t=>t.date&&t.date.startsWith('2026-06')&&t.day>0&&t.day<=m.day);
+            const mTxns = (allTxns||myTxns).filter(t=>t.date&&t.date.startsWith('2026-07')&&t.day>0&&t.day<=m.day);
             const mTgts = getMilestoneEmpTargets(emp, m);
             const mUC   = mTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
             const mCV   = mTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
@@ -3417,7 +3419,7 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
   // Summary table for all milestones
   const today2 = new Date().getDate();
   const msSummary = MILESTONES.map(m => {
-    const mTxns = (allTxns||myTxns).filter(t=>t.date&&t.date.startsWith('2026-06')&&t.day>0&&t.day<=m.day);
+    const mTxns = (allTxns||myTxns).filter(t=>t.date&&t.date.startsWith('2026-07')&&t.day>0&&t.day<=m.day);
     const mUC = mTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
     const mCV = mTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
     const isFut = today2 < m.day;
