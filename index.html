@@ -3229,7 +3229,15 @@ function buildMonthlySummary(el) {
 
   // Build stats per employee per month
   function empMonthStats(emp, monthData) {
-    const txns  = monthData.filter(t => t.bm_id === emp.id || t.am_id === emp.id || t.th_id === emp.id || t.rh_id === emp.id);
+    // Filter by correct ID field
+    // Note: in slim data (hist_), th_id is always empty — TH employees appear as am_id
+    const txns  = monthData.filter(t => {
+      if (emp.designation==='BM') return t.bm_id === emp.id;
+      if (emp.designation==='AM') return t.am_id === emp.id;
+      if (emp.designation==='TH') return t.am_id === emp.id || t.th_id === emp.id;
+      if (emp.designation==='RH') return t.rh_id === emp.id;
+      return false;
+    });
     const uc    = txns.filter(t=>t.product==='Used Car');
     const cv    = txns.filter(t=>t.product!=='Used Car');
     const ucAmt = uc.reduce((s,t)=>s+t.amt,0);
@@ -3599,9 +3607,13 @@ function buildQuarterly(el) {
   }
 
   function empQStats(emp) {
-    const txns = q1Months.flatMap(m => m.data().filter(t =>
-      t.bm_id===emp.id || t.am_id===emp.id || t.th_id===emp.id || t.rh_id===emp.id
-    ));
+    const txns = q1Months.flatMap(m => m.data().filter(t => {
+      if (emp.designation==='BM') return t.bm_id===emp.id;
+      if (emp.designation==='AM') return t.am_id===emp.id;
+      if (emp.designation==='TH') return t.am_id===emp.id; // TH stored as am_id in slim data
+      if (emp.designation==='RH') return t.rh_id===emp.id;
+      return t.bm_id===emp.id||t.am_id===emp.id||t.rh_id===emp.id;
+    }));
     const ucAmt  = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
     const cvAmt  = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
     const tot    = ucAmt+cvAmt;
@@ -3614,7 +3626,13 @@ function buildQuarterly(el) {
   }
 
   function empMonthStats(emp, m) {
-    const txns  = m.data().filter(t=>t.bm_id===emp.id||t.am_id===emp.id||t.th_id===emp.id||t.rh_id===emp.id);
+    const txns  = m.data().filter(t => {
+      if (emp.designation==='BM') return t.bm_id===emp.id;
+      if (emp.designation==='AM') return t.am_id===emp.id;
+      if (emp.designation==='TH') return t.am_id===emp.id; // TH stored as am_id in slim data
+      if (emp.designation==='RH') return t.rh_id===emp.id;
+      return t.bm_id===emp.id||t.am_id===emp.id||t.rh_id===emp.id;
+    });
     const ucAmt = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
     const cvAmt = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
     const ch    = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
