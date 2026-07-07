@@ -368,39 +368,12 @@ async function tryLoadLiveData() {
     window._LIVE_EMP_RAW = data.employees; // store raw for milestone target columns
     window._LIVE_EMP = parseEmployees(data.employees);
 
-    // Parse transactions — current month is July-26
-    // But if all transactions are June (Apps Script not yet on July tab), treat them as LMTD
-    const txnMonths = new Set((data.transactions||[]).map(t=>String(t.disbursed_date||'').slice(0,7)).filter(Boolean));
-    const curMonthPfx  = getCurMonthPrefix();
-    const prevMonthPfx = getPrevMonthPrefix();
-    const hasJuly   = txnMonths.has(curMonthPfx);
-    const hasJune   = txnMonths.has(prevMonthPfx);
-
-    if (hasJuly) {
-      // Normal: July is live, parse as current month
-      window._LIVE_TXN = parseTransactions(data.transactions);
-    } else if (hasJune) {
-      // Apps Script still on June tab — June txns used as both current display AND LMTD
-      // July MTD will show 0 (correct — no disbursements yet)
-      window._LIVE_TXN = [];  // July = empty (not started)
-      window._LIVE_MAY = parseTransactions(data.transactions); // June = LMTD
-      window._LIVE_APR = data.apr_data ? parseTransactions(data.apr_data) : APR_DATA;
-      window._LIVE_MAR = data.mar_data ? parseTransactions(data.mar_data) : MAR_DATA;
-      window.CURRENT_MONTH = getCurMonthPrefix();
-      dataLoaded = true;
-      return;
-    } else {
-      window._LIVE_TXN = parseTransactions(data.transactions);
-    }
-
-    // Previous months for comparison (LMTD = June)
-    // Apps Script still uses 'may_data' key — when June txns are pushed there, use them
-    // Also: if transactions are all June (Apps Script not on July tab yet), they become LMTD
-    window._LIVE_MAY = data.june_data ? parseTransactions(data.june_data)   // future june_data key
-                     : (data.may_data && data.may_data.length) ? parseTransactions(data.may_data)  // june via may_data key
-                     : TXN_DATA; // last resort fallback
-    window._LIVE_APR = data.apr_data  ? parseTransactions(data.apr_data)  : APR_DATA;
-    window._LIVE_MAR = data.mar_data  ? parseTransactions(data.mar_data)  : MAR_DATA;
+    // transactions = current month (raw format) → parse it
+    // may_data     = previous month (already slim-parsed by Apps Script) → use directly
+    window._LIVE_TXN = parseTransactions(data.transactions || []);
+    window._LIVE_MAY = (data.may_data && data.may_data.length) ? data.may_data : TXN_DATA;
+    window._LIVE_APR = data.apr_data ? parseTransactions(data.apr_data) : APR_DATA;
+    window._LIVE_MAR = data.mar_data ? parseTransactions(data.mar_data) : MAR_DATA;
     dataLoaded = true;
 
     // Show last updated time on login screen
@@ -1330,7 +1303,7 @@ function renderMonthCompare() {
 
   const label = mcFilter === 'UC' ? 'Used Car' : mcFilter === 'CV' ? 'CV (UCV+NCV)' : 'All Products';
   const months = [
-    { label:'Jun 2026', s:jun, color:'#1a237e' },
+    { label:getCurMonthLabel(), s:jun, color:'#1a237e' },
     { label:getPrevMonthLabel(), s:may, color:'#283593' },
   ];
 
@@ -2217,7 +2190,7 @@ function buildTeamIncentive(el) {
     <!-- BM-wise table -->
     <div class="card" style="padding:0;overflow:hidden">
       <div style="padding:14px 20px;background:#f5f7ff;font-size:13px;font-weight:700;color:#1a237e;display:flex;justify-content:space-between;align-items:center">
-        <span>BM-wise Incentive — May vs June</span>
+        <span>BM-wise Incentive — ${getPrevMonthLabel()} vs ${getCurMonthLabel()}</span>
         <span style="font-size:11px;color:#9e9e9e;font-weight:400">UC: slab on effGMV + dealer bonus · CV: base×cases + UCV/NCV bonus</span>
       </div>
       <div style="overflow-x:auto">
@@ -2482,7 +2455,7 @@ function buildIncentive(el) {
 
         <!-- My Stats — May & June side by side -->
         <div class="card" style="padding:16px">
-          <div class="card-title">My Performance — May vs June</div>
+          <div class="card-title">My Performance — ${getPrevMonthLabel()} vs ${getCurMonthLabel()}</div>
           ${(() => {
             // Helper to compute CV stats for any txn pool
             function cvStats(pool, isMay) {
@@ -2572,7 +2545,7 @@ function buildIncentive(el) {
                 </div>
                 <!-- May vs June comparison -->
                 <div style="margin-top:12px;border-top:1px solid #e0e0e0;padding-top:12px">
-                  <div style="font-size:12px;font-weight:700;color:#1a237e;margin-bottom:8px">May vs June Comparison</div>
+                  <div style="font-size:12px;font-weight:700;color:#1a237e;margin-bottom:8px">${getPrevMonthLabel()} vs ${getCurMonthLabel()} Comparison</div>
                   <table style="width:100%;font-size:12px">
                     <thead><tr>
                       <th style="text-align:left">Metric</th>
@@ -2765,7 +2738,7 @@ function buildIncentive(el) {
     </div>
     <!-- May vs June comparison table -->
     <div class="card" style="margin-bottom:16px">
-      <div class="card-title">May vs June Comparison</div>
+      <div class="card-title">${getPrevMonthLabel()} vs ${getCurMonthLabel()} Comparison</div>
       <table style="width:100%">
         <thead><tr><th>Metric</th><th style="text-align:right;color:#1565c0">${getPrevMonthLabel()}</th><th style="text-align:right;color:#1a237e">${getCurMonthLabel()}</th></tr></thead>
         <tbody>
