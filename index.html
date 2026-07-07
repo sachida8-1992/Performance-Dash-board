@@ -374,6 +374,7 @@ async function tryLoadLiveData() {
     window._LIVE_MAY = (data.may_data && data.may_data.length) ? data.may_data : TXN_DATA;
     window._LIVE_APR = data.apr_data ? parseTransactions(data.apr_data) : APR_DATA;
     window._LIVE_MAR = data.mar_data ? parseTransactions(data.mar_data) : MAR_DATA;
+    loadHistoricalData(data); // store hist_YYYY_MM arrays for scorecard/monthly tabs
     dataLoaded = true;
 
     // Show last updated time on login screen
@@ -701,8 +702,14 @@ function buildPageList() {
     pages.push({id:'dealers',   label:'🏪 Top Channels'});
     pages.push({id:'banks',     label:'🏦 Banks'});
     pages.push({id:'incentive', label:'💰 Team Incentive'});
-    pages.push({id:'deviation', label:'📋 Deviation'});
-    pages.push({id:'issues',    label:'🔔 Issues'});
+    pages.push({id:'deviation',  label:'📋 Deviation'});
+    pages.push({id:'scorecard',  label:'🎯 Scorecard'});
+    pages.push({id:'monthly',    label:'📅 Monthly Summary'});
+    pages.push({id:'channel6m',   label:'📊 Channel 6M'});
+    pages.push({id:'quarterly',   label:'📈 Q1 Scorecard'});
+    pages.push({id:'channeldrive',label:'🚀 Channel Drive'});
+    pages.push({id:'mailroom',    label:'📧 Send Mail'});
+    pages.push({id:'issues',      label:'🔔 Issues'});
     return pages;
   }
 
@@ -732,8 +739,14 @@ function buildPageList() {
   if (d === 'BM') {
     pages.push({id:'weekly', label:'📊 Weekly Review'});
   }
-  pages.push({id:'deviation', label:'📋 Deviation Matrix'});
-  pages.push({id:'issues',    label:'🔔 Issues'});
+  pages.push({id:'deviation',  label:'📋 Deviation Matrix'});
+  pages.push({id:'scorecard',   label:'🎯 Scorecard'});
+  pages.push({id:'monthly',     label:'📅 Monthly Summary'});
+  pages.push({id:'channel6m',   label:'📊 Channel 6M'});
+  pages.push({id:'quarterly',   label:'📈 Q1 Scorecard'});
+  pages.push({id:'channeldrive',label:'🚀 Channel Drive'});
+  pages.push({id:'mailroom',    label:'📧 Send Mail'});
+  pages.push({id:'issues',      label:'🔔 Issues'});
   return pages;
 }
 
@@ -766,6 +779,12 @@ function buildPage(id, el) {
       case 'issues':    buildIssues(el); break;
       case 'deviation': buildDeviation(el); break;
       case 'hierarchy': buildHierarchy(el); break;
+      case 'scorecard': buildScorecard(el); break;
+      case 'monthly':   buildMonthlySummary(el); break;
+      case 'channel6m':    buildChannel6M(el); break;
+      case 'quarterly':    buildQuarterly(el); break;
+      case 'channeldrive': buildChannelDrive(el); break;
+      case 'mailroom':     buildMailroom(el); break;
     }
   } catch(err) {
     console.error('[buildPage:'+id+']', err);
@@ -3111,6 +3130,1121 @@ function buildInsights(el) {
   `;
 }
 </script>
+
+<script>
+// ========== HISTORICAL DATA HELPER ==========
+// ── Indian FY: April → March ──────────────────────────────────
+// Returns FY start year (e.g. 2026 for FY2026-27, i.e. Apr 2026 - Mar 2027)
+function getFYStartYear() {
+  const now = new Date();
+  return now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1; // month 3 = April
+}
+
+// All months from April of current FY up to current month (oldest first)
+function getFYMonths() {
+  const fyStart = getFYStartYear(); // e.g. 2026
+  const now     = new Date();
+  const months  = [];
+
+  // April of FY start year up to current month
+  for (let m = 3; m <= 11; m++) { // April(3)..December(11)
+    const d = new Date(fyStart, m, 1);
+    if (d > now) break;
+    months.push(makeMonthEntry(d));
+  }
+  for (let m = 0; m <= 2; m++) { // Jan(0)..Mar(2) of next year
+    const d = new Date(fyStart + 1, m, 1);
+    if (d > now) break;
+    months.push(makeMonthEntry(d));
+  }
+
+  return months; // oldest (April) first
+}
+
+// All months for last 6 months (for channel 6M tab)
+function getLast6Months() {
+  const now    = new Date();
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push(makeMonthEntry(d));
+  }
+  return months;
+}
+
+// Build a month entry object
+function makeMonthEntry(d) {
+  const pfx   = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+  const label = d.toLocaleString('en-IN', {month:'long', year:'numeric'});
+  const curPfx  = getCurMonthPrefix();
+  const prevPfx = getPrevMonthPrefix();
+
+  let dataFn;
+  if (pfx === curPfx) {
+    dataFn = () => window._LIVE_TXN || [];
+  } else if (pfx === prevPfx) {
+    dataFn = () => window._LIVE_MAY || [];
+  } else {
+    const key = 'hist_' + pfx.replace('-','_');
+    dataFn = () => window._rawHistData?.[key] || [];
+  }
+
+  return { pfx, label, data: dataFn };
+}
+
+// Backward compat alias
+function getHistoricalMonths() { return getFYMonths(); }
+
+function loadHistoricalData(data) {
+  // Called from data fetch — store hist_ arrays
+  window._rawHistData = {};
+  Object.keys(data).forEach(k => {
+    if (k.startsWith('hist_')) {
+      window._rawHistData[k] = data[k]; // already slim-parsed
+    }
+  });
+}
+
+// ========== TAB 1: MONTHLY SUMMARY ==========
+function buildMonthlySummary(el) {
+  const role   = currentUser.designation;
+  const emps   = getEmpData();
+  const months = getHistoricalMonths();
+
+  // Get all employees in scope
+  function getScoped(filterRole) {
+    return emps.filter(e => {
+      if (filterRole && e.designation !== filterRole) return false;
+      if (role === 'BM')  return e.id === currentUser.id;
+      if (role === 'AM')  return e.am_id === currentUser.id || e.id === currentUser.id;
+      if (role === 'TH')  return e.th_id === currentUser.id || e.id === currentUser.id;
+      if (role === 'RH')  return e.rh_id === currentUser.id || e.id === currentUser.id;
+      return false;
+    });
+  }
+
+  const roleOptions = role === 'RH' ? ['BM','AM','TH'] :
+                      role === 'TH' ? ['BM','AM'] :
+                      role === 'AM' ? ['BM'] : ['BM'];
+
+  // Build stats per employee per month
+  function empMonthStats(emp, monthData) {
+    const txns  = monthData.filter(t => t.bm_id === emp.id || t.am_id === emp.id || t.th_id === emp.id || t.rh_id === emp.id);
+    const uc    = txns.filter(t=>t.product==='Used Car');
+    const cv    = txns.filter(t=>t.product!=='Used Car');
+    const ucAmt = uc.reduce((s,t)=>s+t.amt,0);
+    const cvAmt = cv.reduce((s,t)=>s+t.amt,0);
+    const tot   = ucAmt+cvAmt;
+    const ch    = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    const ucTgt = (emp.uc_tgt||0)*1e5;
+    const cvTgt = (emp.cv_tgt||0)*1e5;
+    const tgt   = ucTgt+cvTgt;
+    const ach   = tgt>0?Math.round((tot/tgt)*100):null;
+    return { tot, ucAmt, cvAmt, cases:txns.length, ch, ucCases:uc.length, cvCases:cv.length, ach, tgt };
+  }
+
+  let selectedRole = roleOptions[0];
+
+  function renderTable(showRole) {
+    const scopedEmps = getScoped(showRole);
+    const rows = scopedEmps.map(emp => {
+      const monthStats = months.map(m => empMonthStats(emp, m.data()));
+      const ytdTot  = monthStats.reduce((s,m)=>s+m.tot,0);
+      const ytdCases= monthStats.reduce((s,m)=>s+m.cases,0);
+      return { emp, monthStats, ytdTot, ytdCases };
+    }).sort((a,b)=>b.ytdTot-a.ytdTot);
+
+    return `
+      <div style="overflow-x:auto">
+        <table style="min-width:900px">
+          <thead>
+            <tr style="background:#1a237e;color:#fff">
+              <th style="padding:10px 12px;text-align:left;position:sticky;left:0;background:#1a237e;z-index:2">#</th>
+              <th style="padding:10px 12px;text-align:left;position:sticky;left:30px;background:#1a237e;z-index:2;min-width:140px">Name</th>
+              <th style="padding:10px 8px;text-align:center">Tier</th>
+              ${months.map(m=>`<th style="padding:10px 8px;text-align:center;min-width:110px;border-left:2px solid rgba(255,255,255,.2)">${m.label.split(' ')[0]}<br><small style="opacity:.7;font-size:10px">${m.label.split(' ')[1]}</small></th>`).join('')}
+              <th style="padding:10px 8px;text-align:right;border-left:3px solid #ffd54f;background:#283593">FY ${getFYStartYear()}-${String(getFYStartYear()+1).slice(2)} Total</th>
+              <th style="padding:10px 8px;text-align:center;background:#283593">YTD Cases</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((r,i) => `
+              <tr style="${i%2===0?'':'background:#f8f9ff'}">
+                <td style="padding:8px 12px;color:#9e9e9e;font-size:11px;position:sticky;left:0;background:${i%2===0?'#fff':'#f8f9ff'}">${i+1}</td>
+                <td style="padding:8px 12px;position:sticky;left:30px;background:${i%2===0?'#fff':'#f8f9ff'}">
+                  <b style="font-size:12px">${r.emp.name}</b>
+                </td>
+                <td style="padding:8px;text-align:center"><span class="badge badge-grey" style="font-size:10px">${r.emp.tier||'—'}</span></td>
+                ${r.monthStats.map(s => `
+                  <td style="padding:6px 8px;text-align:center;border-left:2px solid #f0f0f0;vertical-align:middle">
+                    ${s.cases===0
+                      ? '<span style="color:#e0e0e0;font-size:11px">—</span>'
+                      : `<div style="font-size:12px;font-weight:700;color:#1a237e">${fmtCr(s.tot)}</div>
+                         <div style="font-size:10px;color:#555;margin-top:2px">${s.cases} cases | ${s.ch} ch</div>
+                         <div style="font-size:10px;color:#1565c0">UC:${fmtL(s.ucAmt)}</div>
+                         <div style="font-size:10px;color:#6a1b9a">CV:${fmtL(s.cvAmt)}</div>
+                         ${s.ach!==null?`<div style="margin-top:3px">${achBadge(s.ach)}</div>`:''}`
+                    }
+                  </td>`).join('')}
+                <td style="padding:8px;text-align:right;border-left:3px solid #ffd54f"><b>${fmtCr(r.ytdTot)}</b></td>
+                <td style="padding:8px;text-align:center">${r.ytdCases}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  el.innerHTML = `
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px 16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07)">
+      <span style="font-size:13px;font-weight:700;color:#1a237e">👤 View:</span>
+      ${roleOptions.map(r=>`<button onclick="window._mthRole='${r}';document.getElementById('mthBody').innerHTML=window._mthRender('${r}')"
+        style="padding:6px 16px;border-radius:20px;border:1px solid #c5cae9;font-size:12px;cursor:pointer;font-weight:600;background:${r===selectedRole?'#1a237e':'#fff'};color:${r===selectedRole?'#fff':'#333'}">${r}</button>`).join('')}
+      <span style="font-size:11px;color:#9e9e9e;margin-left:8px">Each cell: Amount | Cases | Channels | UC | CV | Ach%</span>
+    </div>
+    <div id="mthBody">${renderTable(selectedRole)}</div>
+  `;
+
+  window._mthRender = renderTable;
+}
+
+// ========== TAB 2: CHANNEL 6-MONTH PERFORMANCE ==========
+function buildChannel6M(el) {
+  const months  = getLast6Months(); // last 6 calendar months
+  const role    = currentUser.designation;
+
+  // Collect all transactions across 6 months scoped to current user
+  function scopeFilter(txns) {
+    if (role==='BM') return txns.filter(t=>t.bm_id===currentUser.id);
+    if (role==='AM') return txns.filter(t=>t.am_id===currentUser.id);
+    if (role==='TH') return txns.filter(t=>t.th_id===currentUser.id);
+    if (role==='RH') return txns.filter(t=>t.rh_id===currentUser.id);
+    return txns;
+  }
+
+  // Build dealer map across all months
+  const dealerMap = {}; // dcid → { dealer, bm_id, bm, months: {pfx: {uc,cv,cases}} }
+
+  months.forEach(m => {
+    const txns = scopeFilter(m.data());
+    txns.forEach(t => {
+      if (!t.dcid) return;
+      if (!dealerMap[t.dcid]) dealerMap[t.dcid] = {
+        dcid: t.dcid, dealer: t.dealer||t.dcid,
+        bm_id: t.bm_id, bm: t.bm, months: {}
+      };
+      const d = dealerMap[t.dcid];
+      if (!d.months[m.pfx]) d.months[m.pfx] = {uc:0,cv:0,cases:0,ucAmt:0,cvAmt:0};
+      const s = d.months[m.pfx];
+      if (t.product==='Used Car') { s.uc++; s.ucAmt+=t.amt; }
+      else { s.cv++; s.cvAmt+=t.amt; }
+      s.cases++;
+    });
+  });
+
+  const dealers = Object.values(dealerMap);
+  dealers.forEach(d => {
+    d.totalAmt   = months.reduce((s,m)=>{const ms=d.months[m.pfx];return s+(ms?ms.ucAmt+ms.cvAmt:0);},0);
+    d.activeMonths = months.filter(m=>d.months[m.pfx]&&d.months[m.pfx].cases>0).length;
+    d.gapMonths    = months.filter(m=>!d.months[m.pfx]||d.months[m.pfx].cases===0).length;
+    // Resolve BM name
+    const bmEmp = resolveEmpById(d.bm_id);
+    d.bmName = bmEmp ? bmEmp.name : (d.bm || '—');
+  });
+  dealers.sort((a,b)=>b.totalAmt-a.totalAmt);
+
+  const curPfx  = getCurMonthPrefix();
+  const prevPfx = getPrevMonthPrefix();
+
+  el.innerHTML = `
+    <div style="margin-bottom:12px;padding:12px 16px;background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);font-size:12px;color:#555">
+      📊 <b>${dealers.length} channels</b> tracked across last 6 months &nbsp;|&nbsp;
+      🟢 Active = had txns that month &nbsp;|&nbsp; 🔴 Gap = no txns
+    </div>
+    <div style="overflow-x:auto">
+      <table style="min-width:800px">
+        <thead>
+          <tr style="background:#1a237e;color:#fff">
+            <th style="padding:10px 12px;text-align:left">#</th>
+            <th style="padding:10px 12px;text-align:left;min-width:160px">Dealer / Channel</th>
+            <th style="padding:10px 8px;text-align:left;min-width:100px">BM</th>
+            ${months.map(m=>`<th style="padding:10px 8px;text-align:center;min-width:90px;border-left:2px solid rgba(255,255,255,.2)">${m.label.split(' ')[0]}<br><small style="opacity:.7;font-size:10px">${m.label.split(' ')[1]}</small></th>`).join('')}
+            <th style="padding:10px 8px;text-align:center">Act. Months</th>
+            <th style="padding:10px 8px;text-align:right">6M Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${dealers.map((d,i) => `
+            <tr style="${i%2===0?'':'background:#f8f9ff'}">
+              <td style="padding:8px 12px;color:#9e9e9e;font-size:11px">${i+1}</td>
+              <td style="padding:8px 12px">
+                <b style="font-size:12px">${d.dealer}</b>
+                <div style="font-size:10px;color:#9e9e9e">${d.dcid}</div>
+              </td>
+              <td style="padding:8px;font-size:11px;color:#555">${d.bmName}</td>
+              ${months.map(m => {
+                const s = d.months[m.pfx];
+                const isGap = !s || s.cases === 0;
+                const isCur = m.pfx === curPfx;
+                return `<td style="padding:6px 8px;text-align:center;border-left:2px solid #f0f0f0;${isGap?'background:#fff8f8;':''}${isCur?'border-left:3px solid #1a237e;':''}" >
+                  ${isGap
+                    ? `<span style="color:#ffcdd2;font-size:16px" title="No activity">●</span>`
+                    : `<div style="font-size:11px;font-weight:700;color:#1a237e">${fmtL(s.ucAmt+s.cvAmt)}</div>
+                       <div style="font-size:9px;color:#555">${s.cases}c</div>
+                       ${s.ucAmt>0?`<div style="font-size:9px;color:#1565c0">UC:${fmtL(s.ucAmt)}</div>`:''}
+                       ${s.cvAmt>0?`<div style="font-size:9px;color:#6a1b9a">CV:${fmtL(s.cvAmt)}</div>`:''}`
+                  }
+                </td>`;
+              }).join('')}
+              <td style="padding:8px;text-align:center">
+                <span style="background:${d.activeMonths>=4?'#e8f5e9':d.activeMonths>=2?'#fff8e1':'#ffebee'};color:${d.activeMonths>=4?'#2e7d32':d.activeMonths>=2?'#f57f17':'#c62828'};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">
+                  ${d.activeMonths}/6
+                </span>
+              </td>
+              <td style="padding:8px;text-align:right"><b>${fmtCr(d.totalAmt)}</b></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// ========== TAB 3: SCORECARD (YTD + Channel Intelligence) ==========
+function buildScorecard(el) {
+  const role    = currentUser.designation;
+  const months  = getFYMonths(); // Indian FY: April onwards
+  const emps    = getEmpData();
+  const curPfx  = getCurMonthPrefix();
+  const prevPfx = getPrevMonthPrefix();
+
+  // Get all months data in scope
+  function scopeTxns(txns) {
+    if (role==='BM') return txns.filter(t=>t.bm_id===currentUser.id);
+    if (role==='AM') return txns.filter(t=>t.am_id===currentUser.id);
+    if (role==='TH') return txns.filter(t=>t.th_id===currentUser.id);
+    return txns;
+  }
+
+  const curTxns  = scopeTxns(window._LIVE_TXN||[]);
+  const prevTxns = scopeTxns(window._LIVE_MAY||[]);
+  const allTxns  = months.flatMap(m=>scopeTxns(m.data()));
+
+  // YTD stats
+  const ytdAmt   = allTxns.reduce((s,t)=>s+t.amt,0);
+  const ytdUC    = allTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+  const ytdCV    = allTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+  const ytdCases = allTxns.length;
+
+  const curEmp   = resolveEmpById(currentUser.id);
+  const ucTgt    = (curEmp?.uc_tgt||0)*1e5;
+  const cvTgt    = (curEmp?.cv_tgt||0)*1e5;
+  const totTgt   = ucTgt+cvTgt;
+
+  // Channel analysis
+  const curCh    = new Set(curTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+  const prevCh   = new Set(prevTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+
+  // Last 3 months channels
+  const last3    = months.slice(-3);
+  const l3Txns   = last3.flatMap(m=>scopeTxns(m.data()));
+  const l3Ch     = new Set(l3Txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+
+  // Lost channels: active in prev, not in cur
+  const lostCh   = [...prevCh].filter(d=>!curCh.has(d));
+  // New channels: active in cur, not in prev
+  const newCh    = [...curCh].filter(d=>!prevCh.has(d));
+  // Inactive channels: in last 3 months but not current
+  const inactiveCh = [...l3Ch].filter(d=>!curCh.has(d));
+
+  // Estimate potential GMV from inactive channels (avg GMV per channel from last 3 months)
+  function avgChGMV(dcid) {
+    const t = l3Txns.filter(t=>t.dcid===dcid);
+    return t.length > 0 ? t.reduce((s,t)=>s+t.amt,0)/last3.length : 0;
+  }
+
+  const lostChData = lostCh.map(dcid => {
+    const txns = prevTxns.filter(t=>t.dcid===dcid);
+    const gmv  = txns.reduce((s,t)=>s+t.amt,0);
+    const dealer = txns[0]?.dealer || dcid;
+    const bmEmp  = resolveEmpById(txns[0]?.bm_id);
+    return { dcid, dealer, gmv, bm: bmEmp?.name||txns[0]?.bm||'—' };
+  }).sort((a,b)=>b.gmv-a.gmv);
+
+  const inactiveChData = inactiveCh.filter(d=>!lostCh.includes(d)).map(dcid => {
+    const txns  = l3Txns.filter(t=>t.dcid===dcid);
+    const avg   = avgChGMV(dcid);
+    const dealer= txns[0]?.dealer || dcid;
+    const bmEmp = resolveEmpById(txns[0]?.bm_id);
+    return { dcid, dealer, avg, bm: bmEmp?.name||txns[0]?.bm||'—', lastActive: txns.sort((a,b)=>b.date.localeCompare(a.date))[0]?.date?.slice(0,7)||'—' };
+  }).sort((a,b)=>b.avg-a.avg);
+
+  const potentialGMV = lostChData.reduce((s,c)=>s+c.gmv,0) + inactiveChData.reduce((s,c)=>s+c.avg,0);
+
+  el.innerHTML = `
+    <!-- YTD KPIs -->
+    <div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px">
+      <div class="kpi"><div class="kpi-label">FY ${getFYStartYear()}-${String(getFYStartYear()+1).slice(2)} Disbursement</div><div class="kpi-value">${fmtCr(ytdAmt)}</div></div>
+      <div class="kpi"><div class="kpi-label">YTD UC</div><div class="kpi-value" style="font-size:20px;color:#1565c0">${fmtCr(ytdUC)}</div></div>
+      <div class="kpi"><div class="kpi-label">YTD CV</div><div class="kpi-value" style="font-size:20px;color:#6a1b9a">${fmtCr(ytdCV)}</div></div>
+      <div class="kpi"><div class="kpi-label">YTD Cases</div><div class="kpi-value">${ytdCases}</div></div>
+      <div class="kpi"><div class="kpi-label">MTD Ach% vs Target</div>
+        <div class="kpi-value" style="color:${totTgt>0&&Math.round((curTxns.reduce((s,t)=>s+t.amt,0)/totTgt)*100)>=70?'#2e7d32':'#c62828'}">
+          ${totTgt>0?Math.round((curTxns.reduce((s,t)=>s+t.amt,0)/totTgt)*100)+'%':'—'}
+        </div>
+      </div>
+    </div>
+
+    <!-- Channel Activation Summary -->
+    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+      <div class="kpi"><div class="kpi-label">Current Month Channels</div><div class="kpi-value">${curCh.size}</div>
+        <div class="kpi-sub">${curCh.size>=prevCh.size?'▲':'▼'} vs ${prevCh.size} last month</div></div>
+      <div class="kpi"><div class="kpi-label">New Channels (vs LMTD)</div><div class="kpi-value" style="color:#2e7d32">+${newCh.length}</div></div>
+      <div class="kpi"><div class="kpi-label">Lost Channels (vs LMTD)</div><div class="kpi-value" style="color:#c62828">-${lostCh.length}</div></div>
+      <div class="kpi"><div class="kpi-label">Potential GMV (Reactivation)</div><div class="kpi-value" style="color:#e65100">${fmtCr(potentialGMV)}</div></div>
+    </div>
+
+    <!-- Lost Channels (active prev month, gone now) -->
+    ${lostChData.length > 0 ? `
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+      <div style="padding:12px 20px;background:#ffebee;font-size:13px;font-weight:700;color:#c62828">
+        🔴 Lost Channels — Active in ${getPrevMonthLabel()}, Missing in ${getCurMonthLabel()} (${lostChData.length})
+        <span style="font-size:11px;font-weight:400;margin-left:8px">Total GMV at risk: ${fmtCr(lostChData.reduce((s,c)=>s+c.gmv,0))}</span>
+      </div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr style="background:#f5f5f5">
+          <th>#</th><th>Dealer / Channel</th><th>BM</th><th style="text-align:right">${getPrevMonthLabel()} GMV</th><th>Action</th>
+        </tr></thead>
+        <tbody>${lostChData.map((c,i)=>`<tr>
+          <td style="color:#9e9e9e;font-size:11px">${i+1}</td>
+          <td><b style="font-size:12px">${c.dealer}</b><div style="font-size:10px;color:#9e9e9e">${c.dcid}</div></td>
+          <td style="font-size:11px">${c.bm}</td>
+          <td style="text-align:right;color:#c62828;font-weight:700">${fmtCr(c.gmv)}</td>
+          <td><span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:10px;font-size:10px">Re-engage</span></td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>` : ''}
+
+    <!-- Inactive Channels (last 3 months but not current) -->
+    ${inactiveChData.length > 0 ? `
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+      <div style="padding:12px 20px;background:#fff8e1;font-size:13px;font-weight:700;color:#f57f17">
+        🟡 Inactive Channels — Last 3 Months but Not This Month (${inactiveChData.length})
+        <span style="font-size:11px;font-weight:400;margin-left:8px">Est. potential: ${fmtCr(inactiveChData.reduce((s,c)=>s+c.avg,0))}/month</span>
+      </div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr style="background:#f5f5f5">
+          <th>#</th><th>Dealer / Channel</th><th>BM</th><th style="text-align:center">Last Active</th><th style="text-align:right">Avg Monthly GMV</th><th>Action</th>
+        </tr></thead>
+        <tbody>${inactiveChData.slice(0,20).map((c,i)=>`<tr>
+          <td style="color:#9e9e9e;font-size:11px">${i+1}</td>
+          <td><b style="font-size:12px">${c.dealer}</b><div style="font-size:10px;color:#9e9e9e">${c.dcid}</div></td>
+          <td style="font-size:11px">${c.bm}</td>
+          <td style="text-align:center;font-size:11px;color:#f57f17">${c.lastActive}</td>
+          <td style="text-align:right;color:#e65100;font-weight:700">${fmtCr(c.avg)}</td>
+          <td><span style="background:#fff8e1;color:#f57f17;padding:2px 8px;border-radius:10px;font-size:10px">Reactivate</span></td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>` : ''}
+
+    <!-- Last 3 months unique channel trend -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">📈 Channel Activation Trend — Last 3 Months</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px">
+        ${last3.map(m=>{
+          const txns = scopeTxns(m.data());
+          const ch   = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+          const amt  = txns.reduce((s,t)=>s+t.amt,0);
+          return `<div style="flex:1;min-width:140px;background:#f5f7ff;border-radius:10px;padding:14px;text-align:center">
+            <div style="font-size:12px;font-weight:700;color:#1a237e">${m.label}</div>
+            <div style="font-size:24px;font-weight:800;color:#283593;margin:6px 0">${ch}</div>
+            <div style="font-size:11px;color:#555">unique channels</div>
+            <div style="font-size:12px;color:#1565c0;margin-top:4px">${fmtCr(amt)}</div>
+          </div>`;
+        }).join('')}
+        <div style="flex:1;min-width:140px;background:#e8f5e9;border-radius:10px;padding:14px;text-align:center">
+          <div style="font-size:12px;font-weight:700;color:#2e7d32">Gap (L3M → Now)</div>
+          <div style="font-size:24px;font-weight:800;color:#c62828;margin:6px 0">${inactiveCh.length}</div>
+          <div style="font-size:11px;color:#555">channels dropped</div>
+          <div style="font-size:12px;color:#e65100;margin-top:4px">~${fmtCr(potentialGMV)} potential</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+</script>
+
+<script>
+// ========== Q1 QUARTERLY SCORECARD (Apr-Jun) ==========
+function buildQuarterly(el) {
+  const role  = currentUser.designation;
+  const emps  = getEmpData();
+
+  // Q1 = April, May, June
+  const q1Months = [
+    makeMonthEntry(new Date(getFYStartYear(), 3, 1)),  // April
+    makeMonthEntry(new Date(getFYStartYear(), 4, 1)),  // May
+    makeMonthEntry(new Date(getFYStartYear(), 5, 1)),  // June
+  ].filter(m => {
+    const d = new Date(m.pfx + '-01');
+    return d <= new Date();
+  });
+
+  function getScoped(filterRole) {
+    return emps.filter(e => {
+      if (filterRole && e.designation !== filterRole) return false;
+      if (role==='BM')  return e.id === currentUser.id;
+      if (role==='AM')  return e.am_id === currentUser.id || e.id === currentUser.id;
+      if (role==='TH')  return e.th_id === currentUser.id || e.id === currentUser.id;
+      if (role==='RH')  return e.rh_id === currentUser.id || e.id === currentUser.id;
+      return false;
+    });
+  }
+
+  function empQStats(emp) {
+    const txns = q1Months.flatMap(m => m.data().filter(t =>
+      t.bm_id===emp.id || t.am_id===emp.id || t.th_id===emp.id || t.rh_id===emp.id
+    ));
+    const ucAmt  = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+    const cvAmt  = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+    const tot    = ucAmt+cvAmt;
+    const ch     = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    const ucTgt  = (emp.uc_tgt||0)*1e5*3; // 3 months
+    const cvTgt  = (emp.cv_tgt||0)*1e5*3;
+    const tgt    = ucTgt+cvTgt;
+    const ach    = tgt>0?Math.round((tot/tgt)*100):null;
+    return { tot, ucAmt, cvAmt, cases:txns.length, ch, tgt, ach };
+  }
+
+  function empMonthStats(emp, m) {
+    const txns  = m.data().filter(t=>t.bm_id===emp.id||t.am_id===emp.id||t.th_id===emp.id||t.rh_id===emp.id);
+    const ucAmt = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+    const cvAmt = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+    const ch    = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    return { tot:ucAmt+cvAmt, ucAmt, cvAmt, cases:txns.length, ch };
+  }
+
+  const roleOptions = role==='RH'?['BM','AM','TH']:role==='TH'?['BM','AM']:['BM'];
+
+  function renderQ(showRole) {
+    const scopedEmps = getScoped(showRole);
+    const rows = scopedEmps.map(emp => ({
+      emp,
+      q: empQStats(emp),
+      months: q1Months.map(m => empMonthStats(emp, m))
+    })).sort((a,b)=>b.q.tot-a.q.tot);
+
+    const totQ1  = rows.reduce((s,r)=>s+r.q.tot,0);
+    const totUC  = rows.reduce((s,r)=>s+r.q.ucAmt,0);
+    const totCV  = rows.reduce((s,r)=>s+r.q.cvAmt,0);
+    const onTrack= rows.filter(r=>r.q.ach!==null&&r.q.ach>=70).length;
+
+    return `
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+        <div class="kpi"><div class="kpi-label">Q1 Team Total</div><div class="kpi-value">${fmtCr(totQ1)}</div></div>
+        <div class="kpi"><div class="kpi-label">Q1 UC</div><div class="kpi-value" style="color:#1565c0;font-size:20px">${fmtCr(totUC)}</div></div>
+        <div class="kpi"><div class="kpi-label">Q1 CV</div><div class="kpi-value" style="color:#6a1b9a;font-size:20px">${fmtCr(totCV)}</div></div>
+        <div class="kpi"><div class="kpi-label">On Track (≥70%)</div><div class="kpi-value" style="color:#2e7d32">${onTrack}/${rows.length}</div></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="min-width:800px">
+          <thead>
+            <tr style="background:#1a237e;color:#fff">
+              <th style="padding:10px 12px;text-align:left">#</th>
+              <th style="padding:10px 12px;text-align:left;min-width:140px">Name</th>
+              <th style="padding:10px 8px">Tier</th>
+              ${q1Months.map(m=>`
+                <th style="padding:10px 8px;text-align:center;border-left:2px solid rgba(255,255,255,.2);min-width:110px">
+                  ${m.label.split(' ')[0]}
+                </th>`).join('')}
+              <th style="padding:10px 8px;text-align:right;border-left:3px solid #ffd54f;background:#283593">Q1 Total</th>
+              <th style="padding:10px 8px;text-align:center;background:#283593">Q1 Ach%</th>
+              <th style="padding:10px 8px;text-align:center;background:#283593">Ch</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((r,i)=>`
+              <tr style="${i%2===0?'':'background:#f8f9ff'}">
+                <td style="padding:8px 12px;color:#9e9e9e;font-size:11px">${i+1}</td>
+                <td style="padding:8px 12px"><b style="font-size:12px">${r.emp.name}</b></td>
+                <td style="padding:8px;text-align:center"><span class="badge badge-grey" style="font-size:10px">${r.emp.tier||'—'}</span></td>
+                ${r.months.map(s=>`
+                  <td style="padding:6px 8px;text-align:center;border-left:2px solid #f0f0f0">
+                    ${s.cases===0
+                      ? '<span style="color:#e0e0e0">—</span>'
+                      : `<div style="font-size:12px;font-weight:700;color:#1a237e">${fmtCr(s.tot)}</div>
+                         <div style="font-size:10px;color:#555">${s.cases}c | ${s.ch}ch</div>
+                         <div style="font-size:10px;color:#1565c0">UC:${fmtL(s.ucAmt)}</div>
+                         <div style="font-size:10px;color:#6a1b9a">CV:${fmtL(s.cvAmt)}</div>`
+                    }
+                  </td>`).join('')}
+                <td style="padding:8px 12px;text-align:right;border-left:3px solid #ffd54f"><b>${fmtCr(r.q.tot)}</b></td>
+                <td style="padding:8px;text-align:center">${r.q.ach!==null?achBadge(r.q.ach):'<span class="badge badge-grey">—</span>'}</td>
+                <td style="padding:8px;text-align:center">${r.q.ch}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  el.innerHTML = `
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px 16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07)">
+      <span style="font-size:13px;font-weight:700;color:#1a237e">📈 Q1 FY${getFYStartYear()}-${String(getFYStartYear()+1).slice(2)} (Apr–Jun) &nbsp;|&nbsp; View:</span>
+      ${roleOptions.map((r,i)=>`
+        <button id="qBtn_${r}" onclick="document.querySelectorAll('[id^=qBtn_]').forEach(b=>b.style.background='#fff',b.style.color='#333');this.style.background='#1a237e';this.style.color='#fff';document.getElementById('qBody').innerHTML=window._qRender('${r}')"
+          style="padding:6px 16px;border-radius:20px;border:1px solid #c5cae9;font-size:12px;cursor:pointer;font-weight:600;background:${i===0?'#1a237e':'#fff'};color:${i===0?'#fff':'#333'}">${r}</button>`).join('')}
+    </div>
+    <div id="qBody">${renderQ(roleOptions[0])}</div>
+  `;
+  window._qRender = renderQ;
+}
+
+// ========== CHANNEL DRIVE (Role-wise) ==========
+function buildChannelDrive(el) {
+  const role    = currentUser.designation;
+  const emps    = getEmpData();
+  const curTxns = myTxns;
+  const prevData= window._LIVE_MAY || [];
+  const l3Data  = getLast6Months().slice(-3).flatMap(m => {
+    const t = m.data();
+    if (role==='BM') return t.filter(x=>x.bm_id===currentUser.id);
+    if (role==='AM') return t.filter(x=>x.am_id===currentUser.id);
+    if (role==='TH') return t.filter(x=>x.th_id===currentUser.id);
+    return t.filter(x=>x.rh_id===currentUser.id);
+  });
+
+  function scopePrev(txns) {
+    if (role==='BM') return txns.filter(t=>t.bm_id===currentUser.id);
+    if (role==='AM') return txns.filter(t=>t.am_id===currentUser.id);
+    if (role==='TH') return txns.filter(t=>t.th_id===currentUser.id);
+    return txns.filter(t=>t.rh_id===currentUser.id);
+  }
+
+  const prevTxns = scopePrev(prevData);
+  const curCh  = new Set(curTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+  const prevCh = new Set(prevTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+  const l3Ch   = new Set(l3Data.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+
+  // Lost = was in prev, not in cur
+  const lostDcids = [...prevCh].filter(d=>!curCh.has(d));
+  // Inactive = in L3 but not cur (excluding lost)
+  const inactiveDcids = [...l3Ch].filter(d=>!curCh.has(d)&&!lostDcids.includes(d));
+
+  function dealerInfo(dcid, txnPool) {
+    const t = txnPool.filter(x=>x.dcid===dcid);
+    return {
+      dealer: t[0]?.dealer || dcid,
+      bm_id:  t[0]?.bm_id || '',
+      gmv:    t.reduce((s,x)=>s+x.amt,0),
+      cases:  t.length,
+      bm:     resolveEmpById(t[0]?.bm_id)?.name || t[0]?.bm || '—'
+    };
+  }
+
+  // ── BM VIEW ──────────────────────────────────
+  if (role === 'BM') {
+    const lost     = lostDcids.map(d=>({...dealerInfo(d,prevTxns), dcid:d})).sort((a,b)=>b.gmv-a.gmv);
+    const inactive = inactiveDcids.map(d=>({...dealerInfo(d,l3Data), dcid:d})).sort((a,b)=>b.gmv-a.gmv);
+    el.innerHTML = `
+      <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
+        <div class="kpi"><div class="kpi-label">Active This Month</div><div class="kpi-value" style="color:#2e7d32">${curCh.size}</div></div>
+        <div class="kpi"><div class="kpi-label">Lost (vs ${getPrevMonthLabel().split(' ')[0]})</div><div class="kpi-value" style="color:#c62828">${lost.length}</div></div>
+        <div class="kpi"><div class="kpi-label">Inactive (L3M)</div><div class="kpi-value" style="color:#f57f17">${inactive.length}</div></div>
+      </div>
+      ${lost.length?`
+      <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+        <div style="padding:12px 20px;background:#ffebee;font-weight:700;font-size:13px;color:#c62828">
+          🔴 Re-engage These Channels — Were Active Last Month (${lost.length})
+        </div>
+        <table><thead><tr><th>#</th><th>Dealer</th><th style="text-align:right">${getPrevMonthLabel().split(' ')[0]} GMV</th><th>Cases</th><th>Priority</th></tr></thead>
+        <tbody>${lost.map((d,i)=>`<tr>
+          <td style="color:#9e9e9e">${i+1}</td>
+          <td><b>${d.dealer}</b><div style="font-size:10px;color:#9e9e9e">${d.dcid}</div></td>
+          <td style="text-align:right;color:#c62828;font-weight:700">${fmtCr(d.gmv)}</td>
+          <td>${d.cases}</td>
+          <td><span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:10px;font-size:10px">🔥 High</span></td>
+        </tr>`).join('')}</tbody></table>
+      </div>`:''}
+      ${inactive.length?`
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:12px 20px;background:#fff8e1;font-weight:700;font-size:13px;color:#f57f17">
+          🟡 Reactivate These Channels — Active in Last 3 Months (${inactive.length})
+        </div>
+        <table><thead><tr><th>#</th><th>Dealer</th><th style="text-align:right">L3M GMV</th><th>Cases</th></tr></thead>
+        <tbody>${inactive.map((d,i)=>`<tr>
+          <td style="color:#9e9e9e">${i+1}</td>
+          <td><b>${d.dealer}</b><div style="font-size:10px;color:#9e9e9e">${d.dcid}</div></td>
+          <td style="text-align:right;color:#f57f17;font-weight:700">${fmtCr(d.gmv)}</td>
+          <td>${d.cases}</td>
+        </tr>`).join('')}</tbody></table>
+      </div>`:''}
+    `;
+    return;
+  }
+
+  // ── AM / TH / RH VIEW ────────────────────────
+  // Group by BM — show each BM's channel gap
+  const bmList = emps.filter(e => {
+    if (e.designation !== 'BM') return false;
+    if (role==='AM') return e.am_id === currentUser.id;
+    if (role==='TH') return e.th_id === currentUser.id;
+    return e.rh_id === currentUser.id;
+  });
+
+  const bmRows = bmList.map(bm => {
+    const bmCur  = curTxns.filter(t=>t.bm_id===bm.id);
+    const bmPrev = prevTxns.filter(t=>t.bm_id===bm.id);
+    const bmL3   = l3Data.filter(t=>t.bm_id===bm.id);
+    const bmCurCh  = new Set(bmCur.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+    const bmPrevCh = new Set(bmPrev.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+    const bmL3Ch   = new Set(bmL3.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+    const bmLost   = [...bmPrevCh].filter(d=>!bmCurCh.has(d));
+    const bmInact  = [...bmL3Ch].filter(d=>!bmCurCh.has(d)&&!bmLost.includes(d));
+    const bmAmt    = bmCur.reduce((s,t)=>s+t.amt,0);
+    const chTgt    = bm.ch_tgt || 0;
+    const chGap    = Math.max(0, chTgt - bmCurCh.size);
+    return { bm, bmCurCh:bmCurCh.size, bmPrevCh:bmPrevCh.size, bmLost:bmLost.length, bmInact:bmInact.length, chTgt, chGap, bmAmt, cases:bmCur.length };
+  }).sort((a,b)=>b.bmLost-a.bmLost||b.bmInact-a.bmInact);
+
+  const totLost  = bmRows.reduce((s,r)=>s+r.bmLost,0);
+  const totInact = bmRows.reduce((s,r)=>s+r.bmInact,0);
+  const totGap   = bmRows.reduce((s,r)=>s+r.chGap,0);
+  const needFocus= bmRows.filter(r=>r.bmLost>0||r.bmInact>2).length;
+
+  el.innerHTML = `
+    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+      <div class="kpi"><div class="kpi-label">BMs Needing Focus</div><div class="kpi-value" style="color:#c62828">${needFocus}</div></div>
+      <div class="kpi"><div class="kpi-label">Total Lost Channels</div><div class="kpi-value" style="color:#c62828">${totLost}</div></div>
+      <div class="kpi"><div class="kpi-label">Total Inactive (L3M)</div><div class="kpi-value" style="color:#f57f17">${totInact}</div></div>
+      <div class="kpi"><div class="kpi-label">Total Channel Gap</div><div class="kpi-value" style="color:#e65100">${totGap}</div></div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:12px 20px;background:#e8eaf6;font-weight:700;font-size:13px;color:#1a237e">
+        🚀 BM-wise Channel Health — Focus Areas
+      </div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr style="background:#f5f7ff">
+          <th>#</th><th>BM Name</th><th>Tier</th>
+          <th style="text-align:center">Cur Ch</th>
+          <th style="text-align:center">Prev Ch</th>
+          <th style="text-align:center">Ch Tgt</th>
+          <th style="text-align:center">Ch Gap</th>
+          <th style="text-align:center;color:#c62828">Lost</th>
+          <th style="text-align:center;color:#f57f17">Inactive</th>
+          <th style="text-align:right">MTD Disb</th>
+          <th style="text-align:center">Focus</th>
+        </tr></thead>
+        <tbody>
+          ${bmRows.map((r,i)=>{
+            const urgent = r.bmLost>2||r.chGap>5;
+            const warn   = r.bmLost>0||r.bmInact>2;
+            return `<tr style="${urgent?'background:#fff8f8':warn?'background:#fffde7':i%2===0?'':'background:#f8f9ff'}">
+              <td style="padding:8px 12px;color:#9e9e9e;font-size:11px">${i+1}</td>
+              <td style="padding:8px 12px"><b style="font-size:12px">${r.bm.name}</b></td>
+              <td style="padding:8px"><span class="badge badge-grey" style="font-size:10px">${r.bm.tier||'—'}</span></td>
+              <td style="padding:8px;text-align:center;font-weight:700;color:#2e7d32">${r.bmCurCh}</td>
+              <td style="padding:8px;text-align:center;color:#555">${r.bmPrevCh}</td>
+              <td style="padding:8px;text-align:center;color:#666">${r.chTgt||'—'}</td>
+              <td style="padding:8px;text-align:center;font-weight:700;color:${r.chGap>0?'#c62828':'#2e7d32'}">${r.chGap>0?'-'+r.chGap:'✅'}</td>
+              <td style="padding:8px;text-align:center;font-weight:700;color:${r.bmLost>0?'#c62828':'#9e9e9e'}">${r.bmLost>0?r.bmLost:'—'}</td>
+              <td style="padding:8px;text-align:center;font-weight:700;color:${r.bmInact>0?'#f57f17':'#9e9e9e'}">${r.bmInact>0?r.bmInact:'—'}</td>
+              <td style="padding:8px 12px;text-align:right"><b>${fmtCr(r.bmAmt)}</b></td>
+              <td style="padding:8px;text-align:center">
+                ${urgent?'<span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">🔥 Urgent</span>'
+                 :warn?'<span style="background:#fff8e1;color:#f57f17;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">⚠️ Watch</span>'
+                 :'<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">✅ OK</span>'}
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table></div>
+    </div>
+  `;
+}
+
+// ========== MAILROOM — Send HTML Scorecard Email ==========
+function buildMailroom(el) {
+  const emps = getEmpData();
+  const role = currentUser.designation;
+
+  const recipients = emps.filter(e =>
+    e.email && e.designation !== role &&
+    (role==='RH' ? e.rh_id===currentUser.id : true)
+  ).sort((a,b)=>a.designation.localeCompare(b.designation)||a.name.localeCompare(b.name));
+
+  function recipientList(prefix) {
+    return recipients.map(e=>`
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid #f5f5f5;font-size:12px">
+        <input type="checkbox" class="${prefix}-recip" data-email="${e.email}" data-role="${e.designation}" value="${e.email}" style="accent-color:#1a237e">
+        <span><b>${e.name}</b> <span style="background:#e8eaf6;color:#3949ab;padding:1px 6px;border-radius:8px;font-size:10px">${e.designation}</span></span>
+        <span style="color:#9e9e9e;font-size:11px;margin-left:auto">${e.email}</span>
+      </label>`).join('');
+  }
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+
+      <!-- ══ SCORECARD MAIL ══ -->
+      <div>
+        <div style="background:linear-gradient(135deg,#1a237e,#283593);color:#fff;border-radius:12px 12px 0 0;padding:14px 20px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">📊</span>
+          <div>
+            <div style="font-weight:800;font-size:15px">Scorecard Email</div>
+            <div style="font-size:11px;opacity:.7">MTD performance, targets & achievement</div>
+          </div>
+        </div>
+        <div style="background:#fff;border-radius:0 0 12px 12px;box-shadow:0 2px 12px rgba(0,0,0,.08);padding:20px">
+
+          <div style="margin-bottom:14px">
+            <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:6px">Scorecard Type</label>
+            <select id="sc-type" onchange="previewScorecard()" style="width:100%;padding:8px 12px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;background:#f9f9f9">
+              <option value="mtd">📅 MTD Performance Update</option>
+              <option value="q1">📈 Q1 Scorecard (Apr–Jun)</option>
+              <option value="weekly">📋 Weekly Review Summary</option>
+            </select>
+          </div>
+
+          <div style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <label style="font-size:12px;font-weight:700;color:#555">Recipients</label>
+              <div style="display:flex;gap:6px">
+                <button onclick="selectGroup('sc','ALL')" style="padding:3px 8px;border-radius:12px;border:1px solid #c5cae9;font-size:10px;cursor:pointer;background:#e8eaf6;color:#1a237e">All</button>
+                <button onclick="selectGroup('sc','BM')"  style="padding:3px 8px;border-radius:12px;border:1px solid #e0e0e0;font-size:10px;cursor:pointer">BM</button>
+                <button onclick="selectGroup('sc','AM')"  style="padding:3px 8px;border-radius:12px;border:1px solid #e0e0e0;font-size:10px;cursor:pointer">AM</button>
+                <button onclick="selectGroup('sc','TH')"  style="padding:3px 8px;border-radius:12px;border:1px solid #e0e0e0;font-size:10px;cursor:pointer">TH</button>
+              </div>
+            </div>
+            <div style="max-height:180px;overflow-y:auto;border:1px solid #e8eaf6;border-radius:8px">${recipientList('sc')}</div>
+          </div>
+
+          <div style="margin-bottom:14px">
+            <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:6px">Personal Note (optional)</label>
+            <textarea id="sc-note" rows="2" placeholder="Add a note..." style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:8px;font-size:12px;resize:vertical;box-sizing:border-box"></textarea>
+          </div>
+
+          <div style="display:flex;gap:8px">
+            <button onclick="previewScorecard()" style="padding:10px 16px;background:#f5f7ff;color:#1a237e;border:1px solid #c5cae9;border-radius:8px;font-size:12px;cursor:pointer;font-weight:600">👁 Preview</button>
+            <button onclick="sendMailDraft('sc')" style="flex:1;padding:10px;background:#1a237e;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">📧 Create Draft & Send</button>
+          </div>
+          <div id="sc-status" style="margin-top:8px;font-size:12px;text-align:center;min-height:20px"></div>
+
+          <!-- Preview -->
+          <div style="margin-top:14px;border:1px solid #e8eaf6;border-radius:8px;overflow:hidden">
+            <div style="padding:8px 14px;background:#f5f7ff;font-size:11px;font-weight:700;color:#1a237e">📋 Preview</div>
+            <div id="sc-preview" style="padding:12px;font-size:11px;max-height:280px;overflow-y:auto;background:#fafafa">
+              <div style="color:#9e9e9e;text-align:center;padding:20px">Click Preview to see email</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ CHANNEL DRIVE MAIL ══ -->
+      <div>
+        <div style="background:linear-gradient(135deg,#b71c1c,#c62828);color:#fff;border-radius:12px 12px 0 0;padding:14px 20px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">🚀</span>
+          <div>
+            <div style="font-weight:800;font-size:15px">Channel Drive Email</div>
+            <div style="font-size:11px;opacity:.7">Lost channels, inactive dealers & action items</div>
+          </div>
+        </div>
+        <div style="background:#fff;border-radius:0 0 12px 12px;box-shadow:0 2px 12px rgba(0,0,0,.08);padding:20px">
+
+          <div style="margin-bottom:14px">
+            <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:6px">Channel Alert Type</label>
+            <select id="ch-type" onchange="previewChannel()" style="width:100%;padding:8px 12px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;background:#f9f9f9">
+              <option value="lost">🔴 Lost Channels Alert (vs Last Month)</option>
+              <option value="inactive">🟡 Inactive Channels Alert (Last 3 Months)</option>
+              <option value="full">📋 Full Channel Drive Report (Lost + Inactive)</option>
+            </select>
+          </div>
+
+          <div style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <label style="font-size:12px;font-weight:700;color:#555">Recipients</label>
+              <div style="display:flex;gap:6px">
+                <button onclick="selectGroup('ch','ALL')" style="padding:3px 8px;border-radius:12px;border:1px solid #ffcdd2;font-size:10px;cursor:pointer;background:#ffebee;color:#c62828">All</button>
+                <button onclick="selectGroup('ch','BM')"  style="padding:3px 8px;border-radius:12px;border:1px solid #e0e0e0;font-size:10px;cursor:pointer">BM</button>
+                <button onclick="selectGroup('ch','AM')"  style="padding:3px 8px;border-radius:12px;border:1px solid #e0e0e0;font-size:10px;cursor:pointer">AM</button>
+                <button onclick="selectGroup('ch','TH')"  style="padding:3px 8px;border-radius:12px;border:1px solid #e0e0e0;font-size:10px;cursor:pointer">TH</button>
+              </div>
+            </div>
+            <div style="max-height:180px;overflow-y:auto;border:1px solid #ffebee;border-radius:8px">${recipientList('ch')}</div>
+          </div>
+
+          <div style="margin-bottom:14px">
+            <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:6px">Action Message (optional)</label>
+            <textarea id="ch-note" rows="2" placeholder="e.g. Please visit all inactive dealers this week..." style="width:100%;padding:8px;border:1px solid #ffcdd2;border-radius:8px;font-size:12px;resize:vertical;box-sizing:border-box"></textarea>
+          </div>
+
+          <div style="display:flex;gap:8px">
+            <button onclick="previewChannel()" style="padding:10px 16px;background:#fff8f8;color:#c62828;border:1px solid #ffcdd2;border-radius:8px;font-size:12px;cursor:pointer;font-weight:600">👁 Preview</button>
+            <button onclick="sendMailDraft('ch')" style="flex:1;padding:10px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">📧 Create Draft & Send</button>
+          </div>
+          <div id="ch-status" style="margin-top:8px;font-size:12px;text-align:center;min-height:20px"></div>
+
+          <!-- Preview -->
+          <div style="margin-top:14px;border:1px solid #ffebee;border-radius:8px;overflow:hidden">
+            <div style="padding:8px 14px;background:#fff8f8;font-size:11px;font-weight:700;color:#c62828">📋 Preview</div>
+            <div id="ch-preview" style="padding:12px;font-size:11px;max-height:280px;overflow-y:auto;background:#fafafa">
+              <div style="color:#9e9e9e;text-align:center;padding:20px">Click Preview to see email</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  setTimeout(() => { previewScorecard(); previewChannel(); }, 100);
+}
+
+// ── Select recipients by role for a given prefix ──
+function selectGroup(prefix, role) {
+  document.querySelectorAll(`.${prefix}-recip`).forEach(c => {
+    c.checked = role === 'ALL' ? true : c.dataset.role === role;
+  });
+}
+
+// ── Build Scorecard Email HTML ──────────────────
+function buildScorecardEmailHTML(type, note) {
+  const dateStr  = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const curMonth = getCurMonthLabel();
+  const emps     = getEmpData();
+  const bmList   = emps.filter(e=>e.designation==='BM'&&e.rh_id===currentUser.id);
+
+  // Q1 or MTD data
+  const isQ1 = type === 'q1';
+  const q1Months = isQ1 ? [
+    makeMonthEntry(new Date(getFYStartYear(),3,1)),
+    makeMonthEntry(new Date(getFYStartYear(),4,1)),
+    makeMonthEntry(new Date(getFYStartYear(),5,1)),
+  ].filter(m=>new Date(m.pfx+'-01')<=new Date()) : null;
+
+  const bmRows = bmList.map(bm => {
+    const txns = isQ1
+      ? q1Months.flatMap(m=>m.data().filter(t=>t.bm_id===bm.id))
+      : myTxns.filter(t=>t.bm_id===bm.id);
+    const amt  = txns.reduce((s,t)=>s+t.amt,0);
+    const uc   = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+    const cv   = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+    const ch   = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    const ucTgt= (bm.uc_tgt||0)*1e5*(isQ1?3:1);
+    const cvTgt= (bm.cv_tgt||0)*1e5*(isQ1?3:1);
+    const tgt  = ucTgt+cvTgt;
+    const ach  = tgt>0?Math.round((amt/tgt)*100):null;
+    return {bm,amt,uc,cv,ch,cases:txns.length,tgt,ach};
+  }).sort((a,b)=>b.amt-a.amt);
+
+  const totAmt   = bmRows.reduce((s,r)=>s+r.amt,0);
+  const totUC    = bmRows.reduce((s,r)=>s+r.uc,0);
+  const totCV    = bmRows.reduce((s,r)=>s+r.cv,0);
+  const totCases = bmRows.reduce((s,r)=>s+r.cases,0);
+  const totCh    = bmRows.reduce((s,r)=>s+r.ch,0);
+  const onTrack  = bmRows.filter(r=>r.ach!==null&&r.ach>=70).length;
+  const behind   = bmRows.filter(r=>r.ach!==null&&r.ach<70).length;
+
+  const titleMap = {mtd:`MTD Performance — ${curMonth}`, q1:`Q1 Scorecard — FY${getFYStartYear()}-${String(getFYStartYear()+1).slice(2)} (Apr–Jun)`, weekly:`Weekly Review — ${curMonth}`};
+  const title = titleMap[type]||titleMap.mtd;
+
+  return `<div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;background:#f5f5f5">
+    <div style="background:linear-gradient(135deg,#1a237e,#283593);padding:24px 32px;border-radius:12px 12px 0 0">
+      <div style="color:#fff;font-size:22px;font-weight:800">📊 ${title}</div>
+      <div style="color:rgba(255,255,255,.7);font-size:12px;margin-top:4px">${dateStr} &nbsp;|&nbsp; From: ${currentUser.name} (${currentUser.designation})</div>
+    </div>
+    <div style="background:#fff;padding:20px 32px;display:flex;gap:0;border-bottom:2px solid #e8eaf6">
+      ${[['Total Disb',fmtCr(totAmt),'#1a237e'],['UC',fmtCr(totUC),'#1565c0'],['CV',fmtCr(totCV),'#6a1b9a'],['Cases',totCases,'#333'],['On Track',onTrack+'/'+bmRows.length,'#2e7d32'],['Behind',behind,'#c62828']].map(([l,v,c])=>`
+      <div style="flex:1;text-align:center;padding:8px 4px;border-right:1px solid #f0f0f0">
+        <div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">${l}</div>
+        <div style="font-size:18px;font-weight:800;color:${c}">${v}</div>
+      </div>`).join('')}
+    </div>
+    <div style="background:#fff;padding:20px 32px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:#1a237e;color:#fff">
+          <th style="padding:8px 10px;text-align:left">BM Name</th>
+          <th style="padding:8px 6px;text-align:left">Tier</th>
+          <th style="padding:8px 10px;text-align:right">Disbursement</th>
+          <th style="padding:8px 6px;text-align:right">UC</th>
+          <th style="padding:8px 6px;text-align:right">CV</th>
+          <th style="padding:8px 6px;text-align:center">Cases</th>
+          <th style="padding:8px 6px;text-align:center">Ch</th>
+          <th style="padding:8px 6px;text-align:center">Ach%</th>
+        </tr></thead>
+        <tbody>
+          ${bmRows.map((r,i)=>`<tr style="background:${i%2===0?'#fff':'#f8f9ff'}">
+            <td style="padding:8px 10px;font-weight:700">${r.bm.name}</td>
+            <td style="padding:8px 6px"><span style="background:#e8eaf6;color:#3949ab;padding:1px 5px;border-radius:6px;font-size:10px">${r.bm.tier||'—'}</span></td>
+            <td style="padding:8px 10px;text-align:right;font-weight:700">${fmtCr(r.amt)}</td>
+            <td style="padding:8px 6px;text-align:right;color:#1565c0">${fmtCr(r.uc)}</td>
+            <td style="padding:8px 6px;text-align:right;color:#6a1b9a">${fmtCr(r.cv)}</td>
+            <td style="padding:8px 6px;text-align:center">${r.cases}</td>
+            <td style="padding:8px 6px;text-align:center">${r.ch}</td>
+            <td style="padding:8px 6px;text-align:center">${r.ach!==null?`<span style="background:${r.ach>=100?'#e8f5e9':r.ach>=70?'#e3f2fd':'#ffebee'};color:${r.ach>=100?'#2e7d32':r.ach>=70?'#1565c0':'#c62828'};padding:2px 7px;border-radius:8px;font-weight:700">${r.ach}%</span>`:'—'}</td>
+          </tr>`).join('')}
+          <tr style="background:#e8eaf6;font-weight:700">
+            <td style="padding:8px 10px" colspan="2">TOTAL</td>
+            <td style="padding:8px 10px;text-align:right">${fmtCr(totAmt)}</td>
+            <td style="padding:8px 6px;text-align:right;color:#1565c0">${fmtCr(totUC)}</td>
+            <td style="padding:8px 6px;text-align:right;color:#6a1b9a">${fmtCr(totCV)}</td>
+            <td style="padding:8px 6px;text-align:center">${totCases}</td>
+            <td style="padding:8px 6px;text-align:center">${totCh}</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    ${note?`<div style="background:#fff;padding:12px 32px;border-top:1px solid #e8eaf6"><b style="color:#555">Note:</b> <span style="color:#333;font-style:italic">${note}</span></div>`:''}
+    <div style="background:#283593;padding:14px 32px;border-radius:0 0 12px 12px;text-align:center;color:rgba(255,255,255,.6);font-size:11px">
+      Rupyy Performance Dashboard &nbsp;|&nbsp; ${dateStr}
+    </div>
+  </div>`;
+}
+
+// ── Build Channel Drive Email HTML ──────────────
+function buildChannelEmailHTML(type, note) {
+  const dateStr  = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const emps     = getEmpData();
+  const prevData = window._LIVE_MAY||[];
+  const prevTxns = prevData.filter(t=>t.rh_id===currentUser.id);
+  const l3Data   = getLast6Months().slice(-3).flatMap(m=>m.data().filter(t=>t.rh_id===currentUser.id));
+
+  const curCh  = new Set(myTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+  const prevCh = new Set(prevTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+  const l3Ch   = new Set(l3Data.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+  const lostDcids    = [...prevCh].filter(d=>!curCh.has(d));
+  const inactiveDcids= [...l3Ch].filter(d=>!curCh.has(d)&&!lostDcids.includes(d));
+
+  function dealerRow(dcid, pool, idx) {
+    const t      = pool.filter(x=>x.dcid===dcid);
+    const dealer = t[0]?.dealer||dcid;
+    const gmv    = t.reduce((s,x)=>s+x.amt,0);
+    const bm     = resolveEmpById(t[0]?.bm_id)?.name||t[0]?.bm||'—';
+    return `<tr style="background:${idx%2===0?'#fff':'#fff8f8'}">
+      <td style="padding:7px 10px;color:#9e9e9e">${idx+1}</td>
+      <td style="padding:7px 10px;font-weight:700">${dealer}<div style="font-size:10px;color:#9e9e9e">${dcid}</div></td>
+      <td style="padding:7px 10px">${bm}</td>
+      <td style="padding:7px 10px;text-align:right;font-weight:700;color:#c62828">${fmtCr(gmv)}</td>
+    </tr>`;
+  }
+
+  const showLost    = type==='lost'||type==='full';
+  const showInactive= type==='inactive'||type==='full';
+  const titleMap    = {lost:'🔴 Lost Channels Alert',inactive:'🟡 Inactive Channels Alert',full:'📋 Full Channel Drive Report'};
+
+  return `<div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;background:#f5f5f5">
+    <div style="background:linear-gradient(135deg,#b71c1c,#c62828);padding:24px 32px;border-radius:12px 12px 0 0">
+      <div style="color:#fff;font-size:22px;font-weight:800">🚀 ${titleMap[type]||titleMap.full}</div>
+      <div style="color:rgba(255,255,255,.7);font-size:12px;margin-top:4px">${dateStr} &nbsp;|&nbsp; Action Required &nbsp;|&nbsp; From: ${currentUser.name}</div>
+    </div>
+    <div style="background:#fff;padding:16px 32px;display:flex;gap:0;border-bottom:2px solid #ffcdd2">
+      ${[['Active Now',curCh.size,'#2e7d32'],['Last Month',prevCh.size,'#1565c0'],['Lost Channels',lostDcids.length,'#c62828'],['Inactive (L3M)',inactiveDcids.length,'#f57f17']].map(([l,v,c])=>`
+      <div style="flex:1;text-align:center;padding:8px;border-right:1px solid #ffebee">
+        <div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">${l}</div>
+        <div style="font-size:20px;font-weight:800;color:${c}">${v}</div>
+      </div>`).join('')}
+    </div>
+    ${note?`<div style="background:#fff3e0;padding:12px 32px;border-left:4px solid #f57f17"><b>Action Required:</b> <span style="color:#333">${note}</span></div>`:''}
+    ${showLost&&lostDcids.length?`
+    <div style="background:#fff;padding:16px 32px">
+      <div style="font-weight:700;color:#c62828;font-size:14px;margin-bottom:10px">🔴 Lost Channels — Were Active Last Month (${lostDcids.length})</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:#ffebee"><th style="padding:7px 10px;text-align:left">#</th><th style="padding:7px 10px;text-align:left">Dealer</th><th style="padding:7px 10px;text-align:left">BM</th><th style="padding:7px 10px;text-align:right">${getPrevMonthLabel().split(' ')[0]} GMV</th></tr></thead>
+        <tbody>${lostDcids.map((d,i)=>dealerRow(d,prevTxns,i)).join('')}</tbody>
+      </table>
+    </div>`:''}
+    ${showInactive&&inactiveDcids.length?`
+    <div style="background:#fff;padding:16px 32px;border-top:1px solid #f5f5f5">
+      <div style="font-weight:700;color:#f57f17;font-size:14px;margin-bottom:10px">🟡 Inactive Channels — Last 3 Months Not Active (${inactiveDcids.length})</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:#fff8e1"><th style="padding:7px 10px;text-align:left">#</th><th style="padding:7px 10px;text-align:left">Dealer</th><th style="padding:7px 10px;text-align:left">BM</th><th style="padding:7px 10px;text-align:right">L3M GMV</th></tr></thead>
+        <tbody>${inactiveDcids.map((d,i)=>dealerRow(d,l3Data,i)).join('')}</tbody>
+      </table>
+    </div>`:''}
+    <div style="background:#c62828;padding:14px 32px;border-radius:0 0 12px 12px;text-align:center;color:rgba(255,255,255,.6);font-size:11px">
+      Rupyy Performance Dashboard &nbsp;|&nbsp; Channel Drive Alert &nbsp;|&nbsp; ${dateStr}
+    </div>
+  </div>`;
+}
+
+// ── Preview functions ──────────────────────────
+function previewScorecard() {
+  const type = document.getElementById('sc-type')?.value||'mtd';
+  const note = document.getElementById('sc-note')?.value||'';
+  const el   = document.getElementById('sc-preview');
+  if (el) el.innerHTML = buildScorecardEmailHTML(type, note);
+}
+
+function previewChannel() {
+  const type = document.getElementById('ch-type')?.value||'full';
+  const note = document.getElementById('ch-note')?.value||'';
+  const el   = document.getElementById('ch-preview');
+  if (el) el.innerHTML = buildChannelEmailHTML(type, note);
+}
+
+// ── Generic send draft function ─────────────────
+async function sendMailDraft(prefix) {
+  const checked  = [...document.querySelectorAll(`.${prefix}-recip:checked`)];
+  const statusEl = document.getElementById(`${prefix}-status`);
+
+  if (!checked.length) {
+    statusEl.innerHTML = '<span style="color:#c62828">⚠️ Select at least one recipient</span>';
+    return;
+  }
+
+  const toEmails = checked.map(c=>c.dataset.email);
+  const dateStr  = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+  let htmlBody, subject;
+
+  if (prefix === 'sc') {
+    const type  = document.getElementById('sc-type')?.value||'mtd';
+    const note  = document.getElementById('sc-note')?.value||'';
+    htmlBody    = buildScorecardEmailHTML(type, note);
+    const labels= {mtd:'MTD Performance Update',q1:'Q1 Scorecard',weekly:'Weekly Review Summary'};
+    subject     = `Rupyy ${labels[type]||'Scorecard'} — ${getCurMonthLabel()} | ${dateStr}`;
+  } else {
+    const type  = document.getElementById('ch-type')?.value||'full';
+    const note  = document.getElementById('ch-note')?.value||'';
+    htmlBody    = buildChannelEmailHTML(type, note);
+    const labels= {lost:'Lost Channels Alert',inactive:'Inactive Channels Alert',full:'Channel Drive Report'};
+    subject     = `Rupyy ${labels[type]||'Channel Drive'} — ${getCurMonthLabel()} | ${dateStr}`;
+  }
+
+  statusEl.innerHTML = '<span style="color:#1a237e">⏳ Creating draft...</span>';
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 500,
+        mcp_servers: [{ type:'url', url:'https://gmailmcp.googleapis.com/mcp/v1', name:'gmail-mcp' }],
+        messages: [{
+          role: 'user',
+          content: `Use the Gmail create_draft tool to create an email draft with exactly these parameters:
+- to: [${toEmails.map(e=>'"'+e+'"').join(', ')}]
+- subject: "${subject}"
+- html_body: the HTML email below
+
+After creating the draft, reply ONLY with: "Draft created"
+
+HTML EMAIL:
+${htmlBody}`
+        }]
+      })
+    });
+
+    const data = await response.json();
+    const text = (data.content||[]).map(c=>c.text||'').join('').toLowerCase();
+
+    if (text.includes('draft') || text.includes('created') || text.includes('success')) {
+      statusEl.innerHTML = `<span style="color:#2e7d32">✅ Draft created for ${toEmails.length} recipient${toEmails.length>1?'s':''} — open Gmail Drafts to review & send</span>`;
+    } else {
+      statusEl.innerHTML = `<span style="color:#c62828">❌ ${text.slice(0,120)}</span>`;
+    }
+  } catch(err) {
+    statusEl.innerHTML = `<span style="color:#c62828">❌ ${err.message}</span>`;
+  }
+}
+</script>
+
 </body>
 </html>
 
