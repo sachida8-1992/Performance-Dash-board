@@ -368,13 +368,35 @@ async function tryLoadLiveData() {
     window._LIVE_EMP_RAW = data.employees; // store raw for milestone target columns
     window._LIVE_EMP = parseEmployees(data.employees);
 
-    // Parse transactions (current month = July-26)
-    window._LIVE_TXN = parseTransactions(data.transactions);
+    // Parse transactions — current month is July-26
+    // But if all transactions are June (Apps Script not yet on July tab), treat them as LMTD
+    const txnMonths = new Set((data.transactions||[]).map(t=>String(t.disbursed_date||'').slice(0,7)).filter(Boolean));
+    const hasJuly   = txnMonths.has('2026-07');
+    const hasJune   = txnMonths.has('2026-06');
 
-    // Previous months for comparison (LMTD = June, june_data or may_data as fallback)
-    window._LIVE_MAY = data.june_data ? data.june_data
-                     : data.may_data  ? data.may_data
-                     : TXN_DATA; // already slim-parsed by Apps Script
+    if (hasJuly) {
+      // Normal: July is live, parse as current month
+      window._LIVE_TXN = parseTransactions(data.transactions);
+    } else if (hasJune) {
+      // Apps Script still on June tab — June txns used as both current display AND LMTD
+      // July MTD will show 0 (correct — no disbursements yet)
+      window._LIVE_TXN = [];  // July = empty (not started)
+      window._LIVE_MAY = parseTransactions(data.transactions); // June = LMTD
+      window._LIVE_APR = data.apr_data ? parseTransactions(data.apr_data) : APR_DATA;
+      window._LIVE_MAR = data.mar_data ? parseTransactions(data.mar_data) : MAR_DATA;
+      window.CURRENT_MONTH = '2026-07';
+      dataLoaded = true;
+      return;
+    } else {
+      window._LIVE_TXN = parseTransactions(data.transactions);
+    }
+
+    // Previous months for comparison (LMTD = June)
+    // Apps Script still uses 'may_data' key — when June txns are pushed there, use them
+    // Also: if transactions are all June (Apps Script not on July tab yet), they become LMTD
+    window._LIVE_MAY = data.june_data ? parseTransactions(data.june_data)   // future june_data key
+                     : (data.may_data && data.may_data.length) ? parseTransactions(data.may_data)  // june via may_data key
+                     : TXN_DATA; // last resort fallback
     window._LIVE_APR = data.apr_data  ? parseTransactions(data.apr_data)  : APR_DATA;
     window._LIVE_MAR = data.mar_data  ? parseTransactions(data.mar_data)  : MAR_DATA;
     dataLoaded = true;
@@ -564,6 +586,7 @@ function parseTransactions(rows) {
 
 function getEmpData()  { return (dataLoaded && window._LIVE_EMP) ? window._LIVE_EMP : EMP_DATA; }
 function getTxnData()  { return (dataLoaded && window._LIVE_TXN) ? window._LIVE_TXN : TXN_DATA; }
+function getCurMonth() { return window.CURRENT_MONTH || '2026-07'; }
 function getMayData()  { return (dataLoaded && window._LIVE_MAY) ? window._LIVE_MAY : TXN_DATA; }
 function getAprData()  { return (dataLoaded && window._LIVE_APR) ? window._LIVE_APR : APR_DATA; }
 function getMarData()  { return (dataLoaded && window._LIVE_MAR) ? window._LIVE_MAR : MAR_DATA; }
@@ -642,7 +665,7 @@ function filterMyTxns() {
   const d = currentUser.designation;
   const id = currentUser.id;
   // Only include July 2026 transactions (exclude May 31 spillover)
-  const juneTxns = getTxnData().filter(t => t.date && t.date.startsWith('2026-07'));
+  const juneTxns = getTxnData().filter(t => t.date && t.date.startsWith(getCurMonth()));
   if (d === 'BM')      myTxns = juneTxns.filter(t => t.bm_id === id);
   else if (d === 'AM') myTxns = juneTxns.filter(t => t.am_id === id);
   else if (d === 'TH') myTxns = juneTxns.filter(t => t.th_id === id);
@@ -1127,7 +1150,7 @@ function buildOverview(el) {
     // Daily trend — June 1–30 only
     const byDate = {};
     // Only include June dates (ignore May spill-over)
-    myTxns.filter(t => t.date && t.date.slice(0,7) === '2026-07').forEach(t => {
+    myTxns.filter(t => t.date && t.date.slice(0,7) === getCurMonth()).forEach(t => {
       const d = t.date.slice(0,10);
       byDate[d] = (byDate[d]||0) + t.amt;
     });
@@ -1366,7 +1389,7 @@ function buildRHPerfTable() {
   const remaining = getRemainingWorkingDays();
 
   const allEmps  = getEmpData();
-  const juneTxns = getTxnData().filter(t => t.date && t.date.startsWith('2026-07'));
+  const juneTxns = getTxnData().filter(t => t.date && t.date.startsWith(getCurMonth()));
   const mayTxns  = getMayData();
 
   // Product filter
@@ -2101,7 +2124,7 @@ function buildTeamIncentive(el) {
     return pool.filter(t => t.bm_id===id || t.bm===currentUser.name?.toLowerCase());
   }
 
-  const juneTxns = scopeFilter(getTxnData().filter(t => t.date && t.date.startsWith('2026-07')));
+  const juneTxns = scopeFilter(getTxnData().filter(t => t.date && t.date.startsWith(getCurMonth())));
   const mayTxns  = scopeFilter(getMayData());
 
   const juneMap = getBmMap(juneTxns);
@@ -3100,9 +3123,9 @@ function buildInsights(el) {
 <script>
 // ========== WEEKLY REVIEW ==========
 const MILESTONES = [
-  { day:10, label:'10th June', ucCol:'10Th June UC Target',  cvCol:'10Th June CV Target',  chCol:'10Th June Channel Target' },
-  { day:19, label:'19th June', ucCol:'19Th June UC Target',  cvCol:'19Th  June CV Target', chCol:'19Th  JuneChannel Target' },
-  { day:25, label:'25th June', ucCol:'25Th June UC Target',  cvCol:'25Th June CV Target',  chCol:'25Th June Channel Target' },
+  { day:10, label:'10th July', ucCol:'10Th July UC Target',  cvCol:'10Th July CV Target',  chCol:'10Th July Channel Target' },
+  { day:20, label:'20th July', ucCol:'20Th July UC Target',  cvCol:'20Th  July CV Target', chCol:'20Th  July Channel Target' },
+  { day:25, label:'25th July', ucCol:'25Th July UC Target',  cvCol:'25Th July CV Target',  chCol:'25Th July Channel Target' },
 ];
 
 function getCurrentMilestone() {
@@ -3187,7 +3210,7 @@ function buildWeekly(el) {
     });
 
     const periodTxns = allTxns.filter(t =>
-      t.date && t.date.startsWith('2026-07') && t.day > 0 && t.day <= ms.day
+      t.date && t.date.startsWith(getCurMonth()) && t.day > 0 && t.day <= ms.day
     );
 
     bodyEl.innerHTML = role==='BM'
@@ -3269,7 +3292,7 @@ function buildWeeklyBM(ms, periodTxns, allTxns) {
         <tbody>
           ${MILESTONES.map(m => {
             const today = new Date().getDate();
-            const mTxns = (allTxns||myTxns).filter(t=>t.date&&t.date.startsWith('2026-07')&&t.day>0&&t.day<=m.day);
+            const mTxns = (allTxns||myTxns).filter(t=>t.date&&t.date.startsWith(getCurMonth())&&t.day>0&&t.day<=m.day);
             const mTgts = getMilestoneEmpTargets(emp, m);
             const mUC   = mTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
             const mCV   = mTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
@@ -3419,7 +3442,7 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
   // Summary table for all milestones
   const today2 = new Date().getDate();
   const msSummary = MILESTONES.map(m => {
-    const mTxns = (allTxns||myTxns).filter(t=>t.date&&t.date.startsWith('2026-07')&&t.day>0&&t.day<=m.day);
+    const mTxns = (allTxns||myTxns).filter(t=>t.date&&t.date.startsWith(getCurMonth())&&t.day>0&&t.day<=m.day);
     const mUC = mTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
     const mCV = mTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
     const isFut = today2 < m.day;
