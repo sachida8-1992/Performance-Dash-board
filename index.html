@@ -1765,7 +1765,7 @@ function buildChannels(el) {
     el.innerHTML = `
       <div class="card" style="padding:0;overflow:hidden">
         <div style="padding:14px 20px;background:#f5f7ff;font-size:13px;font-weight:700;color:#1a237e">
-          BM Channel Performance — '+getCurMonthLabel()+'
+          BM Channel Performance — ${getCurMonthLabel()}
         </div>
         <div style="overflow-x:auto">
         <table>
@@ -1773,11 +1773,11 @@ function buildChannels(el) {
             <tr style="background:#e8eaf6">
               <th style="text-align:left">BM Name</th>
               <th style="text-align:center">CH Target</th>
-              <th style="text-align:center">'+getCurMonthLabel().split(' ')[0]+' UC Ch</th>
+              <th style="text-align:center">${getCurMonthLabel().split(' ')[0]} UC Ch</th>
               <th style="text-align:center">Ach%</th>
-              <th style="text-align:center">'+getPrevMonthLabel().split(' ')[0]+' UC Ch</th>
+              <th style="text-align:center">${getPrevMonthLabel().split(' ')[0]} UC Ch</th>
               <th style="text-align:center">Growth</th>
-              <th style="text-align:center">'+getCurMonthLabel().split(' ')[0]+' CV Ch</th>
+              <th style="text-align:center">${getCurMonthLabel().split(' ')[0]} CV Ch</th>
               <th style="text-align:right">Disbursement</th>
             </tr>
           </thead>
@@ -1914,8 +1914,8 @@ function buildDealersRH(el) {
           <th style="padding:8px 10px;text-align:left">Dealer Name</th>
           <th style="padding:8px 10px">Products</th>
           <th style="padding:8px 10px">Cases</th>
-          <th style="padding:8px 10px;text-align:right">'+getCurMonthLabel()+' GMV</th>
-          <th style="padding:8px 10px;text-align:right">'+getPrevMonthLabel()+' GMV</th>
+          <th style="padding:8px 10px;text-align:right">${getCurMonthLabel()} GMV</th>
+          <th style="padding:8px 10px;text-align:right">${getPrevMonthLabel()} GMV</th>
           <th style="padding:8px 10px;text-align:center">Growth</th>
           <th style="padding:8px 10px;min-width:80px">Share</th>
         </tr>
@@ -2021,7 +2021,7 @@ function buildBanks(el) {
       <div class="card">
         <div class="card-title">Lender Breakdown</div>
         <table>
-          <thead><tr><th>Bank / NBFC</th><th>Cases</th><th style="text-align:right">'+getCurMonthLabel()+' GMV</th><th style="text-align:right">'+getPrevMonthLabel()+' GMV</th><th style="text-align:center">Growth</th><th>Share</th></tr></thead>
+          <thead><tr><th>Bank / NBFC</th><th>Cases</th><th style="text-align:right">${getCurMonthLabel()} GMV</th><th style="text-align:right">${getPrevMonthLabel()} GMV</th><th style="text-align:center">Growth</th><th>Share</th></tr></thead>
           <tbody id="bankTableBody"></tbody>
         </table>
       </div>
@@ -2203,12 +2203,12 @@ function buildTeamIncentive(el) {
     <!-- Header cards -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
       <div class="card" style="background:linear-gradient(135deg,#283593,#3949ab);color:#fff;padding:18px 20px">
-        <div style="font-size:11px;opacity:.7;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Team Incentive · '+getPrevMonthLabel()+'</div>
+        <div style="font-size:11px;opacity:.7;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Team Incentive · ${getPrevMonthLabel()}</div>
         <div style="font-size:30px;font-weight:800;margin:4px 0">${fmtCr(totMay)}</div>
         <div style="font-size:12px;opacity:.7">${rows.filter(r=>r.mInc?.totalIncentive>0).length} BMs earned · ${rows.length} total</div>
       </div>
       <div class="card" style="background:linear-gradient(135deg,#1a237e,#283593);color:#fff;padding:18px 20px">
-        <div style="font-size:11px;opacity:.7;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Team Incentive · '+getCurMonthLabel()+' (ongoing)</div>
+        <div style="font-size:11px;opacity:.7;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Team Incentive · ${getCurMonthLabel()} (ongoing)</div>
         <div style="font-size:30px;font-weight:800;margin:4px 0">${fmtCr(totJune)}</div>
         <div style="font-size:12px;opacity:.7">${rows.filter(r=>r.jInc?.totalIncentive>0).length} BMs earned · ${rows.length} total</div>
       </div>
@@ -2227,8 +2227,8 @@ function buildTeamIncentive(el) {
               <th rowspan="2" style="vertical-align:middle">#</th>
               <th rowspan="2" style="vertical-align:middle">BM Name</th>
               <th rowspan="2" style="vertical-align:middle">Tier</th>
-              <th colspan="2" style="text-align:center;background:#e3f2fd;color:#1565c0;border-bottom:2px solid #90caf9">'+getPrevMonthLabel()+'</th>
-              <th colspan="2" style="text-align:center;background:#e8eaf6;color:#1a237e;border-bottom:2px solid #9fa8da">'+getCurMonthLabel()+'</th>
+              <th colspan="2" style="text-align:center;background:#e3f2fd;color:#1565c0;border-bottom:2px solid #90caf9">${getPrevMonthLabel()}</th>
+              <th colspan="2" style="text-align:center;background:#e8eaf6;color:#1a237e;border-bottom:2px solid #9fa8da">${getCurMonthLabel()}</th>
               <th rowspan="2" style="vertical-align:middle;text-align:center">Trend</th>
             </tr>
             <tr style="background:#f5f9ff">
@@ -2576,8 +2576,8 @@ function buildIncentive(el) {
                   <table style="width:100%;font-size:12px">
                     <thead><tr>
                       <th style="text-align:left">Metric</th>
-                      <th style="text-align:right;color:#1565c0">'+getPrevMonthLabel()+'</th>
-                      <th style="text-align:right;color:#1a237e">'+getCurMonthLabel()+'</th>
+                      <th style="text-align:right;color:#1565c0">${getPrevMonthLabel()}</th>
+                      <th style="text-align:right;color:#1a237e">${getCurMonthLabel()}</th>
                     </tr></thead>
                     <tbody>
                       <tr><td>Total GMV</td><td style="text-align:right">${fmtCr(mS.totalAmt)}</td><td style="text-align:right">${fmtCr(jS.totalAmt)}</td></tr>
@@ -2745,7 +2745,7 @@ function buildIncentive(el) {
     <!-- Dual month header -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
       <div class="incentive-box" style="margin-bottom:0">
-        <div class="incentive-title">'+getPrevMonthLabel()+' — Final Incentive</div>
+        <div class="incentive-title">${getPrevMonthLabel()} — Final Incentive</div>
         <div class="incentive-amount" style="font-size:36px">${fmtCr(Math.round(mCalc.total))}</div>
         <div class="incentive-breakdown">
           <div class="incentive-item"><div class="ivalue">${fmtCr(mCalc.gmv)}</div><div class="ilabel">Eff. GMV</div></div>
@@ -2754,7 +2754,7 @@ function buildIncentive(el) {
         </div>
       </div>
       <div class="incentive-box" style="margin-bottom:0;background:linear-gradient(135deg,#283593,#3949ab)">
-        <div class="incentive-title">'+getCurMonthLabel()+' — Ongoing</div>
+        <div class="incentive-title">${getCurMonthLabel()} — Ongoing</div>
         <div class="incentive-amount" style="font-size:36px">${fmtCr(Math.round(totalIncentive))}</div>
       <div class="incentive-breakdown">
         <div class="incentive-item"><div class="ivalue">${fmtCr(effGMV)}</div><div class="ilabel">Eff. GMV</div></div>
@@ -2767,7 +2767,7 @@ function buildIncentive(el) {
     <div class="card" style="margin-bottom:16px">
       <div class="card-title">May vs June Comparison</div>
       <table style="width:100%">
-        <thead><tr><th>Metric</th><th style="text-align:right;color:#1565c0">'+getPrevMonthLabel()+'</th><th style="text-align:right;color:#1a237e">'+getCurMonthLabel()+'</th></tr></thead>
+        <thead><tr><th>Metric</th><th style="text-align:right;color:#1565c0">${getPrevMonthLabel()}</th><th style="text-align:right;color:#1a237e">${getCurMonthLabel()}</th></tr></thead>
         <tbody>
           <tr><td>UC GMV</td><td style="text-align:right">${fmtCr(mCalc.ucA)}</td><td style="text-align:right">${fmtCr(ucAmt)}</td></tr>
           <tr><td>UCV GMV</td><td style="text-align:right">${fmtCr(mCalc.ucvA)}</td><td style="text-align:right">${fmtCr(ucvAmt)}</td></tr>
@@ -2893,7 +2893,7 @@ function buildTeam(el) {
     </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div style="padding:14px 20px;background:#e8eaf6;font-size:13px;font-weight:700;color:#1a237e">
-        👥 BM Performance — '+getCurMonthLabel()+'
+        👥 BM Performance — ${getCurMonthLabel()}
         <span style="font-weight:400;font-size:11px;margin-left:10px;color:#3949ab">UC: ${fmtCr(teamUC)} | CV: ${fmtCr(teamCV)}</span>
       </div>
       <div style="overflow-x:auto">
@@ -3125,7 +3125,7 @@ function buildInsights(el) {
   }
 
   el.innerHTML = `
-    <div class="section-title">Business Insights — '+getCurMonthLabel()+'</div>
+    <div class="section-title">Business Insights — ${getCurMonthLabel()}</div>
     ${insights.length === 0 ? '<div class="empty">No transactions found to generate insights.</div>' : `
     <div class="insight-list">
       ${insights.map(i => `
@@ -3186,7 +3186,7 @@ function buildWeekly(el) {
 
   el.innerHTML = `
     <div style="margin-bottom:16px">
-      <div style="font-size:20px;font-weight:800;color:#1a237e">📊 Weekly Review — '+getCurMonthLabel()+'</div>
+      <div style="font-size:20px;font-weight:800;color:#1a237e">📊 Weekly Review — ${getCurMonthLabel()}</div>
       <div style="font-size:12px;color:#9e9e9e;margin-top:2px">Milestone targets & achievement by disbursed date</div>
     </div>
 
