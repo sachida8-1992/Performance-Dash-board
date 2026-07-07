@@ -308,6 +308,18 @@ function resolveEmpById(bmId) {
   return getEmpData().find(e => e.id === String(bmId)) || null;
 }
 
+// Count unique active channels for a BM
+// CV BMs: use unique DCIDs (ch_check always 0 for CV)
+// UC BMs: use ch_check > 0 as before
+function countChannels(txns, emp) {
+  if (!emp) return new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+  const isCVBM = emp.designation==='BM' && (!emp.uc_tgt || emp.uc_tgt===0 || emp.uc_tgt==='') && (emp.cv_tgt>0);
+  if (isCVBM) {
+    return new Set(txns.filter(t=>t.dcid).map(t=>t.dcid)).size;
+  }
+  return new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+}
+
 // ========== DRR / SHORTFALL HELPERS ==========
 function getRemainingWorkingDays() {
   // Working days remaining in current month from today (excl. Sundays)
@@ -563,6 +575,12 @@ function parseTransactions(rows) {
 function getEmpData()  { return (dataLoaded && window._LIVE_EMP) ? window._LIVE_EMP : EMP_DATA; }
 function getTxnData()  { return (dataLoaded && window._LIVE_TXN) ? window._LIVE_TXN : TXN_DATA; }
 function getCurMonth() { return window.CURRENT_MONTH || '2026-07'; }
+function getTodayDay() { return new Date().getDate(); }
+// Filter previous month data to same day range as current MTD (LMTD)
+function toLMTD(prevTxns) {
+  const d = getTodayDay();
+  return prevTxns.filter(t => (t.day||0) > 0 && (t.day||0) <= d);
+}
 function getCurMonthLabel() {
   const d = new Date();
   return d.toLocaleString('en-IN', {month:'long', year:'numeric'});
@@ -1323,7 +1341,7 @@ function renderMonthCompare() {
   const label = mcFilter === 'UC' ? 'Used Car' : mcFilter === 'CV' ? 'CV (UCV+NCV)' : 'All Products';
   const months = [
     { label:getCurMonthLabel(), s:jun, color:'#1a237e' },
-    { label:getPrevMonthLabel(), s:may, color:'#283593' },
+    { label:getPrevMonthLabel()+' (LMTD day '+getTodayDay()+')', s:may, color:'#283593' },
   ];
 
   el.innerHTML = `
@@ -1403,7 +1421,7 @@ function buildRHPerfTable() {
 
   const allEmps  = getEmpData();
   const juneTxns = getTxnData().filter(t => t.date && t.date.startsWith(getCurMonth()));
-  const mayTxns  = getMayData();
+  const mayTxns  = toLMTD(getMayData());
 
   // Product filter
   function pf(arr) {
@@ -2045,7 +2063,7 @@ function buildBanks(el) {
     const stateFilteredDcids = new Set(filtered.map(t => t.dcid).filter(Boolean));
     const dcidToBank = {};
     filtered.forEach(t => { if(t.dcid && t.bank) dcidToBank[t.dcid] = t.bank; });
-    const mayPool = getMayData().filter(t => {
+    const mayPool = toLMTD(getMayData()).filter(t => {
       const d2=currentUser.designation, id2=currentUser.id;
       if(d2==='BM') return t.bm_id===id2;
       if(d2==='AM') return t.am_id===id2;
@@ -2138,7 +2156,7 @@ function buildTeamIncentive(el) {
   }
 
   const juneTxns = scopeFilter(getTxnData().filter(t => t.date && t.date.startsWith(getCurMonth())));
-  const mayTxns  = scopeFilter(getMayData());
+  const mayTxns  = toLMTD(scopeFilter(getMayData()));
 
   const juneMap = getBmMap(juneTxns);
   const mayMap  = getBmMap(mayTxns);
@@ -2853,7 +2871,8 @@ function buildTeam(el) {
     const cvAmt  = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
     const totAmt = ucAmt + cvAmt;
     const cases  = txns.length;
-    const activeCh = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    const bmEmpT = resolveEmpById(key);
+    const activeCh = countChannels(txns, bmEmpT);
     const ach    = totTgt > 0 ? Math.round((totAmt/totTgt)*100) : null;
     const chAch  = chTgt > 0 ? Math.round((activeCh/chTgt)*100) : null;
 
@@ -3243,7 +3262,7 @@ function buildMonthlySummary(el) {
     const ucAmt = uc.reduce((s,t)=>s+t.amt,0);
     const cvAmt = cv.reduce((s,t)=>s+t.amt,0);
     const tot   = ucAmt+cvAmt;
-    const ch    = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    const ch    = countChannels(txns, emp);
     const ucTgt = (emp.uc_tgt||0)*1e5;
     const cvTgt = (emp.cv_tgt||0)*1e5;
     const tgt   = ucTgt+cvTgt;
@@ -3635,7 +3654,7 @@ function buildQuarterly(el) {
     });
     const ucAmt = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
     const cvAmt = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-    const ch    = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    const ch    = countChannels(txns, emp);
     return { tot:ucAmt+cvAmt, ucAmt, cvAmt, cases:txns.length, ch };
   }
 
@@ -3810,9 +3829,12 @@ function buildChannelDrive(el) {
     const bmCur  = curTxns.filter(t=>t.bm_id===bm.id);
     const bmPrev = prevTxns.filter(t=>t.bm_id===bm.id);
     const bmL3   = l3Data.filter(t=>t.bm_id===bm.id);
-    const bmCurCh  = new Set(bmCur.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
-    const bmPrevCh = new Set(bmPrev.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
-    const bmL3Ch   = new Set(bmL3.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+    const _bmEmp = resolveEmpById(bm.id);
+    const _isCVBM = _bmEmp && (!_bmEmp.uc_tgt||_bmEmp.uc_tgt===0||_bmEmp.uc_tgt==='') && _bmEmp.cv_tgt>0;
+    const _chFilt = t => _isCVBM ? !!t.dcid : (t.ch_check>0&&!!t.dcid);
+    const bmCurCh  = new Set(bmCur.filter(_chFilt).map(t=>t.dcid));
+    const bmPrevCh = new Set(bmPrev.filter(_chFilt).map(t=>t.dcid));
+    const bmL3Ch   = new Set(bmL3.filter(_chFilt).map(t=>t.dcid));
     const bmLost   = [...bmPrevCh].filter(d=>!bmCurCh.has(d));
     const bmInact  = [...bmL3Ch].filter(d=>!bmCurCh.has(d)&&!bmLost.includes(d));
     const bmAmt    = bmCur.reduce((s,t)=>s+t.amt,0);
@@ -4263,15 +4285,18 @@ function metricCard(label, cur, prev, color, unit='amt') {
 // ═══════════════════════════════════════════════════════════
 function buildBMScorecardHTML(bm) {
   const cur     = myTxns.filter(t=>t.bm_id===bm.id);
-  const prev    = (window._LIVE_MAY||[]).filter(t=>t.bm_id===bm.id);
+  const prev    = toLMTD((window._LIVE_MAY||[]).filter(t=>t.bm_id===bm.id));
+  const prevMonth = getPrevMonthLabel();
+  const todayDay  = getTodayDay();
   const ucAmt   = cur.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
   const cvAmt   = cur.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
   const tot     = ucAmt+cvAmt;
   const prevUC  = prev.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
   const prevCV  = prev.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
   const prevTot = prevUC+prevCV;
-  const ch      = new Set(cur.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
-  const prevCh  = new Set(prev.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+  const bmEmpObj= resolveEmpById(bm.id);
+  const ch      = countChannels(cur, bmEmpObj);
+  const prevCh  = countChannels(prev, bmEmpObj);
   const cases   = cur.length;
   const prevCases=prev.length;
   const ucTgt   = (bm.uc_tgt||0)*1e5;
@@ -4339,8 +4364,8 @@ function buildBMScorecardHTML(bm) {
       <table style="width:100%;border-collapse:collapse;font-size:12px">
         <tr style="background:#f5f7ff">
           <th style="padding:8px 10px;text-align:left;color:#555;font-weight:600;border-radius:8px 0 0 8px">Metric</th>
-          <th style="padding:8px 10px;text-align:right;color:#1a237e;font-weight:700">${month.split(' ')[0]}</th>
-          <th style="padding:8px 10px;text-align:right;color:#9e9e9e;font-weight:600">${prevMonth.split(' ')[0]}</th>
+          <th style="padding:8px 10px;text-align:right;color:#1a237e;font-weight:700">${month.split(' ')[0]} MTD</th>
+          <th style="padding:8px 10px;text-align:right;color:#9e9e9e;font-weight:600">${prevMonth.split(' ')[0]} 1-${todayDay} LMTD</th>
           <th style="padding:8px 10px;text-align:center;border-radius:0 8px 8px 0">Growth</th>
         </tr>
         ${[
@@ -4396,17 +4421,19 @@ function buildAMScorecardHTML(am) {
   const date     = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
   const month    = getCurMonthLabel();
   const prevMonth= getPrevMonthLabel();
+  const todayDay = getTodayDay();
 
   const bmList = emps.filter(e=>e.designation==='BM'&&e.am_id===am.id);
   const rows   = bmList.map(bm=>{
     const cur    = myTxns.filter(t=>t.bm_id===bm.id);
-    const prv    = prevData.filter(t=>t.bm_id===bm.id);
+    const prv    = toLMTD(prevData.filter(t=>t.bm_id===bm.id));
     const curAmt = cur.reduce((s,t)=>s+t.amt,0);
     const prvAmt = prv.reduce((s,t)=>s+t.amt,0);
     const curUC  = cur.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
     const curCV  = cur.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-    const curCh  = new Set(cur.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
-    const prvCh  = new Set(prv.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    const bmEmpObj2 = resolveEmpById(bm.id);
+    const curCh  = countChannels(cur, bmEmpObj2);
+    const prvCh  = countChannels(prv, bmEmpObj2);
     const tgt    = ((bm.uc_tgt||0)+(bm.cv_tgt||0))*1e5;
     const ach    = tgt>0?Math.round((curAmt/tgt)*100):null;
     const diff   = curAmt-prvAmt;
@@ -4467,8 +4494,8 @@ function buildAMScorecardHTML(am) {
         <tr style="background:#1a237e;color:#fff">
           <th style="padding:8px 10px;text-align:left;border-radius:8px 0 0 0">BM Name</th>
           <th style="padding:8px 8px;text-align:left">Tier</th>
-          <th style="padding:8px 10px;text-align:right">${month.split(' ')[0]}</th>
-          <th style="padding:8px 10px;text-align:right">${prevMonth.split(' ')[0]}</th>
+          <th style="padding:8px 10px;text-align:right">${month.split(' ')[0]} MTD</th>
+          <th style="padding:8px 10px;text-align:right">${prevMonth.split(' ')[0]} 1-${todayDay} LMTD</th>
           <th style="padding:8px 8px;text-align:center">Growth</th>
           <th style="padding:8px 8px;text-align:center">Ach%</th>
           <th style="padding:8px 8px;text-align:center;border-radius:0 8px 0 0">Ch</th>
@@ -4514,17 +4541,19 @@ function buildTHScorecardHTML() {
   const date     = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
   const month    = getCurMonthLabel();
   const prevMonth= getPrevMonthLabel();
+  const todayDay = getTodayDay();
 
   const bmList = emps.filter(e=>e.designation==='BM'&&e.rh_id===currentUser.id);
   const amList = emps.filter(e=>e.designation==='AM'&&e.rh_id===currentUser.id);
 
   const amRows = amList.map(am=>{
     const cur    = myTxns.filter(t=>t.am_id===am.id);
-    const prv    = prevData.filter(t=>t.am_id===am.id);
+    const prv    = toLMTD(prevData.filter(t=>t.am_id===am.id));
     const curAmt = cur.reduce((s,t)=>s+t.amt,0);
     const prvAmt = prv.reduce((s,t)=>s+t.amt,0);
-    const curCh  = new Set(cur.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
-    const prvCh  = new Set(prv.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    const bmEmpObj2 = resolveEmpById(bm.id);
+    const curCh  = countChannels(cur, bmEmpObj2);
+    const prvCh  = countChannels(prv, bmEmpObj2);
     const amBMs  = bmList.filter(b=>b.am_id===am.id);
     const onT    = amBMs.filter(b=>{
       const t=myTxns.filter(x=>x.bm_id===b.id);
@@ -4541,8 +4570,9 @@ function buildTHScorecardHTML() {
   const totOnT  = amRows.reduce((s,r)=>s+r.onTrack,0);
   const totUC   = myTxns.filter(t=>t.rh_id===currentUser.id&&t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
   const totCV   = myTxns.filter(t=>t.rh_id===currentUser.id&&t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-  const prvUC   = prevData.filter(t=>t.rh_id===currentUser.id&&t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
-  const prvCV   = prevData.filter(t=>t.rh_id===currentUser.id&&t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+  const lmtdData= toLMTD(prevData.filter(t=>t.rh_id===currentUser.id));
+  const prvUC   = lmtdData.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+  const prvCV   = lmtdData.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
 
   const barsData = amRows.map(r=>({label:r.am.name, val:r.curAmt, prev:r.prvAmt, color:'#1a237e', color2:'#3949ab'}));
 
@@ -4588,8 +4618,8 @@ function buildTHScorecardHTML() {
       <table style="width:100%;border-collapse:collapse;font-size:11px">
         <tr style="background:#1a237e;color:#fff">
           <th style="padding:8px 10px;text-align:left;border-radius:8px 0 0 0">AM Name</th>
-          <th style="padding:8px 10px;text-align:right">${month.split(' ')[0]}</th>
-          <th style="padding:8px 10px;text-align:right">${prevMonth.split(' ')[0]}</th>
+          <th style="padding:8px 10px;text-align:right">${month.split(' ')[0]} MTD</th>
+          <th style="padding:8px 10px;text-align:right">${prevMonth.split(' ')[0]} 1-${todayDay} LMTD</th>
           <th style="padding:8px 8px;text-align:center">Growth</th>
           <th style="padding:8px 8px;text-align:center">BMs</th>
           <th style="padding:8px 8px;text-align:center">On Track</th>
@@ -4654,7 +4684,7 @@ function buildQ1EmailHTML(emp) {
     const txns = getTxns(emp, m.data());
     const uc   = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
     const cv   = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-    const ch   = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    const ch   = countChannels(txns, emp);
     return { label: m.label.split(' ')[0], tot: uc+cv, uc, cv, cases: txns.length, ch };
   });
 
@@ -4668,6 +4698,7 @@ function buildQ1EmailHTML(emp) {
   const tgt    = ucTgt + cvTgt;
   const ach    = tgt>0 ? Math.round((ytdTot/tgt)*100) : null;
   const achCol = ach===null?'#555':ach>=100?'#2e7d32':ach>=70?'#1565c0':'#c62828';
+  const isCVBM = emp.designation==='BM' && (!emp.uc_tgt||emp.uc_tgt===0||emp.uc_tgt==='') && (emp.cv_tgt>0);
 
   // BM rows for AM/TH
   let bmTable = '';
@@ -4934,9 +4965,12 @@ async function sendChannelToBMs() {
     const bmCur  = myTxns.filter(t=>t.bm_id===bm.id);
     const bmPrev = prevData.filter(t=>t.bm_id===bm.id);
     const bmL3   = l3Data.filter(t=>t.bm_id===bm.id);
-    const curCh  = new Set(bmCur.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
-    const prevCh = new Set(bmPrev.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
-    const l3Ch   = new Set(bmL3.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+    const bmEmpForCh = resolveEmpById(bm.id);
+    const isCVBMForCh = bmEmpForCh && (!bmEmpForCh.uc_tgt||bmEmpForCh.uc_tgt===0||bmEmpForCh.uc_tgt==='') && bmEmpForCh.cv_tgt>0;
+    const chFilter = t => isCVBMForCh ? !!t.dcid : (t.ch_check>0&&!!t.dcid);
+    const curCh  = new Set(bmCur.filter(chFilter).map(t=>t.dcid));
+    const prevCh = new Set(bmPrev.filter(chFilter).map(t=>t.dcid));
+    const l3Ch   = new Set(bmL3.filter(chFilter).map(t=>t.dcid));
     const lost   = [...prevCh].filter(d=>!curCh.has(d));
     const inact  = [...l3Ch].filter(d=>!curCh.has(d)&&!lost.includes(d));
     const dateStr= new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
@@ -6147,7 +6181,7 @@ function buildFlatHierarchy(el, scopeTxns, role) {
       const cvTgt = (e.cv_tgt||0)*1e5;
       const totTgt= ucTgt + cvTgt;
       const ach   = totTgt > 0 ? Math.round((tot/totTgt)*100) : null;
-      const ch    = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+      const ch    = countChannels(txns, emp);
       const chTgt = e.ch_tgt || 0;
       const chAch = chTgt > 0 ? Math.round((ch/chTgt)*100) : null;
       const ftd   = txns.filter(t=>t.date===todayStr);
