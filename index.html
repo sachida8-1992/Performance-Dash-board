@@ -3878,388 +3878,501 @@ function buildChannelDrive(el) {
 }
 
 // ========== MAILROOM — Send HTML Scorecard Email ==========
-function buildMailroom(el) {
-  const emps = getEmpData();
-  const role = currentUser.designation;
+// ── Apps Script URL management ─────────────────────────────
+function getASUrl() { return localStorage.getItem('rupyy_as_email_url') || ''; }
+function setASUrl(url) { localStorage.setItem('rupyy_as_email_url', url); }
 
-  const recipients = emps.filter(e =>
-    e.email && e.designation !== role &&
-    (role==='RH' ? e.rh_id===currentUser.id : true)
-  ).sort((a,b)=>a.designation.localeCompare(b.designation)||a.name.localeCompare(b.name));
-
-  function recipientList(prefix) {
-    return recipients.map(e=>`
-      <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid #f5f5f5;font-size:12px">
-        <input type="checkbox" class="${prefix}-recip" data-email="${e.email}" data-role="${e.designation}" value="${e.email}" style="accent-color:#1a237e">
-        <span><b>${e.name}</b> <span style="background:#e8eaf6;color:#3949ab;padding:1px 6px;border-radius:8px;font-size:10px">${e.designation}</span></span>
-        <span style="color:#9e9e9e;font-size:11px;margin-left:auto">${e.email}</span>
-      </label>`).join('');
+function promptASUrl() {
+  const existing = getASUrl();
+  const url = prompt(
+    'Paste your Apps Script Web App URL:\n\n' +
+    '(Apps Script → Deploy → Manage Deployments → copy Web App URL)',
+    existing || ''
+  );
+  if (url && url.startsWith('http')) {
+    setASUrl(url);
+    alert('✅ Saved! You can now send emails.');
+    return url;
   }
-
-  el.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
-
-      <!-- ══ SCORECARD MAIL ══ -->
-      <div>
-        <div style="background:linear-gradient(135deg,#1a237e,#283593);color:#fff;border-radius:12px 12px 0 0;padding:14px 20px;display:flex;align-items:center;gap:10px">
-          <span style="font-size:20px">📊</span>
-          <div>
-            <div style="font-weight:800;font-size:15px">Scorecard Email</div>
-            <div style="font-size:11px;opacity:.7">MTD performance, targets & achievement</div>
-          </div>
-        </div>
-        <div style="background:#fff;border-radius:0 0 12px 12px;box-shadow:0 2px 12px rgba(0,0,0,.08);padding:20px">
-
-          <div style="margin-bottom:14px">
-            <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:6px">Scorecard Type</label>
-            <select id="sc-type" onchange="previewScorecard()" style="width:100%;padding:8px 12px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;background:#f9f9f9">
-              <option value="mtd">📅 MTD Performance Update</option>
-              <option value="q1">📈 Q1 Scorecard (Apr–Jun)</option>
-              <option value="weekly">📋 Weekly Review Summary</option>
-            </select>
-          </div>
-
-          <div style="margin-bottom:14px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-              <label style="font-size:12px;font-weight:700;color:#555">Recipients</label>
-              <div style="display:flex;gap:6px">
-                <button onclick="selectGroup('sc','ALL')" style="padding:3px 8px;border-radius:12px;border:1px solid #c5cae9;font-size:10px;cursor:pointer;background:#e8eaf6;color:#1a237e">All</button>
-                <button onclick="selectGroup('sc','BM')"  style="padding:3px 8px;border-radius:12px;border:1px solid #e0e0e0;font-size:10px;cursor:pointer">BM</button>
-                <button onclick="selectGroup('sc','AM')"  style="padding:3px 8px;border-radius:12px;border:1px solid #e0e0e0;font-size:10px;cursor:pointer">AM</button>
-                <button onclick="selectGroup('sc','TH')"  style="padding:3px 8px;border-radius:12px;border:1px solid #e0e0e0;font-size:10px;cursor:pointer">TH</button>
-              </div>
-            </div>
-            <div style="max-height:180px;overflow-y:auto;border:1px solid #e8eaf6;border-radius:8px">${recipientList('sc')}</div>
-          </div>
-
-          <div style="margin-bottom:14px">
-            <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:6px">Personal Note (optional)</label>
-            <textarea id="sc-note" rows="2" placeholder="Add a note..." style="width:100%;padding:8px;border:1px solid #e0e0e0;border-radius:8px;font-size:12px;resize:vertical;box-sizing:border-box"></textarea>
-          </div>
-
-          <div style="display:flex;gap:8px">
-            <button onclick="previewScorecard()" style="padding:10px 16px;background:#f5f7ff;color:#1a237e;border:1px solid #c5cae9;border-radius:8px;font-size:12px;cursor:pointer;font-weight:600">👁 Preview</button>
-            <button onclick="sendMailDraft('sc')" style="flex:1;padding:10px;background:#1a237e;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">📧 Create Draft & Send</button>
-          </div>
-          <div id="sc-status" style="margin-top:8px;font-size:12px;text-align:center;min-height:20px"></div>
-
-          <!-- Preview -->
-          <div style="margin-top:14px;border:1px solid #e8eaf6;border-radius:8px;overflow:hidden">
-            <div style="padding:8px 14px;background:#f5f7ff;font-size:11px;font-weight:700;color:#1a237e">📋 Preview</div>
-            <div id="sc-preview" style="padding:12px;font-size:11px;max-height:280px;overflow-y:auto;background:#fafafa">
-              <div style="color:#9e9e9e;text-align:center;padding:20px">Click Preview to see email</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ══ CHANNEL DRIVE MAIL ══ -->
-      <div>
-        <div style="background:linear-gradient(135deg,#b71c1c,#c62828);color:#fff;border-radius:12px 12px 0 0;padding:14px 20px;display:flex;align-items:center;gap:10px">
-          <span style="font-size:20px">🚀</span>
-          <div>
-            <div style="font-weight:800;font-size:15px">Channel Drive Email</div>
-            <div style="font-size:11px;opacity:.7">Lost channels, inactive dealers & action items</div>
-          </div>
-        </div>
-        <div style="background:#fff;border-radius:0 0 12px 12px;box-shadow:0 2px 12px rgba(0,0,0,.08);padding:20px">
-
-          <div style="margin-bottom:14px">
-            <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:6px">Channel Alert Type</label>
-            <select id="ch-type" onchange="previewChannel()" style="width:100%;padding:8px 12px;border:1px solid #e0e0e0;border-radius:8px;font-size:13px;background:#f9f9f9">
-              <option value="lost">🔴 Lost Channels Alert (vs Last Month)</option>
-              <option value="inactive">🟡 Inactive Channels Alert (Last 3 Months)</option>
-              <option value="full">📋 Full Channel Drive Report (Lost + Inactive)</option>
-            </select>
-          </div>
-
-          <div style="margin-bottom:14px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-              <label style="font-size:12px;font-weight:700;color:#555">Recipients</label>
-              <div style="display:flex;gap:6px">
-                <button onclick="selectGroup('ch','ALL')" style="padding:3px 8px;border-radius:12px;border:1px solid #ffcdd2;font-size:10px;cursor:pointer;background:#ffebee;color:#c62828">All</button>
-                <button onclick="selectGroup('ch','BM')"  style="padding:3px 8px;border-radius:12px;border:1px solid #e0e0e0;font-size:10px;cursor:pointer">BM</button>
-                <button onclick="selectGroup('ch','AM')"  style="padding:3px 8px;border-radius:12px;border:1px solid #e0e0e0;font-size:10px;cursor:pointer">AM</button>
-                <button onclick="selectGroup('ch','TH')"  style="padding:3px 8px;border-radius:12px;border:1px solid #e0e0e0;font-size:10px;cursor:pointer">TH</button>
-              </div>
-            </div>
-            <div style="max-height:180px;overflow-y:auto;border:1px solid #ffebee;border-radius:8px">${recipientList('ch')}</div>
-          </div>
-
-          <div style="margin-bottom:14px">
-            <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:6px">Action Message (optional)</label>
-            <textarea id="ch-note" rows="2" placeholder="e.g. Please visit all inactive dealers this week..." style="width:100%;padding:8px;border:1px solid #ffcdd2;border-radius:8px;font-size:12px;resize:vertical;box-sizing:border-box"></textarea>
-          </div>
-
-          <div style="display:flex;gap:8px">
-            <button onclick="previewChannel()" style="padding:10px 16px;background:#fff8f8;color:#c62828;border:1px solid #ffcdd2;border-radius:8px;font-size:12px;cursor:pointer;font-weight:600">👁 Preview</button>
-            <button onclick="sendMailDraft('ch')" style="flex:1;padding:10px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">📧 Create Draft & Send</button>
-          </div>
-          <div id="ch-status" style="margin-top:8px;font-size:12px;text-align:center;min-height:20px"></div>
-
-          <!-- Preview -->
-          <div style="margin-top:14px;border:1px solid #ffebee;border-radius:8px;overflow:hidden">
-            <div style="padding:8px 14px;background:#fff8f8;font-size:11px;font-weight:700;color:#c62828">📋 Preview</div>
-            <div id="ch-preview" style="padding:12px;font-size:11px;max-height:280px;overflow-y:auto;background:#fafafa">
-              <div style="color:#9e9e9e;text-align:center;padding:20px">Click Preview to see email</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  `;
-
-  setTimeout(() => { previewScorecard(); previewChannel(); }, 100);
+  return existing;
 }
 
-// ── Select recipients by role for a given prefix ──
-function selectGroup(prefix, role) {
-  document.querySelectorAll(`.${prefix}-recip`).forEach(c => {
-    c.checked = role === 'ALL' ? true : c.dataset.role === role;
-  });
-}
-
-// ── Build Scorecard Email HTML ──────────────────
-function buildScorecardEmailHTML(type, note) {
-  const dateStr  = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
-  const curMonth = getCurMonthLabel();
-  const emps     = getEmpData();
-  const bmList   = emps.filter(e=>e.designation==='BM'&&e.rh_id===currentUser.id);
-
-  // Q1 or MTD data
-  const isQ1 = type === 'q1';
-  const q1Months = isQ1 ? [
-    makeMonthEntry(new Date(getFYStartYear(),3,1)),
-    makeMonthEntry(new Date(getFYStartYear(),4,1)),
-    makeMonthEntry(new Date(getFYStartYear(),5,1)),
-  ].filter(m=>new Date(m.pfx+'-01')<=new Date()) : null;
-
-  const bmRows = bmList.map(bm => {
-    const txns = isQ1
-      ? q1Months.flatMap(m=>m.data().filter(t=>t.bm_id===bm.id))
-      : myTxns.filter(t=>t.bm_id===bm.id);
-    const amt  = txns.reduce((s,t)=>s+t.amt,0);
-    const uc   = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
-    const cv   = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-    const ch   = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
-    const ucTgt= (bm.uc_tgt||0)*1e5*(isQ1?3:1);
-    const cvTgt= (bm.cv_tgt||0)*1e5*(isQ1?3:1);
-    const tgt  = ucTgt+cvTgt;
-    const ach  = tgt>0?Math.round((amt/tgt)*100):null;
-    return {bm,amt,uc,cv,ch,cases:txns.length,tgt,ach};
-  }).sort((a,b)=>b.amt-a.amt);
-
-  const totAmt   = bmRows.reduce((s,r)=>s+r.amt,0);
-  const totUC    = bmRows.reduce((s,r)=>s+r.uc,0);
-  const totCV    = bmRows.reduce((s,r)=>s+r.cv,0);
-  const totCases = bmRows.reduce((s,r)=>s+r.cases,0);
-  const totCh    = bmRows.reduce((s,r)=>s+r.ch,0);
-  const onTrack  = bmRows.filter(r=>r.ach!==null&&r.ach>=70).length;
-  const behind   = bmRows.filter(r=>r.ach!==null&&r.ach<70).length;
-
-  const titleMap = {mtd:`MTD Performance — ${curMonth}`, q1:`Q1 Scorecard — FY${getFYStartYear()}-${String(getFYStartYear()+1).slice(2)} (Apr–Jun)`, weekly:`Weekly Review — ${curMonth}`};
-  const title = titleMap[type]||titleMap.mtd;
-
-  return `<div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;background:#f5f5f5">
-    <div style="background:linear-gradient(135deg,#1a237e,#283593);padding:24px 32px;border-radius:12px 12px 0 0">
-      <div style="color:#fff;font-size:22px;font-weight:800">📊 ${title}</div>
-      <div style="color:rgba(255,255,255,.7);font-size:12px;margin-top:4px">${dateStr} &nbsp;|&nbsp; From: ${currentUser.name} (${currentUser.designation})</div>
-    </div>
-    <div style="background:#fff;padding:20px 32px;display:flex;gap:0;border-bottom:2px solid #e8eaf6">
-      ${[['Total Disb',fmtCr(totAmt),'#1a237e'],['UC',fmtCr(totUC),'#1565c0'],['CV',fmtCr(totCV),'#6a1b9a'],['Cases',totCases,'#333'],['On Track',onTrack+'/'+bmRows.length,'#2e7d32'],['Behind',behind,'#c62828']].map(([l,v,c])=>`
-      <div style="flex:1;text-align:center;padding:8px 4px;border-right:1px solid #f0f0f0">
-        <div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">${l}</div>
-        <div style="font-size:18px;font-weight:800;color:${c}">${v}</div>
-      </div>`).join('')}
-    </div>
-    <div style="background:#fff;padding:20px 32px">
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="background:#1a237e;color:#fff">
-          <th style="padding:8px 10px;text-align:left">BM Name</th>
-          <th style="padding:8px 6px;text-align:left">Tier</th>
-          <th style="padding:8px 10px;text-align:right">Disbursement</th>
-          <th style="padding:8px 6px;text-align:right">UC</th>
-          <th style="padding:8px 6px;text-align:right">CV</th>
-          <th style="padding:8px 6px;text-align:center">Cases</th>
-          <th style="padding:8px 6px;text-align:center">Ch</th>
-          <th style="padding:8px 6px;text-align:center">Ach%</th>
-        </tr></thead>
-        <tbody>
-          ${bmRows.map((r,i)=>`<tr style="background:${i%2===0?'#fff':'#f8f9ff'}">
-            <td style="padding:8px 10px;font-weight:700">${r.bm.name}</td>
-            <td style="padding:8px 6px"><span style="background:#e8eaf6;color:#3949ab;padding:1px 5px;border-radius:6px;font-size:10px">${r.bm.tier||'—'}</span></td>
-            <td style="padding:8px 10px;text-align:right;font-weight:700">${fmtCr(r.amt)}</td>
-            <td style="padding:8px 6px;text-align:right;color:#1565c0">${fmtCr(r.uc)}</td>
-            <td style="padding:8px 6px;text-align:right;color:#6a1b9a">${fmtCr(r.cv)}</td>
-            <td style="padding:8px 6px;text-align:center">${r.cases}</td>
-            <td style="padding:8px 6px;text-align:center">${r.ch}</td>
-            <td style="padding:8px 6px;text-align:center">${r.ach!==null?`<span style="background:${r.ach>=100?'#e8f5e9':r.ach>=70?'#e3f2fd':'#ffebee'};color:${r.ach>=100?'#2e7d32':r.ach>=70?'#1565c0':'#c62828'};padding:2px 7px;border-radius:8px;font-weight:700">${r.ach}%</span>`:'—'}</td>
-          </tr>`).join('')}
-          <tr style="background:#e8eaf6;font-weight:700">
-            <td style="padding:8px 10px" colspan="2">TOTAL</td>
-            <td style="padding:8px 10px;text-align:right">${fmtCr(totAmt)}</td>
-            <td style="padding:8px 6px;text-align:right;color:#1565c0">${fmtCr(totUC)}</td>
-            <td style="padding:8px 6px;text-align:right;color:#6a1b9a">${fmtCr(totCV)}</td>
-            <td style="padding:8px 6px;text-align:center">${totCases}</td>
-            <td style="padding:8px 6px;text-align:center">${totCh}</td>
-            <td></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    ${note?`<div style="background:#fff;padding:12px 32px;border-top:1px solid #e8eaf6"><b style="color:#555">Note:</b> <span style="color:#333;font-style:italic">${note}</span></div>`:''}
-    <div style="background:#283593;padding:14px 32px;border-radius:0 0 12px 12px;text-align:center;color:rgba(255,255,255,.6);font-size:11px">
-      Rupyy Performance Dashboard &nbsp;|&nbsp; ${dateStr}
-    </div>
-  </div>`;
-}
-
-// ── Build Channel Drive Email HTML ──────────────
-function buildChannelEmailHTML(type, note) {
-  const dateStr  = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
-  const emps     = getEmpData();
-  const prevData = window._LIVE_MAY||[];
-  const prevTxns = prevData.filter(t=>t.rh_id===currentUser.id);
-  const l3Data   = getLast6Months().slice(-3).flatMap(m=>m.data().filter(t=>t.rh_id===currentUser.id));
-
-  const curCh  = new Set(myTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
-  const prevCh = new Set(prevTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
-  const l3Ch   = new Set(l3Data.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
-  const lostDcids    = [...prevCh].filter(d=>!curCh.has(d));
-  const inactiveDcids= [...l3Ch].filter(d=>!curCh.has(d)&&!lostDcids.includes(d));
-
-  function dealerRow(dcid, pool, idx) {
-    const t      = pool.filter(x=>x.dcid===dcid);
-    const dealer = t[0]?.dealer||dcid;
-    const gmv    = t.reduce((s,x)=>s+x.amt,0);
-    const bm     = resolveEmpById(t[0]?.bm_id)?.name||t[0]?.bm||'—';
-    return `<tr style="background:${idx%2===0?'#fff':'#fff8f8'}">
-      <td style="padding:7px 10px;color:#9e9e9e">${idx+1}</td>
-      <td style="padding:7px 10px;font-weight:700">${dealer}<div style="font-size:10px;color:#9e9e9e">${dcid}</div></td>
-      <td style="padding:7px 10px">${bm}</td>
-      <td style="padding:7px 10px;text-align:right;font-weight:700;color:#c62828">${fmtCr(gmv)}</td>
-    </tr>`;
-  }
-
-  const showLost    = type==='lost'||type==='full';
-  const showInactive= type==='inactive'||type==='full';
-  const titleMap    = {lost:'🔴 Lost Channels Alert',inactive:'🟡 Inactive Channels Alert',full:'📋 Full Channel Drive Report'};
-
-  return `<div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;background:#f5f5f5">
-    <div style="background:linear-gradient(135deg,#b71c1c,#c62828);padding:24px 32px;border-radius:12px 12px 0 0">
-      <div style="color:#fff;font-size:22px;font-weight:800">🚀 ${titleMap[type]||titleMap.full}</div>
-      <div style="color:rgba(255,255,255,.7);font-size:12px;margin-top:4px">${dateStr} &nbsp;|&nbsp; Action Required &nbsp;|&nbsp; From: ${currentUser.name}</div>
-    </div>
-    <div style="background:#fff;padding:16px 32px;display:flex;gap:0;border-bottom:2px solid #ffcdd2">
-      ${[['Active Now',curCh.size,'#2e7d32'],['Last Month',prevCh.size,'#1565c0'],['Lost Channels',lostDcids.length,'#c62828'],['Inactive (L3M)',inactiveDcids.length,'#f57f17']].map(([l,v,c])=>`
-      <div style="flex:1;text-align:center;padding:8px;border-right:1px solid #ffebee">
-        <div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">${l}</div>
-        <div style="font-size:20px;font-weight:800;color:${c}">${v}</div>
-      </div>`).join('')}
-    </div>
-    ${note?`<div style="background:#fff3e0;padding:12px 32px;border-left:4px solid #f57f17"><b>Action Required:</b> <span style="color:#333">${note}</span></div>`:''}
-    ${showLost&&lostDcids.length?`
-    <div style="background:#fff;padding:16px 32px">
-      <div style="font-weight:700;color:#c62828;font-size:14px;margin-bottom:10px">🔴 Lost Channels — Were Active Last Month (${lostDcids.length})</div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="background:#ffebee"><th style="padding:7px 10px;text-align:left">#</th><th style="padding:7px 10px;text-align:left">Dealer</th><th style="padding:7px 10px;text-align:left">BM</th><th style="padding:7px 10px;text-align:right">${getPrevMonthLabel().split(' ')[0]} GMV</th></tr></thead>
-        <tbody>${lostDcids.map((d,i)=>dealerRow(d,prevTxns,i)).join('')}</tbody>
-      </table>
-    </div>`:''}
-    ${showInactive&&inactiveDcids.length?`
-    <div style="background:#fff;padding:16px 32px;border-top:1px solid #f5f5f5">
-      <div style="font-weight:700;color:#f57f17;font-size:14px;margin-bottom:10px">🟡 Inactive Channels — Last 3 Months Not Active (${inactiveDcids.length})</div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="background:#fff8e1"><th style="padding:7px 10px;text-align:left">#</th><th style="padding:7px 10px;text-align:left">Dealer</th><th style="padding:7px 10px;text-align:left">BM</th><th style="padding:7px 10px;text-align:right">L3M GMV</th></tr></thead>
-        <tbody>${inactiveDcids.map((d,i)=>dealerRow(d,l3Data,i)).join('')}</tbody>
-      </table>
-    </div>`:''}
-    <div style="background:#c62828;padding:14px 32px;border-radius:0 0 12px 12px;text-align:center;color:rgba(255,255,255,.6);font-size:11px">
-      Rupyy Performance Dashboard &nbsp;|&nbsp; Channel Drive Alert &nbsp;|&nbsp; ${dateStr}
-    </div>
-  </div>`;
-}
-
-// ── Preview functions ──────────────────────────
-function previewScorecard() {
-  const type = document.getElementById('sc-type')?.value||'mtd';
-  const note = document.getElementById('sc-note')?.value||'';
-  const el   = document.getElementById('sc-preview');
-  if (el) el.innerHTML = buildScorecardEmailHTML(type, note);
-}
-
-function previewChannel() {
-  const type = document.getElementById('ch-type')?.value||'full';
-  const note = document.getElementById('ch-note')?.value||'';
-  const el   = document.getElementById('ch-preview');
-  if (el) el.innerHTML = buildChannelEmailHTML(type, note);
-}
-
-// ── Generic send draft function ─────────────────
-async function sendMailDraft(prefix) {
-  const checked  = [...document.querySelectorAll(`.${prefix}-recip:checked`)];
-  const statusEl = document.getElementById(`${prefix}-status`);
-
-  if (!checked.length) {
-    statusEl.innerHTML = '<span style="color:#c62828">⚠️ Select at least one recipient</span>';
+// ── Core email sender via Apps Script ──────────────────────
+async function sendEmail({ to, cc, subject, htmlBody, statusEl }) {
+  let url = getASUrl();
+  if (!url) { url = promptASUrl(); }
+  if (!url) {
+    statusEl.innerHTML = '<span style="color:#c62828">⚠️ No Apps Script URL set</span>';
     return;
   }
 
-  const toEmails = checked.map(c=>c.dataset.email);
-  const dateStr  = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short'});
-  let htmlBody, subject;
-
-  if (prefix === 'sc') {
-    const type  = document.getElementById('sc-type')?.value||'mtd';
-    const note  = document.getElementById('sc-note')?.value||'';
-    htmlBody    = buildScorecardEmailHTML(type, note);
-    const labels= {mtd:'MTD Performance Update',q1:'Q1 Scorecard',weekly:'Weekly Review Summary'};
-    subject     = `Rupyy ${labels[type]||'Scorecard'} — ${getCurMonthLabel()} | ${dateStr}`;
-  } else {
-    const type  = document.getElementById('ch-type')?.value||'full';
-    const note  = document.getElementById('ch-note')?.value||'';
-    htmlBody    = buildChannelEmailHTML(type, note);
-    const labels= {lost:'Lost Channels Alert',inactive:'Inactive Channels Alert',full:'Channel Drive Report'};
-    subject     = `Rupyy ${labels[type]||'Channel Drive'} — ${getCurMonthLabel()} | ${dateStr}`;
-  }
-
-  statusEl.innerHTML = '<span style="color:#1a237e">⏳ Creating draft...</span>';
+  statusEl.innerHTML = '<span style="color:#1565c0;font-weight:600">⏳ Sending...</span>';
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 500,
-        mcp_servers: [{ type:'url', url:'https://gmailmcp.googleapis.com/mcp/v1', name:'gmail-mcp' }],
-        messages: [{
-          role: 'user',
-          content: `Use the Gmail create_draft tool to create an email draft with exactly these parameters:
-- to: [${toEmails.map(e=>'"'+e+'"').join(', ')}]
-- subject: "${subject}"
-- html_body: the HTML email below
-
-After creating the draft, reply ONLY with: "Draft created"
-
-HTML EMAIL:
-${htmlBody}`
-        }]
-      })
+      body: JSON.stringify({ to, cc: cc||[], subject, htmlBody }),
+      mode: 'no-cors'
     });
-
-    const data = await response.json();
-    const text = (data.content||[]).map(c=>c.text||'').join('').toLowerCase();
-
-    if (text.includes('draft') || text.includes('created') || text.includes('success')) {
-      statusEl.innerHTML = `<span style="color:#2e7d32">✅ Draft created for ${toEmails.length} recipient${toEmails.length>1?'s':''} — open Gmail Drafts to review & send</span>`;
-    } else {
-      statusEl.innerHTML = `<span style="color:#c62828">❌ ${text.slice(0,120)}</span>`;
-    }
-  } catch(err) {
-    statusEl.innerHTML = `<span style="color:#c62828">❌ ${err.message}</span>`;
+    statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">✅ Sent to ${to.length} recipient${to.length>1?'s':''}!</span>`;
+  } catch(e) {
+    statusEl.innerHTML = `<span style="color:#c62828">❌ ${e.message}</span>`;
   }
+}
+
+// ── Build Mailroom UI ───────────────────────────────────────
+function buildMailroom(el) {
+  const emps  = getEmpData();
+  const role  = currentUser.designation;
+  const asUrl = getASUrl();
+  const dateStr = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+
+  // All employees in scope
+  const bmList = emps.filter(e => e.designation==='BM' && e.rh_id===currentUser.id);
+  const amList = emps.filter(e => e.designation==='AM' && e.rh_id===currentUser.id);
+  const thList = emps.filter(e => e.designation==='TH' && e.rh_id===currentUser.id);
+
+  el.innerHTML = `
+    <!-- Apps Script URL bar -->
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);margin-bottom:20px">
+      <span style="font-size:13px;font-weight:700;color:#1a237e">⚙️ Apps Script URL:</span>
+      <span id="asUrlDisplay" style="font-size:12px;color:${asUrl?'#2e7d32':'#c62828'};flex:1">
+        ${asUrl ? '✅ ' + asUrl.slice(0,60)+'...' : '❌ Not set — click Configure'}
+      </span>
+      <button onclick="const u=promptASUrl();if(u)document.getElementById('asUrlDisplay').textContent='✅ '+u.slice(0,60)+'...';document.getElementById('asUrlDisplay').style.color='#2e7d32'"
+        style="padding:6px 14px;background:#1a237e;color:#fff;border:none;border-radius:8px;font-size:12px;cursor:pointer;white-space:nowrap">
+        ⚙️ Configure
+      </button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+      <!-- ══ SCORECARD EMAILS ══ -->
+      <div style="background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08);overflow:hidden">
+        <div style="background:linear-gradient(135deg,#1a237e,#283593);padding:14px 20px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">📊</span>
+          <div>
+            <div style="color:#fff;font-weight:800;font-size:15px">Scorecard Emails</div>
+            <div style="color:rgba(255,255,255,.7);font-size:11px">Performance update with BM-wise table</div>
+          </div>
+        </div>
+        <div style="padding:16px">
+
+          <!-- Mail BMs -->
+          <div style="border:1px solid #e8eaf6;border-radius:10px;padding:14px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div>
+                <div style="font-weight:700;font-size:13px;color:#1a237e">📧 Mail BMs (${bmList.length})</div>
+                <div style="font-size:11px;color:#9e9e9e;margin-top:2px">Individual scorecard to each BM · CC: their AM & TH</div>
+              </div>
+              <button onclick="sendScorecardToBMs()"
+                style="padding:8px 18px;background:#1a237e;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">
+                ✉️ Send All
+              </button>
+            </div>
+            <div style="font-size:11px;color:#555">
+              ${bmList.slice(0,5).map(e=>`<span style="background:#e8eaf6;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block">${e.name}</span>`).join('')}
+              ${bmList.length>5?`<span style="color:#9e9e9e">+${bmList.length-5} more</span>`:''}
+            </div>
+            <div id="sc-bm-status" style="margin-top:8px;font-size:12px;min-height:18px"></div>
+          </div>
+
+          <!-- Mail AMs -->
+          <div style="border:1px solid #e8eaf6;border-radius:10px;padding:14px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div>
+                <div style="font-weight:700;font-size:13px;color:#1a237e">📧 Mail AMs (${amList.length})</div>
+                <div style="font-size:11px;color:#9e9e9e;margin-top:2px">Team scorecard to each AM · CC: their TH</div>
+              </div>
+              <button onclick="sendScorecardToAMs()"
+                style="padding:8px 18px;background:#1a237e;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">
+                ✉️ Send All
+              </button>
+            </div>
+            <div style="font-size:11px;color:#555">
+              ${amList.map(e=>`<span style="background:#e8eaf6;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block">${e.name}</span>`).join('')}
+            </div>
+            <div id="sc-am-status" style="margin-top:8px;font-size:12px;min-height:18px"></div>
+          </div>
+
+          <!-- Mail THs -->
+          ${thList.length ? `
+          <div style="border:1px solid #e8eaf6;border-radius:10px;padding:14px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div>
+                <div style="font-weight:700;font-size:13px;color:#1a237e">📧 Mail THs (${thList.length})</div>
+                <div style="font-size:11px;color:#9e9e9e;margin-top:2px">Region scorecard to all THs</div>
+              </div>
+              <button onclick="sendScorecardToTHs()"
+                style="padding:8px 18px;background:#1a237e;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">
+                ✉️ Send All
+              </button>
+            </div>
+            <div style="font-size:11px;color:#555">
+              ${thList.map(e=>`<span style="background:#e8eaf6;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block">${e.name}</span>`).join('')}
+            </div>
+            <div id="sc-th-status" style="margin-top:8px;font-size:12px;min-height:18px"></div>
+          </div>` : ''}
+
+          <!-- Preview -->
+          <div style="border:1px solid #e8eaf6;border-radius:8px;overflow:hidden">
+            <div style="padding:8px 14px;background:#f5f7ff;font-size:11px;font-weight:700;color:#1a237e;display:flex;justify-content:space-between;align-items:center">
+              <span>📋 Scorecard Preview</span>
+              <button onclick="document.getElementById('sc-preview-body').innerHTML=buildScorecardEmailHTML('mtd','')"
+                style="padding:3px 10px;background:#1a237e;color:#fff;border:none;border-radius:6px;font-size:10px;cursor:pointer">Refresh</button>
+            </div>
+            <div id="sc-preview-body" style="padding:10px;max-height:250px;overflow-y:auto;background:#fafafa;font-size:11px">
+              <div style="color:#9e9e9e;text-align:center;padding:20px">Click Refresh to preview</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ CHANNEL DRIVE EMAILS ══ -->
+      <div style="background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08);overflow:hidden">
+        <div style="background:linear-gradient(135deg,#b71c1c,#c62828);padding:14px 20px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">🚀</span>
+          <div>
+            <div style="color:#fff;font-weight:800;font-size:15px">Channel Drive Emails</div>
+            <div style="color:rgba(255,255,255,.7);font-size:11px">Lost & inactive channel alerts</div>
+          </div>
+        </div>
+        <div style="padding:16px">
+
+          <!-- Mail BMs Channel -->
+          <div style="border:1px solid #ffcdd2;border-radius:10px;padding:14px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div>
+                <div style="font-weight:700;font-size:13px;color:#c62828">📧 Mail BMs (${bmList.length})</div>
+                <div style="font-size:11px;color:#9e9e9e;margin-top:2px">Each BM's own lost/inactive channels · CC: AM & TH</div>
+              </div>
+              <button onclick="sendChannelToBMs()"
+                style="padding:8px 18px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">
+                ✉️ Send All
+              </button>
+            </div>
+            <div style="font-size:11px;color:#555">
+              ${bmList.slice(0,5).map(e=>`<span style="background:#ffebee;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block">${e.name}</span>`).join('')}
+              ${bmList.length>5?`<span style="color:#9e9e9e">+${bmList.length-5} more</span>`:''}
+            </div>
+            <div id="ch-bm-status" style="margin-top:8px;font-size:12px;min-height:18px"></div>
+          </div>
+
+          <!-- Mail AMs Channel -->
+          <div style="border:1px solid #ffcdd2;border-radius:10px;padding:14px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div>
+                <div style="font-weight:700;font-size:13px;color:#c62828">📧 Mail AMs (${amList.length})</div>
+                <div style="font-size:11px;color:#9e9e9e;margin-top:2px">BM-wise channel gaps for each AM's team</div>
+              </div>
+              <button onclick="sendChannelToAMs()"
+                style="padding:8px 18px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">
+                ✉️ Send All
+              </button>
+            </div>
+            <div style="font-size:11px;color:#555">
+              ${amList.map(e=>`<span style="background:#ffebee;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block">${e.name}</span>`).join('')}
+            </div>
+            <div id="ch-am-status" style="margin-top:8px;font-size:12px;min-height:18px"></div>
+          </div>
+
+          <!-- Mail THs Channel -->
+          ${thList.length ? `
+          <div style="border:1px solid #ffcdd2;border-radius:10px;padding:14px;margin-bottom:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div>
+                <div style="font-weight:700;font-size:13px;color:#c62828">📧 Mail THs (${thList.length})</div>
+                <div style="font-size:11px;color:#9e9e9e;margin-top:2px">Full region channel health report</div>
+              </div>
+              <button onclick="sendChannelToTHs()"
+                style="padding:8px 18px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">
+                ✉️ Send All
+              </button>
+            </div>
+            <div style="font-size:11px;color:#555">
+              ${thList.map(e=>`<span style="background:#ffebee;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block">${e.name}</span>`).join('')}
+            </div>
+            <div id="ch-th-status" style="margin-top:8px;font-size:12px;min-height:18px"></div>
+          </div>` : ''}
+
+          <!-- Preview -->
+          <div style="border:1px solid #ffcdd2;border-radius:8px;overflow:hidden">
+            <div style="padding:8px 14px;background:#fff8f8;font-size:11px;font-weight:700;color:#c62828;display:flex;justify-content:space-between;align-items:center">
+              <span>📋 Channel Drive Preview</span>
+              <button onclick="document.getElementById('ch-preview-body').innerHTML=buildChannelEmailHTML('full','')"
+                style="padding:3px 10px;background:#c62828;color:#fff;border:none;border-radius:6px;font-size:10px;cursor:pointer">Refresh</button>
+            </div>
+            <div id="ch-preview-body" style="padding:10px;max-height:250px;overflow-y:auto;background:#fafafa;font-size:11px">
+              <div style="color:#9e9e9e;text-align:center;padding:20px">Click Refresh to preview</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Scorecard send functions ────────────────────────────────
+async function sendScorecardToBMs() {
+  const emps   = getEmpData();
+  const bmList = emps.filter(e=>e.designation==='BM'&&e.rh_id===currentUser.id&&e.email);
+  const statusEl = document.getElementById('sc-bm-status');
+  statusEl.innerHTML = `<span style="color:#1565c0">⏳ Sending to ${bmList.length} BMs...</span>`;
+
+  let sent = 0, failed = 0;
+  for (const bm of bmList) {
+    // Get CC: AM and TH for this BM
+    const amEmp = emps.find(e=>e.id===bm.am_id);
+    const thEmp = emps.find(e=>e.id===bm.th_id);
+    const cc    = [amEmp?.email, thEmp?.email].filter(Boolean);
+
+    // Build BM-specific scorecard
+    const bmTxns  = myTxns.filter(t=>t.bm_id===bm.id);
+    const ucAmt   = bmTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+    const cvAmt   = bmTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+    const tot     = ucAmt+cvAmt;
+    const ch      = new Set(bmTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    const ucTgt   = (bm.uc_tgt||0)*1e5;
+    const cvTgt   = (bm.cv_tgt||0)*1e5;
+    const tgt     = ucTgt+cvTgt;
+    const ach     = tgt>0?Math.round((tot/tgt)*100):null;
+    const dateStr = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+
+    const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <div style="background:linear-gradient(135deg,#1a237e,#283593);padding:20px 28px;border-radius:12px 12px 0 0">
+        <div style="color:#fff;font-size:20px;font-weight:800">📊 Your ${getCurMonthLabel()} Scorecard</div>
+        <div style="color:rgba(255,255,255,.7);font-size:12px;margin-top:4px">Hi ${bm.name} | ${dateStr}</div>
+      </div>
+      <div style="background:#fff;padding:20px 28px">
+        <table style="width:100%;border-collapse:collapse">
+          <tr style="background:#e8eaf6"><td colspan="2" style="padding:10px;font-weight:700;color:#1a237e">Performance Summary</td></tr>
+          <tr><td style="padding:8px 10px;color:#555;border-bottom:1px solid #f5f5f5">MTD Disbursement</td><td style="padding:8px 10px;font-weight:700;text-align:right;border-bottom:1px solid #f5f5f5">${fmtCr(tot)}</td></tr>
+          <tr style="background:#fafafa"><td style="padding:8px 10px;color:#555;border-bottom:1px solid #f5f5f5">UC</td><td style="padding:8px 10px;color:#1565c0;font-weight:700;text-align:right;border-bottom:1px solid #f5f5f5">${fmtCr(ucAmt)}</td></tr>
+          <tr><td style="padding:8px 10px;color:#555;border-bottom:1px solid #f5f5f5">CV</td><td style="padding:8px 10px;color:#6a1b9a;font-weight:700;text-align:right;border-bottom:1px solid #f5f5f5">${fmtCr(cvAmt)}</td></tr>
+          <tr style="background:#fafafa"><td style="padding:8px 10px;color:#555;border-bottom:1px solid #f5f5f5">Target</td><td style="padding:8px 10px;font-weight:700;text-align:right;border-bottom:1px solid #f5f5f5">${tgt>0?fmtCr(tgt):'—'}</td></tr>
+          <tr><td style="padding:8px 10px;color:#555;border-bottom:1px solid #f5f5f5">Achievement</td><td style="padding:8px 10px;font-weight:700;text-align:right;border-bottom:1px solid #f5f5f5;color:${ach>=100?'#2e7d32':ach>=70?'#1565c0':'#c62828'}">${ach!==null?ach+'%':'—'}</td></tr>
+          <tr style="background:#fafafa"><td style="padding:8px 10px;color:#555;border-bottom:1px solid #f5f5f5">Active Channels</td><td style="padding:8px 10px;font-weight:700;text-align:right;border-bottom:1px solid #f5f5f5">${ch} / ${bm.ch_tgt||'—'}</td></tr>
+          <tr><td style="padding:8px 10px;color:#555">Cases</td><td style="padding:8px 10px;font-weight:700;text-align:right">${bmTxns.length}</td></tr>
+        </table>
+        ${ach!==null&&ach<70?`<div style="margin-top:14px;padding:10px 14px;background:#fff3e0;border-left:4px solid #f57f17;font-size:12px"><b>⚠️ You are behind target.</b> Please focus on increasing channel visits and case conversions this week.</div>`:''}
+        ${ach!==null&&ach>=100?`<div style="margin-top:14px;padding:10px 14px;background:#e8f5e9;border-left:4px solid #2e7d32;font-size:12px"><b>🎉 Great work!</b> You have achieved your target. Keep it up!</div>`:''}
+      </div>
+      <div style="background:#283593;padding:12px 28px;border-radius:0 0 12px 12px;text-align:center;color:rgba(255,255,255,.6);font-size:11px">
+        Rupyy Performance Dashboard | ${dateStr}
+      </div>
+    </div>`;
+
+    const subject = `Your ${getCurMonthLabel()} Scorecard — ${ach!==null?ach+'% achieved':'Update'}`;
+    try {
+      await fetch(getASUrl(), {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ to:[bm.email], cc, subject, htmlBody:html }),
+        mode:'no-cors'
+      });
+      sent++;
+    } catch(e) { failed++; }
+
+    // Update status progressively
+    statusEl.innerHTML = `<span style="color:#1565c0">⏳ Sent ${sent}/${bmList.length}...</span>`;
+    await new Promise(r=>setTimeout(r,300)); // small delay between sends
+  }
+
+  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">✅ Sent to ${sent} BMs${failed?` (${failed} failed)`:''}</span>`;
+}
+
+async function sendScorecardToAMs() {
+  const emps   = getEmpData();
+  const amList = emps.filter(e=>e.designation==='AM'&&e.rh_id===currentUser.id&&e.email);
+  const statusEl= document.getElementById('sc-am-status');
+  statusEl.innerHTML = `<span style="color:#1565c0">⏳ Sending to ${amList.length} AMs...</span>`;
+
+  let sent=0;
+  for (const am of amList) {
+    const thEmp = emps.find(e=>e.id===am.th_id);
+    const cc    = [thEmp?.email].filter(Boolean);
+    const html  = buildScorecardEmailHTML('mtd','');
+    const subject = `Team ${getCurMonthLabel()} Scorecard — ${am.name}'s Team`;
+    try {
+      await fetch(getASUrl(), {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({to:[am.email], cc, subject, htmlBody:html}),
+        mode:'no-cors'
+      });
+      sent++;
+    } catch(e) {}
+    statusEl.innerHTML = `<span style="color:#1565c0">⏳ Sent ${sent}/${amList.length}...</span>`;
+    await new Promise(r=>setTimeout(r,300));
+  }
+  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">✅ Sent to ${sent} AMs!</span>`;
+}
+
+async function sendScorecardToTHs() {
+  const emps   = getEmpData();
+  const thList = emps.filter(e=>e.designation==='TH'&&e.rh_id===currentUser.id&&e.email);
+  const statusEl= document.getElementById('sc-th-status');
+  const html   = buildScorecardEmailHTML('mtd','');
+  const subject = `Region ${getCurMonthLabel()} Scorecard`;
+  try {
+    await fetch(getASUrl(), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({to:thList.map(e=>e.email), cc:[], subject, htmlBody:html}),
+      mode:'no-cors'
+    });
+    statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">✅ Sent to ${thList.length} THs!</span>`;
+  } catch(e) {
+    statusEl.innerHTML = `<span style="color:#c62828">❌ ${e.message}</span>`;
+  }
+}
+
+// ── Channel Drive send functions ────────────────────────────
+async function sendChannelToBMs() {
+  const emps     = getEmpData();
+  const bmList   = emps.filter(e=>e.designation==='BM'&&e.rh_id===currentUser.id&&e.email);
+  const prevData = window._LIVE_MAY||[];
+  const l3Data   = getLast6Months().slice(-3).flatMap(m=>m.data().filter(t=>t.rh_id===currentUser.id));
+  const statusEl = document.getElementById('ch-bm-status');
+  statusEl.innerHTML = `<span style="color:#e53935">⏳ Sending to ${bmList.length} BMs...</span>`;
+
+  let sent=0;
+  for (const bm of bmList) {
+    const amEmp = emps.find(e=>e.id===bm.am_id);
+    const thEmp = emps.find(e=>e.id===bm.th_id);
+    const cc    = [amEmp?.email, thEmp?.email].filter(Boolean);
+
+    const bmCur  = myTxns.filter(t=>t.bm_id===bm.id);
+    const bmPrev = prevData.filter(t=>t.bm_id===bm.id);
+    const bmL3   = l3Data.filter(t=>t.bm_id===bm.id);
+    const curCh  = new Set(bmCur.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+    const prevCh = new Set(bmPrev.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+    const l3Ch   = new Set(bmL3.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+    const lost   = [...prevCh].filter(d=>!curCh.has(d));
+    const inact  = [...l3Ch].filter(d=>!curCh.has(d)&&!lost.includes(d));
+    const dateStr= new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+
+    if (!lost.length && !inact.length) { sent++; continue; } // skip if no gaps
+
+    const lostRows  = lost.map((dcid,i)=>{
+      const t=bmPrev.filter(x=>x.dcid===dcid);
+      const gmv=t.reduce((s,x)=>s+x.amt,0);
+      const dealer=t[0]?.dealer||dcid;
+      return `<tr style="background:${i%2===0?'#fff':'#fff8f8'}">
+        <td style="padding:7px 10px">${dealer}</td>
+        <td style="padding:7px 10px;text-align:right;color:#c62828;font-weight:700">${fmtCr(gmv)}</td>
+        <td style="padding:7px 10px;text-align:center"><span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:8px;font-size:10px">🔥 Re-engage</span></td>
+      </tr>`;
+    }).join('');
+
+    const inactRows = inact.slice(0,10).map((dcid,i)=>{
+      const t=bmL3.filter(x=>x.dcid===dcid);
+      const gmv=t.reduce((s,x)=>s+x.amt,0)/3;
+      const dealer=t[0]?.dealer||dcid;
+      return `<tr style="background:${i%2===0?'#fff':'#fffde7'}">
+        <td style="padding:7px 10px">${dealer}</td>
+        <td style="padding:7px 10px;text-align:right;color:#f57f17;font-weight:700">~${fmtCr(gmv)}/mo</td>
+        <td style="padding:7px 10px;text-align:center"><span style="background:#fff8e1;color:#f57f17;padding:2px 8px;border-radius:8px;font-size:10px">⚠️ Reactivate</span></td>
+      </tr>`;
+    }).join('');
+
+    const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+      <div style="background:linear-gradient(135deg,#b71c1c,#c62828);padding:20px 28px;border-radius:12px 12px 0 0">
+        <div style="color:#fff;font-size:20px;font-weight:800">🚀 Channel Drive Alert</div>
+        <div style="color:rgba(255,255,255,.7);font-size:12px;margin-top:4px">Hi ${bm.name} | Action Required | ${dateStr}</div>
+      </div>
+      <div style="background:#fff;padding:16px 28px">
+        <div style="display:flex;gap:10px;margin-bottom:16px">
+          <div style="flex:1;background:#fff3e0;border-radius:8px;padding:12px;text-align:center">
+            <div style="font-size:22px;font-weight:800;color:#c62828">${curCh.size}</div>
+            <div style="font-size:11px;color:#555">Active Now</div>
+          </div>
+          <div style="flex:1;background:#ffebee;border-radius:8px;padding:12px;text-align:center">
+            <div style="font-size:22px;font-weight:800;color:#c62828">${lost.length}</div>
+            <div style="font-size:11px;color:#555">Lost vs Last Month</div>
+          </div>
+          <div style="flex:1;background:#fff8e1;border-radius:8px;padding:12px;text-align:center">
+            <div style="font-size:22px;font-weight:800;color:#f57f17">${inact.length}</div>
+            <div style="font-size:11px;color:#555">Inactive (L3M)</div>
+          </div>
+        </div>
+        ${lost.length?`
+        <div style="font-weight:700;color:#c62828;margin-bottom:8px">🔴 Re-engage These Channels (${lost.length})</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">
+          <thead><tr style="background:#ffebee"><th style="padding:7px 10px;text-align:left">Dealer</th><th style="padding:7px 10px;text-align:right">Last Month GMV</th><th style="padding:7px 10px;text-align:center">Action</th></tr></thead>
+          <tbody>${lostRows}</tbody>
+        </table>`:''}
+        ${inact.length?`
+        <div style="font-weight:700;color:#f57f17;margin-bottom:8px">🟡 Reactivate These Channels (${inact.length})</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:#fff8e1"><th style="padding:7px 10px;text-align:left">Dealer</th><th style="padding:7px 10px;text-align:right">Avg Monthly GMV</th><th style="padding:7px 10px;text-align:center">Action</th></tr></thead>
+          <tbody>${inactRows}</tbody>
+        </table>`:''}
+      </div>
+      <div style="background:#c62828;padding:12px 28px;border-radius:0 0 12px 12px;text-align:center;color:rgba(255,255,255,.6);font-size:11px">
+        Rupyy Performance Dashboard | Channel Drive | ${dateStr}
+      </div>
+    </div>`;
+
+    const subject = `Channel Drive Alert — ${lost.length} lost, ${inact.length} inactive channels`;
+    try {
+      await fetch(getASUrl(), {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({to:[bm.email], cc, subject, htmlBody:html}),
+        mode:'no-cors'
+      });
+      sent++;
+    } catch(e) {}
+    statusEl.innerHTML = `<span style="color:#e53935">⏳ Sent ${sent}/${bmList.length}...</span>`;
+    await new Promise(r=>setTimeout(r,300));
+  }
+  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">✅ Sent to ${sent} BMs!</span>`;
+}
+
+async function sendChannelToAMs() {
+  const emps   = getEmpData();
+  const amList = emps.filter(e=>e.designation==='AM'&&e.rh_id===currentUser.id&&e.email);
+  const statusEl= document.getElementById('ch-am-status');
+  const html   = buildChannelEmailHTML('full','');
+  let sent=0;
+  statusEl.innerHTML = `<span style="color:#e53935">⏳ Sending...</span>`;
+  for (const am of amList) {
+    const thEmp = emps.find(e=>e.id===am.th_id);
+    const subject = `Channel Drive Alert — ${am.name}'s Team | ${getCurMonthLabel()}`;
+    try {
+      await fetch(getASUrl(), {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({to:[am.email], cc:[thEmp?.email].filter(Boolean), subject, htmlBody:html}),
+        mode:'no-cors'
+      });
+      sent++;
+    } catch(e) {}
+    await new Promise(r=>setTimeout(r,300));
+  }
+  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">✅ Sent to ${sent} AMs!</span>`;
+}
+
+async function sendChannelToTHs() {
+  const emps   = getEmpData();
+  const thList = emps.filter(e=>e.designation==='TH'&&e.rh_id===currentUser.id&&e.email);
+  const statusEl= document.getElementById('ch-th-status');
+  const html   = buildChannelEmailHTML('full','');
+  const subject = `Region Channel Drive Report | ${getCurMonthLabel()}`;
+  try {
+    await fetch(getASUrl(), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({to:thList.map(e=>e.email), cc:[], subject, htmlBody:html}),
+      mode:'no-cors'
+    });
+    statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">✅ Sent to ${thList.length} THs!</span>`;
+  } catch(e) {
+    statusEl.innerHTML = `<span style="color:#c62828">❌ ${e.message}</span>`;
+  }
+}
+
+function selectGroup(prefix, role) {
+  document.querySelectorAll(`.${prefix}-recip`).forEach(c => {
+    c.checked = role==='ALL' ? true : c.dataset.role===role;
+  });
 }
 </script>
 
