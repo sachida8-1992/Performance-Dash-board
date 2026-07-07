@@ -575,6 +575,94 @@ function parseTransactions(rows) {
 function getEmpData()  { return (dataLoaded && window._LIVE_EMP) ? window._LIVE_EMP : EMP_DATA; }
 function getTxnData()  { return (dataLoaded && window._LIVE_TXN) ? window._LIVE_TXN : TXN_DATA; }
 function getCurMonth() { return window.CURRENT_MONTH || '2026-07'; }
+
+// ── Shared AM filter for RH view ─────────────────────────
+let _activeAMFilter = '';  // '' = All AMs
+
+function getAMFilterBar(onChangeFn) {
+  const role = currentUser.designation;
+  if (role !== 'RH' && role !== 'TH') return '';
+  const emps  = getEmpData();
+  const amList= emps.filter(e => e.designation==='AM' &&
+    (role==='RH' ? e.rh_id===currentUser.id : e.th_id===currentUser.id));
+  if (!amList.length) return '';
+
+  const opts = amList.map(am =>
+    '<button onclick="setAMFilter(\''+am.id+'\',\''+onChangeFn+'\')" id="amfbtn_'+am.id+'"'
+    +' style="padding:6px 14px;border-radius:20px;border:1px solid #c5cae9;font-size:12px;cursor:pointer;font-weight:600;'
+    +'background:'+(_activeAMFilter===am.id?'#1a237e':'#fff')+';color:'+(_activeAMFilter===am.id?'#fff':'#333')+'">'
+    +am.name+'</button>'
+  ).join('');
+
+  return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07);margin-bottom:16px">'
+    +'<span style="font-size:12px;font-weight:700;color:#1a237e">Filter by AM:</span>'
+    +'<button onclick="setAMFilter(\'\',\''+onChangeFn+'\')" id="amfbtn_all"'
+    +' style="padding:6px 14px;border-radius:20px;border:1px solid #c5cae9;font-size:12px;cursor:pointer;font-weight:600;'
+    +'background:'+(!_activeAMFilter?'#1a237e':'#fff')+';color:'+(!_activeAMFilter?'#fff':'#333')+'">All AMs</button>'
+    + opts
+    +'</div>';
+}
+
+function setAMFilter(amId, rebuildFn) {
+  _activeAMFilter = amId;
+  // Rebuild the current tab
+  if (rebuildFn && window[rebuildFn]) {
+    const el = document.querySelector('.page.active');
+    if (el) window[rebuildFn](el);
+  }
+}
+
+// Filter myTxns and emps by selected AM
+function getAMFilteredTxns(txns) {
+  if (!_activeAMFilter) return txns;
+  return txns.filter(t => t.am_id === _activeAMFilter);
+}
+
+function getAMFilteredEmps(emps, designation) {
+  if (!_activeAMFilter) return emps.filter(e => e.designation === designation);
+  return emps.filter(e => e.designation === designation && e.am_id === _activeAMFilter);
+}
+
+function getSelectedAM() {
+  if (!_activeAMFilter) return null;
+  return getEmpData().find(e => e.id === _activeAMFilter) || null;
+}
+
+function buildAMSummaryCard() {
+  if (!_activeAMFilter || currentUser.designation !== 'RH') return '';
+  const am      = getEmpData().find(e=>e.id===_activeAMFilter);
+  if (!am) return '';
+  const curTxns = myTxns.filter(t=>t.am_id===am.id);
+  const prvTxns = toLMTD((window._LIVE_MAY||[]).filter(t=>t.am_id===am.id));
+  const curAmt  = curTxns.reduce((s,t)=>s+t.amt,0);
+  const prvAmt  = prvTxns.reduce((s,t)=>s+t.amt,0);
+  const curUC   = curTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+  const curCV   = curTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+  const curCh   = new Set(curTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+  const diff    = curAmt - prvAmt;
+  const gPct    = prvAmt>0 ? Math.round((diff/prvAmt)*100) : null;
+  const up      = diff>=0;
+  const bmList  = getEmpData().filter(e=>e.designation==='BM'&&e.am_id===am.id);
+  const onTrack = bmList.filter(b=>{
+    const t=myTxns.filter(x=>x.bm_id===b.id);
+    const tgt=((b.uc_tgt||0)+(b.cv_tgt||0))*1e5;
+    return tgt>0&&Math.round((t.reduce((s,x)=>s+x.amt,0)/tgt)*100)>=70;
+  }).length;
+
+  return '<div style="background:linear-gradient(135deg,#1a237e,#283593);border-radius:12px;padding:18px 22px;margin-bottom:16px;color:#fff">'
+    +'<div style="font-size:10px;letter-spacing:1px;opacity:.6;text-transform:uppercase;margin-bottom:4px">AM Span Summary</div>'
+    +'<div style="font-size:18px;font-weight:800;margin-bottom:12px">'+am.name+'</div>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
+    +'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:10px 14px;text-align:center;min-width:90px"><div style="font-size:9px;opacity:.7;margin-bottom:3px">MTD GMV</div><div style="font-size:15px;font-weight:800">'+fmtCr(curAmt)+'</div></div>'
+    +'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:10px 14px;text-align:center;min-width:90px"><div style="font-size:9px;opacity:.7;margin-bottom:3px">UC</div><div style="font-size:15px;font-weight:800;color:#90caf9">'+fmtCr(curUC)+'</div></div>'
+    +'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:10px 14px;text-align:center;min-width:90px"><div style="font-size:9px;opacity:.7;margin-bottom:3px">CV</div><div style="font-size:15px;font-weight:800;color:#ce93d8">'+fmtCr(curCV)+'</div></div>'
+    +'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:10px 14px;text-align:center;min-width:90px"><div style="font-size:9px;opacity:.7;margin-bottom:3px">vs LMTD</div><div style="font-size:15px;font-weight:800;color:'+(up?'#a5d6a7':'#ef9a9a')+'">'+(up?'+':'')+fmtCr(diff)+(gPct!==null?' ('+(up?'+':'')+gPct+'%)':'')+'</div></div>'
+    +'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:10px 14px;text-align:center;min-width:80px"><div style="font-size:9px;opacity:.7;margin-bottom:3px">BMs</div><div style="font-size:15px;font-weight:800">'+bmList.length+'</div></div>'
+    +'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:10px 14px;text-align:center;min-width:80px"><div style="font-size:9px;opacity:.7;margin-bottom:3px">On Track</div><div style="font-size:15px;font-weight:800;color:#a5d6a7">'+onTrack+'/'+bmList.length+'</div></div>'
+    +'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:10px 14px;text-align:center;min-width:80px"><div style="font-size:9px;opacity:.7;margin-bottom:3px">Channels</div><div style="font-size:15px;font-weight:800">'+curCh+'</div></div>'
+    +'</div></div>';
+}
+
 function getTodayDay() { return new Date().getDate(); }
 // Filter previous month data to same day range as current MTD (LMTD)
 function toLMTD(prevTxns) {
@@ -3321,7 +3409,7 @@ function buildMonthlySummary(el) {
       </div>`;
   }
 
-  el.innerHTML = `
+  el.innerHTML = getAMFilterBar('buildMonthlySummary') + buildAMSummaryCard() + `
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px 16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07)">
       <span style="font-size:13px;font-weight:700;color:#1a237e">👤 View:</span>
       ${roleOptions.map(r=>`<button onclick="window._mthRole='${r}';document.getElementById('mthBody').innerHTML=window._mthRender('${r}')"
@@ -3382,7 +3470,7 @@ function buildChannel6M(el) {
   const curPfx  = getCurMonthPrefix();
   const prevPfx = getPrevMonthPrefix();
 
-  el.innerHTML = `
+  el.innerHTML = getAMFilterBar('buildChannel6M') + `
     <div style="margin-bottom:12px;padding:12px 16px;background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);font-size:12px;color:#555">
       📊 <b>${dealers.length} channels</b> tracked across last 6 months &nbsp;|&nbsp;
       🟢 Active = had txns that month &nbsp;|&nbsp; 🔴 Gap = no txns
@@ -3437,7 +3525,8 @@ function buildChannel6M(el) {
 // ========== TAB 3: SCORECARD (YTD + Channel Intelligence) ==========
 function buildScorecard(el) {
   const role    = currentUser.designation;
-  const months  = getFYMonths(); // Indian FY: April onwards
+  const months  = getFYMonths();
+  const selAM   = getSelectedAM();
   const emps    = getEmpData();
   const curPfx  = getCurMonthPrefix();
   const prevPfx = getPrevMonthPrefix();
@@ -3447,7 +3536,8 @@ function buildScorecard(el) {
     if (role==='BM') return txns.filter(t=>t.bm_id===currentUser.id);
     if (role==='AM') return txns.filter(t=>t.am_id===currentUser.id);
     if (role==='TH') return txns.filter(t=>t.th_id===currentUser.id);
-    return txns;
+    // RH: apply AM filter if selected
+    return _activeAMFilter ? txns.filter(t=>t.am_id===_activeAMFilter||t.rh_id===currentUser.id&&!_activeAMFilter) : txns.filter(t=>t.rh_id===currentUser.id);
   }
 
   const curTxns  = scopeTxns(window._LIVE_TXN||[]);
@@ -3505,7 +3595,7 @@ function buildScorecard(el) {
 
   const potentialGMV = lostChData.reduce((s,c)=>s+c.gmv,0) + inactiveChData.reduce((s,c)=>s+c.avg,0);
 
-  el.innerHTML = `
+  el.innerHTML = getAMFilterBar('buildScorecard') + `
     <!-- YTD KPIs -->
     <div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px">
       <div class="kpi"><div class="kpi-label">FY ${getFYStartYear()}-${String(getFYStartYear()+1).slice(2)} Disbursement</div><div class="kpi-value">${fmtCr(ytdAmt)}</div></div>
@@ -3620,7 +3710,10 @@ function buildQuarterly(el) {
       if (role==='BM')  return e.id === currentUser.id;
       if (role==='AM')  return e.am_id === currentUser.id || e.id === currentUser.id;
       if (role==='TH')  return e.th_id === currentUser.id || e.id === currentUser.id;
-      if (role==='RH')  return e.rh_id === currentUser.id || e.id === currentUser.id;
+      if (role==='RH')  {
+        if (_activeAMFilter) return e.am_id === _activeAMFilter;
+        return e.rh_id === currentUser.id;
+      }
       return false;
     });
   }
@@ -3721,7 +3814,7 @@ function buildQuarterly(el) {
       </div>`;
   }
 
-  el.innerHTML = `
+  el.innerHTML = getAMFilterBar('buildQuarterly') + buildAMSummaryCard() + `
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px 16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07)">
       <span style="font-size:13px;font-weight:700;color:#1a237e">Q1 ${getFYStartYear()}-${String(getFYStartYear()+1).slice(2)} (Apr-Jun) &nbsp;|&nbsp; View:</span>
       ${roleOptions.map((r,i)=>`
@@ -3737,7 +3830,7 @@ function buildQuarterly(el) {
 function buildChannelDrive(el) {
   const role    = currentUser.designation;
   const emps    = getEmpData();
-  const curTxns = myTxns;
+  const curTxns = _activeAMFilter ? myTxns.filter(t=>t.am_id===_activeAMFilter) : myTxns;
   const prevData= window._LIVE_MAY || [];
   const l3Data  = getLast6Months().slice(-3).flatMap(m => {
     const t = m.data();
@@ -3817,11 +3910,11 @@ function buildChannelDrive(el) {
   }
 
   // ── AM / TH / RH VIEW ────────────────────────
-  // Group by BM — show each BM's channel gap
   const bmList = emps.filter(e => {
     if (e.designation !== 'BM') return false;
     if (role==='AM') return e.am_id === currentUser.id;
     if (role==='TH') return e.th_id === currentUser.id;
+    if (_activeAMFilter) return e.am_id === _activeAMFilter;
     return e.rh_id === currentUser.id;
   });
 
@@ -3848,7 +3941,7 @@ function buildChannelDrive(el) {
   const totGap   = bmRows.reduce((s,r)=>s+r.chGap,0);
   const needFocus= bmRows.filter(r=>r.bmLost>0||r.bmInact>2).length;
 
-  el.innerHTML = `
+  el.innerHTML = getAMFilterBar('buildChannelDrive') + buildAMSummaryCard() + `
     <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
       <div class="kpi"><div class="kpi-label">BMs Needing Focus</div><div class="kpi-value" style="color:#c62828">${needFocus}</div></div>
       <div class="kpi"><div class="kpi-label">Total Lost Channels</div><div class="kpi-value" style="color:#c62828">${totLost}</div></div>
@@ -6181,7 +6274,7 @@ function buildFlatHierarchy(el, scopeTxns, role) {
       const cvTgt = (e.cv_tgt||0)*1e5;
       const totTgt= ucTgt + cvTgt;
       const ach   = totTgt > 0 ? Math.round((tot/totTgt)*100) : null;
-      const ch    = countChannels(txns, emp);
+      const ch    = countChannels(txns, e);
       const chTgt = e.ch_tgt || 0;
       const chAch = chTgt > 0 ? Math.round((ch/chTgt)*100) : null;
       const ftd   = txns.filter(t=>t.date===todayStr);
