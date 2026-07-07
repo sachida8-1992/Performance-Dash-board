@@ -371,8 +371,10 @@ async function tryLoadLiveData() {
     // Parse transactions — current month is July-26
     // But if all transactions are June (Apps Script not yet on July tab), treat them as LMTD
     const txnMonths = new Set((data.transactions||[]).map(t=>String(t.disbursed_date||'').slice(0,7)).filter(Boolean));
-    const hasJuly   = txnMonths.has('2026-07');
-    const hasJune   = txnMonths.has('2026-06');
+    const curMonthPfx  = getCurMonthPrefix();
+    const prevMonthPfx = getPrevMonthPrefix();
+    const hasJuly   = txnMonths.has(curMonthPfx);
+    const hasJune   = txnMonths.has(prevMonthPfx);
 
     if (hasJuly) {
       // Normal: July is live, parse as current month
@@ -384,7 +386,7 @@ async function tryLoadLiveData() {
       window._LIVE_MAY = parseTransactions(data.transactions); // June = LMTD
       window._LIVE_APR = data.apr_data ? parseTransactions(data.apr_data) : APR_DATA;
       window._LIVE_MAR = data.mar_data ? parseTransactions(data.mar_data) : MAR_DATA;
-      window.CURRENT_MONTH = '2026-07';
+      window.CURRENT_MONTH = getCurMonthPrefix();
       dataLoaded = true;
       return;
     } else {
@@ -587,6 +589,25 @@ function parseTransactions(rows) {
 function getEmpData()  { return (dataLoaded && window._LIVE_EMP) ? window._LIVE_EMP : EMP_DATA; }
 function getTxnData()  { return (dataLoaded && window._LIVE_TXN) ? window._LIVE_TXN : TXN_DATA; }
 function getCurMonth() { return window.CURRENT_MONTH || '2026-07'; }
+function getCurMonthLabel() {
+  const d = new Date();
+  return d.toLocaleString('en-IN', {month:'long', year:'numeric'});
+}
+function getPrevMonthLabel() {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  return d.toLocaleString('en-IN', {month:'long', year:'numeric'});
+}
+function getCurMonthPrefix() {
+  // Returns e.g. '2026-07'
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+function getPrevMonthPrefix() {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
 function getMayData()  { return (dataLoaded && window._LIVE_MAY) ? window._LIVE_MAY : TXN_DATA; }
 function getAprData()  { return (dataLoaded && window._LIVE_APR) ? window._LIVE_APR : APR_DATA; }
 function getMarData()  { return (dataLoaded && window._LIVE_MAR) ? window._LIVE_MAR : MAR_DATA; }
@@ -1310,7 +1331,7 @@ function renderMonthCompare() {
   const label = mcFilter === 'UC' ? 'Used Car' : mcFilter === 'CV' ? 'CV (UCV+NCV)' : 'All Products';
   const months = [
     { label:'Jun 2026', s:jun, color:'#1a237e' },
-    { label:'June 2026', s:may, color:'#283593' },
+    { label:getPrevMonthLabel(), s:may, color:'#283593' },
   ];
 
   el.innerHTML = `
@@ -1744,7 +1765,7 @@ function buildChannels(el) {
     el.innerHTML = `
       <div class="card" style="padding:0;overflow:hidden">
         <div style="padding:14px 20px;background:#f5f7ff;font-size:13px;font-weight:700;color:#1a237e">
-          BM Channel Performance — July 2026
+          BM Channel Performance — '+getCurMonthLabel()+'
         </div>
         <div style="overflow-x:auto">
         <table>
@@ -1752,11 +1773,11 @@ function buildChannels(el) {
             <tr style="background:#e8eaf6">
               <th style="text-align:left">BM Name</th>
               <th style="text-align:center">CH Target</th>
-              <th style="text-align:center">June UC Ch</th>
+              <th style="text-align:center">'+getCurMonthLabel().split(' ')[0]+' UC Ch</th>
               <th style="text-align:center">Ach%</th>
-              <th style="text-align:center">May UC Ch</th>
+              <th style="text-align:center">'+getPrevMonthLabel().split(' ')[0]+' UC Ch</th>
               <th style="text-align:center">Growth</th>
-              <th style="text-align:center">June CV Ch</th>
+              <th style="text-align:center">'+getCurMonthLabel().split(' ')[0]+' CV Ch</th>
               <th style="text-align:right">Disbursement</th>
             </tr>
           </thead>
@@ -1893,8 +1914,8 @@ function buildDealersRH(el) {
           <th style="padding:8px 10px;text-align:left">Dealer Name</th>
           <th style="padding:8px 10px">Products</th>
           <th style="padding:8px 10px">Cases</th>
-          <th style="padding:8px 10px;text-align:right">June GMV</th>
-          <th style="padding:8px 10px;text-align:right">May GMV</th>
+          <th style="padding:8px 10px;text-align:right">'+getCurMonthLabel()+' GMV</th>
+          <th style="padding:8px 10px;text-align:right">'+getPrevMonthLabel()+' GMV</th>
           <th style="padding:8px 10px;text-align:center">Growth</th>
           <th style="padding:8px 10px;min-width:80px">Share</th>
         </tr>
@@ -2000,7 +2021,7 @@ function buildBanks(el) {
       <div class="card">
         <div class="card-title">Lender Breakdown</div>
         <table>
-          <thead><tr><th>Bank / NBFC</th><th>Cases</th><th style="text-align:right">June GMV</th><th style="text-align:right">May GMV</th><th style="text-align:center">Growth</th><th>Share</th></tr></thead>
+          <thead><tr><th>Bank / NBFC</th><th>Cases</th><th style="text-align:right">'+getCurMonthLabel()+' GMV</th><th style="text-align:right">'+getPrevMonthLabel()+' GMV</th><th style="text-align:center">Growth</th><th>Share</th></tr></thead>
           <tbody id="bankTableBody"></tbody>
         </table>
       </div>
@@ -2182,12 +2203,12 @@ function buildTeamIncentive(el) {
     <!-- Header cards -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
       <div class="card" style="background:linear-gradient(135deg,#283593,#3949ab);color:#fff;padding:18px 20px">
-        <div style="font-size:11px;opacity:.7;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Team Incentive · May 2026</div>
+        <div style="font-size:11px;opacity:.7;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Team Incentive · '+getPrevMonthLabel()+'</div>
         <div style="font-size:30px;font-weight:800;margin:4px 0">${fmtCr(totMay)}</div>
         <div style="font-size:12px;opacity:.7">${rows.filter(r=>r.mInc?.totalIncentive>0).length} BMs earned · ${rows.length} total</div>
       </div>
       <div class="card" style="background:linear-gradient(135deg,#1a237e,#283593);color:#fff;padding:18px 20px">
-        <div style="font-size:11px;opacity:.7;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Team Incentive · July 2026 (ongoing)</div>
+        <div style="font-size:11px;opacity:.7;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Team Incentive · '+getCurMonthLabel()+' (ongoing)</div>
         <div style="font-size:30px;font-weight:800;margin:4px 0">${fmtCr(totJune)}</div>
         <div style="font-size:12px;opacity:.7">${rows.filter(r=>r.jInc?.totalIncentive>0).length} BMs earned · ${rows.length} total</div>
       </div>
@@ -2206,8 +2227,8 @@ function buildTeamIncentive(el) {
               <th rowspan="2" style="vertical-align:middle">#</th>
               <th rowspan="2" style="vertical-align:middle">BM Name</th>
               <th rowspan="2" style="vertical-align:middle">Tier</th>
-              <th colspan="2" style="text-align:center;background:#e3f2fd;color:#1565c0;border-bottom:2px solid #90caf9">May 2026</th>
-              <th colspan="2" style="text-align:center;background:#e8eaf6;color:#1a237e;border-bottom:2px solid #9fa8da">July 2026</th>
+              <th colspan="2" style="text-align:center;background:#e3f2fd;color:#1565c0;border-bottom:2px solid #90caf9">'+getPrevMonthLabel()+'</th>
+              <th colspan="2" style="text-align:center;background:#e8eaf6;color:#1a237e;border-bottom:2px solid #9fa8da">'+getCurMonthLabel()+'</th>
               <th rowspan="2" style="vertical-align:middle;text-align:center">Trend</th>
             </tr>
             <tr style="background:#f5f9ff">
@@ -2555,8 +2576,8 @@ function buildIncentive(el) {
                   <table style="width:100%;font-size:12px">
                     <thead><tr>
                       <th style="text-align:left">Metric</th>
-                      <th style="text-align:right;color:#1565c0">May 2026</th>
-                      <th style="text-align:right;color:#1a237e">July 2026</th>
+                      <th style="text-align:right;color:#1565c0">'+getPrevMonthLabel()+'</th>
+                      <th style="text-align:right;color:#1a237e">'+getCurMonthLabel()+'</th>
                     </tr></thead>
                     <tbody>
                       <tr><td>Total GMV</td><td style="text-align:right">${fmtCr(mS.totalAmt)}</td><td style="text-align:right">${fmtCr(jS.totalAmt)}</td></tr>
@@ -2724,7 +2745,7 @@ function buildIncentive(el) {
     <!-- Dual month header -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
       <div class="incentive-box" style="margin-bottom:0">
-        <div class="incentive-title">May 2026 — Final Incentive</div>
+        <div class="incentive-title">'+getPrevMonthLabel()+' — Final Incentive</div>
         <div class="incentive-amount" style="font-size:36px">${fmtCr(Math.round(mCalc.total))}</div>
         <div class="incentive-breakdown">
           <div class="incentive-item"><div class="ivalue">${fmtCr(mCalc.gmv)}</div><div class="ilabel">Eff. GMV</div></div>
@@ -2733,7 +2754,7 @@ function buildIncentive(el) {
         </div>
       </div>
       <div class="incentive-box" style="margin-bottom:0;background:linear-gradient(135deg,#283593,#3949ab)">
-        <div class="incentive-title">July 2026 — Ongoing</div>
+        <div class="incentive-title">'+getCurMonthLabel()+' — Ongoing</div>
         <div class="incentive-amount" style="font-size:36px">${fmtCr(Math.round(totalIncentive))}</div>
       <div class="incentive-breakdown">
         <div class="incentive-item"><div class="ivalue">${fmtCr(effGMV)}</div><div class="ilabel">Eff. GMV</div></div>
@@ -2746,7 +2767,7 @@ function buildIncentive(el) {
     <div class="card" style="margin-bottom:16px">
       <div class="card-title">May vs June Comparison</div>
       <table style="width:100%">
-        <thead><tr><th>Metric</th><th style="text-align:right;color:#1565c0">May 2026</th><th style="text-align:right;color:#1a237e">July 2026</th></tr></thead>
+        <thead><tr><th>Metric</th><th style="text-align:right;color:#1565c0">'+getPrevMonthLabel()+'</th><th style="text-align:right;color:#1a237e">'+getCurMonthLabel()+'</th></tr></thead>
         <tbody>
           <tr><td>UC GMV</td><td style="text-align:right">${fmtCr(mCalc.ucA)}</td><td style="text-align:right">${fmtCr(ucAmt)}</td></tr>
           <tr><td>UCV GMV</td><td style="text-align:right">${fmtCr(mCalc.ucvA)}</td><td style="text-align:right">${fmtCr(ucvAmt)}</td></tr>
@@ -2872,7 +2893,7 @@ function buildTeam(el) {
     </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div style="padding:14px 20px;background:#e8eaf6;font-size:13px;font-weight:700;color:#1a237e">
-        👥 BM Performance — July 2026
+        👥 BM Performance — '+getCurMonthLabel()+'
         <span style="font-weight:400;font-size:11px;margin-left:10px;color:#3949ab">UC: ${fmtCr(teamUC)} | CV: ${fmtCr(teamCV)}</span>
       </div>
       <div style="overflow-x:auto">
@@ -3104,7 +3125,7 @@ function buildInsights(el) {
   }
 
   el.innerHTML = `
-    <div class="section-title">Business Insights — July 2026</div>
+    <div class="section-title">Business Insights — '+getCurMonthLabel()+'</div>
     ${insights.length === 0 ? '<div class="empty">No transactions found to generate insights.</div>' : `
     <div class="insight-list">
       ${insights.map(i => `
@@ -3165,7 +3186,7 @@ function buildWeekly(el) {
 
   el.innerHTML = `
     <div style="margin-bottom:16px">
-      <div style="font-size:20px;font-weight:800;color:#1a237e">📊 Weekly Review — July 2026</div>
+      <div style="font-size:20px;font-weight:800;color:#1a237e">📊 Weekly Review — '+getCurMonthLabel()+'</div>
       <div style="font-size:12px;color:#9e9e9e;margin-top:2px">Milestone targets & achievement by disbursed date</div>
     </div>
 
