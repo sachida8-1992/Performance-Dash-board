@@ -718,11 +718,63 @@ async function doLogin() {
     return;
   }
   currentUser = emp;
-  filterMyTxns();
-  initApp();
-  // Load live data in background after showing dashboard
-  if (!dataLoaded) {
-    setTimeout(() => tryLoadLiveData(), 100);
+
+  if (dataLoaded) {
+    // Data already loaded - show dashboard immediately
+    filterMyTxns();
+    initApp();
+  } else {
+    // First login - show loading screen, wait for data, then show dashboard
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'none';
+
+    // Show loading overlay
+    let loadingDiv = document.getElementById('dataLoadingOverlay');
+    if (!loadingDiv) {
+      loadingDiv = document.createElement('div');
+      loadingDiv.id = 'dataLoadingOverlay';
+      loadingDiv.style.cssText = 'position:fixed;inset:0;background:linear-gradient(135deg,#1a237e,#283593);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999';
+      loadingDiv.innerHTML = '<div style="background:rgba(255,255,255,.12);border-radius:16px;padding:40px 60px;text-align:center">'
+        + '<div style="color:#fff;font-size:32px;font-weight:800;margin-bottom:16px">Rupyy</div>'
+        + '<div style="color:#fff;font-size:20px;font-weight:800;margin-bottom:8px">Loading Dashboard</div>'
+        + '<div id="loadingMsg" style="color:rgba(255,255,255,.7);font-size:13px;margin-bottom:24px">Fetching live data...</div>'
+        + '<div style="width:200px;height:4px;background:rgba(255,255,255,.2);border-radius:2px;overflow:hidden">'
+        + '<div id="loadingBar" style="height:100%;background:#fff;border-radius:2px;width:0%;transition:width .3s ease"></div>'
+        + '</div>'
+        + '</div>';
+      document.body.appendChild(loadingDiv);
+    } else {
+      loadingDiv.style.display = 'flex';
+    }
+
+    // Animate loading bar
+    let progress = 0;
+    const barEl = document.getElementById('loadingBar');
+    const msgEl = document.getElementById('loadingMsg');
+    const timer = setInterval(() => {
+      progress = Math.min(progress + 2, 85);
+      if (barEl) barEl.style.width = progress + '%';
+    }, 100);
+
+    // Load data then show dashboard
+    tryLoadLiveData().then(() => {
+      clearInterval(timer);
+      if (barEl) barEl.style.width = '100%';
+      if (msgEl) msgEl.textContent = 'Ready!';
+      setTimeout(() => {
+        if (loadingDiv) loadingDiv.style.display = 'none';
+        filterMyTxns();
+        initApp();
+      }, 300);
+    }).catch(() => {
+      clearInterval(timer);
+      if (msgEl) msgEl.textContent = 'Could not load live data — showing cached data';
+      setTimeout(() => {
+        if (loadingDiv) loadingDiv.style.display = 'none';
+        filterMyTxns();
+        initApp();
+      }, 1500);
+    });
   }
 }
 
@@ -817,7 +869,6 @@ function buildPageList() {
     pages.push({id:'channel6m',   label:' Channel 6M'});
     pages.push({id:'quarterly',   label:' Q1 Scorecard'});
     pages.push({id:'channeldrive',label:' Channel Drive'});
-    pages.push({id:'mailroom',    label:' Send Mail'});
     pages.push({id:'issues',      label:' Issues'});
     return pages;
   }
@@ -854,7 +905,7 @@ function buildPageList() {
   pages.push({id:'channel6m',   label:' Channel 6M'});
   pages.push({id:'quarterly',   label:' Q1 Scorecard'});
   pages.push({id:'channeldrive',label:' Channel Drive'});
-  pages.push({id:'mailroom',    label:' Send Mail'});
+  if (d === 'RH') pages.push({id:'mailroom', label:' Send Mail'});
   pages.push({id:'issues',      label:' Issues'});
   return pages;
 }
@@ -7024,140 +7075,231 @@ function buildHierarchy(el) {
 // ─────────────────────────────────────────────
 // ── Shared: build flat BM table with TH/AM filter dropdowns ──
 function buildFlatHierarchy(el, scopeTxns, role) {
-  const emps    = getEmpData();
+  const emps     = getEmpData();
   const todayStr = new Date().toISOString().slice(0,10);
+  const prevData = window._LIVE_MAY || [];
 
-  // Build TH list and AM list for dropdowns (from employee sheet)
-  const thList = emps.filter(e => e.designation === 'TH' &&
-    (role === 'RH' ? e.rh_id === currentUser.id : e.th_id === currentUser.id));
-  const amList = emps.filter(e => e.designation === 'AM' &&
-    (role === 'RH' ? e.rh_id === currentUser.id : e.th_id === currentUser.id));
-
-  // All BMs in scope
-  const allBMs = emps.filter(e => e.designation === 'BM' &&
-    (role === 'RH' ? e.rh_id === currentUser.id :
-     role === 'TH' ? (e.th_id === currentUser.id || e.am_id === currentUser.id) :
-     e.th_id === currentUser.id));
+  const thList = emps.filter(e => e.designation==='TH' &&
+    (role==='RH' ? e.rh_id===currentUser.id : e.th_id===currentUser.id));
+  const amList = emps.filter(e => e.designation==='AM' &&
+    (role==='RH' ? e.rh_id===currentUser.id : e.th_id===currentUser.id));
+  const allBMs = emps.filter(e => e.designation==='BM' &&
+    (role==='RH' ? e.rh_id===currentUser.id :
+     role==='TH' ? (e.th_id===currentUser.id||e.am_id===currentUser.id) :
+     e.th_id===currentUser.id));
 
   function renderTable(filterTH, filterAM) {
-    // Filter BMs by selected TH/AM
     let bms = allBMs;
-    if (filterTH) bms = bms.filter(e => e.th_id === filterTH);
-    if (filterAM) bms = bms.filter(e => e.am_id === filterAM);
+    if (filterTH) bms = bms.filter(e=>e.th_id===filterTH);
+    if (filterAM) bms = bms.filter(e=>e.am_id===filterAM);
 
-    // Group transactions by bm_id
-    const bmMap = {};
-    scopeTxns.forEach(t => {
-      const k = t.bm_id;
-      if (!bmMap[k]) bmMap[k] = [];
-      bmMap[k].push(t);
-    });
-    // Add zero-txn BMs
-    bms.forEach(e => { if (!bmMap[e.id]) bmMap[e.id] = []; });
+    // Build txn maps
+    const bmMap  = {}, prevMap = {};
+    scopeTxns.forEach(t => { if (!bmMap[t.bm_id]) bmMap[t.bm_id]=[]; bmMap[t.bm_id].push(t); });
+    prevData.forEach(t  => { if (!prevMap[t.bm_id]) prevMap[t.bm_id]=[]; prevMap[t.bm_id].push(t); });
+    bms.forEach(e => { if (!bmMap[e.id]) bmMap[e.id]=[]; });
 
-    // Build rows only for BMs in scope
     const rows = bms.map(e => {
-      const txns  = (bmMap[e.id] || []);
-      const ucAmt = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
-      const cvAmt = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-      const tot   = ucAmt + cvAmt;
-      const ucTgt = (e.uc_tgt||0)*1e5;
-      const cvTgt = (e.cv_tgt||0)*1e5;
-      const totTgt= ucTgt + cvTgt;
-      const ach   = totTgt > 0 ? Math.round((tot/totTgt)*100) : null;
-      const ch    = countChannels(txns, e);
-      const chTgt = e.ch_tgt || 0;
-      const chAch = chTgt > 0 ? Math.round((ch/chTgt)*100) : null;
-      const ftd   = txns.filter(t=>t.date===todayStr);
-      const ftdUC = ftd.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
-      const ftdCV = ftd.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+      const txns    = bmMap[e.id] || [];
+      const prev    = toLMTD(prevMap[e.id] || []);
+      // Current month
+      const ucTxns  = txns.filter(t=>t.product==='Used Car');
+      const cvTxns  = txns.filter(t=>t.product!=='Used Car');
+      const ucAmt   = ucTxns.reduce((s,t)=>s+t.amt,0);
+      const cvAmt   = cvTxns.reduce((s,t)=>s+t.amt,0);
+      const tot     = ucAmt+cvAmt;
+      // LMTD
+      const prevUC  = toLMTD(prev.filter(t=>t.product==='Used Car')).reduce((s,t)=>s+t.amt,0);
+      const prevCV  = toLMTD(prev.filter(t=>t.product!=='Used Car')).reduce((s,t)=>s+t.amt,0);
+      // Targets
+      const ucTgt   = (e.uc_tgt||0)*1e5;
+      const cvTgt   = (e.cv_tgt||0)*1e5;
+      const totTgt  = ucTgt+cvTgt;
+      const ucAch   = ucTgt>0?Math.round((ucAmt/ucTgt)*100):null;
+      const cvAch   = cvTgt>0?Math.round((cvAmt/cvTgt)*100):null;
+      // Channels
+      const ch      = countChannels(txns, e);
+      const prevCh  = countChannels(toLMTD(prevMap[e.id]||[]), e);
+      const chTgt   = e.ch_tgt||0;
+      const chAch   = chTgt>0?Math.round((ch/chTgt)*100):null;
+      // FTD
+      const ftd     = txns.filter(t=>t.date===todayStr);
+      const ftdUC   = ftd.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+      const ftdCV   = ftd.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+      // FTD New channels (channels activated today that had no disbursement before today this month)
+      const ftdDcids     = new Set(ftd.filter(t=>t.dcid).map(t=>t.dcid));
+      const prevMonthDcids= new Set((prevMap[e.id]||[]).filter(t=>t.dcid).map(t=>t.dcid));
+      const beforeTodayDcids = new Set(txns.filter(t=>t.date<todayStr&&t.dcid).map(t=>t.dcid));
+      // FTD unique new UC channels = channels active in FTD (UC), not active before today this month, not in prev month
+      const ftdNewCh = [...ftdDcids].filter(d => {
+        const t = ftd.filter(x=>x.dcid===d);
+        const hasUC = t.some(x=>x.product==='Used Car');
+        return hasUC && !beforeTodayDcids.has(d);
+      }).length;
+
       const amEmp = emps.find(a=>a.id===e.am_id);
       const thEmp = emps.find(a=>a.id===e.th_id);
-      return { e, txns, ucAmt, cvAmt, tot, ucTgt, cvTgt, totTgt, ach, ch, chTgt, chAch, ftdUC, ftdCV, amName: amEmp?amEmp.name:'—', thName: thEmp?thEmp.name:'Direct' };
+      return { e, txns, ucAmt, cvAmt, tot, ucTgt, cvTgt, totTgt, ucAch, cvAch,
+               prevUC, prevCV, ch, prevCh, chTgt, chAch,
+               ftdUC, ftdCV, ftdNewCh,
+               amName: amEmp?amEmp.name:'Direct', thName: thEmp?thEmp.name:'—' };
     }).sort((a,b)=>b.tot-a.tot);
 
-    const totDisb  = rows.reduce((s,r)=>s+r.tot,0);
-    const totCases = rows.reduce((s,r)=>s+r.txns.length,0);
-    const onTrack  = rows.filter(r=>r.ach!==null&&r.ach>=70).length;
-    const behind   = rows.filter(r=>r.ach!==null&&r.ach<70).length;
-    const zeroBMs  = rows.filter(r=>r.txns.length===0).length;
+    // Totals
+    const totDisb = rows.reduce((s,r)=>s+r.tot,0);
+    const totUC   = rows.reduce((s,r)=>s+r.ucAmt,0);
+    const totCV   = rows.reduce((s,r)=>s+r.cvAmt,0);
+    const totCases= rows.reduce((s,r)=>s+r.txns.length,0);
+    const onTrack = rows.filter(r=>r.ucAch!==null&&r.ucAch>=70||r.cvAch!==null&&r.cvAch>=70).length;
+    const zeroBMs = rows.filter(r=>r.txns.length===0).length;
+
+    const hdrStyle = 'padding:9px 8px;text-align:right;white-space:nowrap;font-size:11px;font-weight:700;border-right:1px solid rgba(255,255,255,.1)';
+    const hdrL     = 'padding:9px 10px;text-align:left;white-space:nowrap;font-size:11px;font-weight:700;border-right:1px solid rgba(255,255,255,.1)';
+
+    function gTag(cur, prev, isAmt=true) {
+      if (!prev && prev!==0) return '<span style="color:#ccc">—</span>';
+      const d = cur-prev; const up = d>=0;
+      const col = up?'#2e7d32':'#c62828';
+      const bg  = up?'#e8f5e9':'#ffebee';
+      const val = isAmt ? (up?'+':'')+fmtCr(Math.abs(d)) : (up?'+':'')+d;
+      return '<span style="background:'+bg+';color:'+col+';padding:2px 6px;border-radius:8px;font-size:10px;font-weight:700">'+(up?'&#9650;':'&#9660;')+' '+val+'</span>';
+    }
+
+    function achBadgeSmall(pct) {
+      if (pct===null) return '<span style="color:#9e9e9e">—</span>';
+      const col = pct>=100?'#2e7d32':pct>=70?'#1565c0':'#c62828';
+      const bg  = pct>=100?'#e8f5e9':pct>=70?'#e3f2fd':'#ffebee';
+      return '<span style="background:'+bg+';color:'+col+';padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">'+pct+'%</span>';
+    }
 
     return `
       <div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px">
         <div class="kpi"><div class="kpi-label">Total BMs</div><div class="kpi-value">${rows.length}</div></div>
-        <div class="kpi"><div class="kpi-label">Disbursement</div><div class="kpi-value">${fmtCr(totDisb)}</div></div>
-        <div class="kpi"><div class="kpi-label">Total Cases</div><div class="kpi-value">${totCases}</div></div>
-        <div class="kpi"><div class="kpi-label">On Track (≥70%)</div><div class="kpi-value" style="color:#2e7d32">${onTrack}</div></div>
-        <div class="kpi"><div class="kpi-label">Behind / Zero</div><div class="kpi-value" style="color:#c62828">${behind} / ${zeroBMs}</div></div>
+        <div class="kpi"><div class="kpi-label">Total Disb</div><div class="kpi-value">${fmtCr(totDisb)}</div></div>
+        <div class="kpi"><div class="kpi-label">UC</div><div class="kpi-value" style="color:#1565c0;font-size:20px">${fmtCr(totUC)}</div></div>
+        <div class="kpi"><div class="kpi-label">CV</div><div class="kpi-value" style="color:#6a1b9a;font-size:20px">${fmtCr(totCV)}</div></div>
+        <div class="kpi"><div class="kpi-label">On Track / Zero</div><div class="kpi-value" style="color:#2e7d32">${onTrack}<span style="color:#c62828;font-size:14px"> / ${zeroBMs}</span></div></div>
       </div>
       <div style="overflow-x:auto">
-        <table>
-          <thead><tr style="background:#1a237e;color:#fff">
-            <th style="text-align:left;padding:10px 12px">#</th>
-            <th style="text-align:left;padding:10px 12px">BM Name</th>
-            <th style="text-align:left;padding:10px 8px">Tier</th>
-            ${role==='RH'?'<th style="text-align:left;padding:10px 8px">TH</th>':''}
-            <th style="text-align:left;padding:10px 8px">AM</th>
-            <th style="text-align:right;padding:10px 12px">Disbursement</th>
-            <th style="text-align:right;padding:10px 8px">UC Tgt</th>
-            <th style="text-align:right;padding:10px 8px">CV Tgt</th>
-            <th style="text-align:center;padding:10px 8px">% Ach</th>
-            <th style="text-align:right;padding:10px 8px">UC</th>
-            <th style="text-align:right;padding:10px 8px">CV</th>
-            <th style="text-align:center;padding:10px 8px">Cases</th>
-            <th style="text-align:center;padding:10px 8px">Act Ch</th>
-            <th style="text-align:center;padding:10px 8px">Ch Tgt</th>
-            <th style="text-align:center;padding:10px 8px">Ch%</th>
-            <th style="text-align:right;padding:10px 8px;color:#90caf9">FTD UC</th>
-            <th style="text-align:right;padding:10px 8px;color:#f48fb1">FTD CV</th>
-          </tr></thead>
+        <table style="min-width:1200px;border-collapse:collapse;font-size:12px;width:100%">
+          <thead>
+            <tr style="background:#0d1b5e;color:#fff">
+              <th style="${hdrL}" rowspan="2">#</th>
+              <th style="${hdrL}" rowspan="2">BM Name</th>
+              <th style="${hdrL}" rowspan="2">AM Name</th>
+              ${role==='RH'?`<th style="${hdrL}" rowspan="2">TH Name</th>`:''}
+              <th style="${hdrStyle}" rowspan="2">Total<br>TGT</th>
+              <th style="${hdrStyle}" rowspan="2">Total<br>Disb</th>
+              <th style="padding:6px 8px;text-align:center;background:#1a237e;border-right:2px solid rgba(255,255,255,.2)" colspan="3">UC</th>
+              <th style="padding:6px 8px;text-align:center;background:#4a148c;border-right:2px solid rgba(255,255,255,.2)" colspan="3">CV</th>
+              <th style="padding:6px 8px;text-align:center;background:#006064;border-right:2px solid rgba(255,255,255,.2)" colspan="3">Channel</th>
+              <th style="padding:6px 8px;text-align:center;background:#b71c1c" colspan="3">FTD</th>
+            </tr>
+            <tr style="background:#1a237e;color:#fff;font-size:10px">
+              <th style="${hdrStyle}">TGT</th>
+              <th style="${hdrStyle}">ACH</th>
+              <th style="padding:9px 8px;text-align:center;white-space:nowrap;font-size:10px;font-weight:700;background:#283593;border-right:2px solid rgba(255,255,255,.2)">ACH%<br>vs LMTD</th>
+              <th style="padding:9px 8px;text-align:right;white-space:nowrap;font-size:10px;font-weight:700;background:#4a148c">TGT</th>
+              <th style="padding:9px 8px;text-align:right;white-space:nowrap;font-size:10px;font-weight:700;background:#4a148c">ACH</th>
+              <th style="padding:9px 8px;text-align:center;white-space:nowrap;font-size:10px;font-weight:700;background:#6a1b9a;border-right:2px solid rgba(255,255,255,.2)">ACH%<br>vs LMTD</th>
+              <th style="padding:9px 8px;text-align:right;white-space:nowrap;font-size:10px;font-weight:700;background:#006064">TGT</th>
+              <th style="padding:9px 8px;text-align:right;white-space:nowrap;font-size:10px;font-weight:700;background:#006064">ACH</th>
+              <th style="padding:9px 8px;text-align:center;white-space:nowrap;font-size:10px;font-weight:700;background:#00838f;border-right:2px solid rgba(255,255,255,.2)">ACH%<br>vs LMTD</th>
+              <th style="padding:9px 8px;text-align:right;white-space:nowrap;font-size:10px;font-weight:700;background:#b71c1c">UC</th>
+              <th style="padding:9px 8px;text-align:right;white-space:nowrap;font-size:10px;font-weight:700;background:#b71c1c">CV</th>
+              <th style="padding:9px 8px;text-align:center;white-space:nowrap;font-size:10px;font-weight:700;background:#c62828">New<br>Ch</th>
+            </tr>
+          </thead>
           <tbody>
-            ${rows.map((r,i) => `<tr style="${r.txns.length===0?'opacity:0.6;background:#fafafa':i%2===0?'':'background:#f8f9ff'}">
-              <td style="padding:8px 12px;color:#9e9e9e;font-size:11px">${i+1}</td>
-              <td style="padding:8px 12px"><b style="font-size:12px">${r.e.name}</b>${r.txns.length===0?'<span style="font-size:10px;color:#e53935;margin-left:4px">No txns</span>':''}</td>
-              <td style="padding:8px"><span class="badge badge-grey" style="font-size:10px">${r.e.tier||'—'}</span></td>
-              ${role==='RH'?`<td style="padding:8px;font-size:11px;color:#555">${r.thName}</td>`:''}
-              <td style="padding:8px;font-size:11px;color:#555">${r.amName}</td>
-              <td style="padding:8px 12px;text-align:right"><b>${fmtCr(r.tot)}</b></td>
-              <td style="padding:8px;text-align:right;font-size:11px;color:#666">${r.ucTgt>0?fmtCr(r.ucTgt):'—'}</td>
-              <td style="padding:8px;text-align:right;font-size:11px;color:#666">${r.cvTgt>0?fmtCr(r.cvTgt):'—'}</td>
-              <td style="padding:8px;text-align:center">${r.ach!==null?achBadge(r.ach):'<span class="badge badge-grey">—</span>'}</td>
-              <td style="padding:8px;text-align:right;font-size:11px">${fmtCr(r.ucAmt)}</td>
-              <td style="padding:8px;text-align:right;font-size:11px">${fmtCr(r.cvAmt)}</td>
-              <td style="padding:8px;text-align:center">${r.txns.length}</td>
-              <td style="padding:8px;text-align:center"><b>${r.ch}</b></td>
-              <td style="padding:8px;text-align:center;color:#666;font-size:11px">${r.chTgt||'—'}</td>
-              <td style="padding:8px;text-align:center">${r.chAch!==null?achBadge(r.chAch):'<span class="badge badge-grey">—</span>'}</td>
-              <td style="padding:8px;text-align:right;font-size:11px;color:#1565c0;font-weight:700">${r.ftdUC>0?fmtCr(r.ftdUC):'<span style="color:#ccc">—</span>'}</td>
-              <td style="padding:8px;text-align:right;font-size:11px;color:#880e4f;font-weight:700">${r.ftdCV>0?fmtCr(r.ftdCV):'<span style="color:#ccc">—</span>'}</td>
-            </tr>`).join('')}
+            ${rows.map((r,i) => {
+              const rowBg = r.txns.length===0?'background:#fafafa;opacity:.65':i%2===0?'':'background:#f8f9ff';
+              const totAch = r.totTgt>0?achBadgeSmall(Math.round((r.tot/r.totTgt)*100)):achBadgeSmall(null);
+              return `<tr style="${rowBg}">
+                <td style="padding:7px 10px;color:#9e9e9e;font-size:11px;border-bottom:1px solid #f0f0f0">${i+1}</td>
+                <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0">
+                  <b style="font-size:12px;color:#1a237e">${r.e.name}</b>
+                  ${r.e.tier?`<span style="background:#e8eaf6;color:#3949ab;padding:1px 5px;border-radius:6px;font-size:9px;margin-left:4px">${r.e.tier}</span>`:''}
+                  ${r.txns.length===0?'<span style="font-size:9px;color:#e53935;margin-left:4px">No txn</span>':''}
+                </td>
+                <td style="padding:7px 8px;font-size:11px;color:#555;border-bottom:1px solid #f0f0f0">${r.amName}</td>
+                ${role==='RH'?`<td style="padding:7px 8px;font-size:11px;color:#555;border-bottom:1px solid #f0f0f0">${r.thName}</td>`:''}
+                <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-size:11px;color:#666">${r.totTgt>0?fmtCr(r.totTgt):'—'}</td>
+                <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:700">${fmtCr(r.tot)}<br><small style="font-weight:400;color:#9e9e9e">${r.txns.length}c</small></td>
+                <!-- UC -->
+                <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-size:11px;color:#666;background:#f8f9ff">${r.ucTgt>0?fmtCr(r.ucTgt):'—'}</td>
+                <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:700;color:#1565c0;background:#f8f9ff">${fmtCr(r.ucAmt)}</td>
+                <td style="padding:7px 8px;text-align:center;border-bottom:1px solid #f0f0f0;border-right:2px solid #e8eaf6;background:#f0f4ff">
+                  ${achBadgeSmall(r.ucAch)}<br>
+                  <small style="font-size:9px">${gTag(r.ucAmt, r.prevUC)}</small>
+                </td>
+                <!-- CV -->
+                <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-size:11px;color:#666;background:#fdf5ff">${r.cvTgt>0?fmtCr(r.cvTgt):'—'}</td>
+                <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:700;color:#6a1b9a;background:#fdf5ff">${fmtCr(r.cvAmt)}</td>
+                <td style="padding:7px 8px;text-align:center;border-bottom:1px solid #f0f0f0;border-right:2px solid #e8eaf6;background:#f3e5f5">
+                  ${achBadgeSmall(r.cvAch)}<br>
+                  <small style="font-size:9px">${gTag(r.cvAmt, r.prevCV)}</small>
+                </td>
+                <!-- Channel -->
+                <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-size:11px;color:#666;background:#e0f7fa">${r.chTgt||'—'}</td>
+                <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:700;color:#00838f;background:#e0f7fa">${r.ch}</td>
+                <td style="padding:7px 8px;text-align:center;border-bottom:1px solid #f0f0f0;border-right:2px solid #e8eaf6;background:#b2ebf2">
+                  ${achBadgeSmall(r.chAch)}<br>
+                  <small style="font-size:9px">${gTag(r.ch, r.prevCh, false)}</small>
+                </td>
+                <!-- FTD -->
+                <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:700;color:#1565c0;background:#fff8f8">${r.ftdUC>0?fmtCr(r.ftdUC):'<span style="color:#ccc">—</span>'}</td>
+                <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:700;color:#6a1b9a;background:#fff8f8">${r.ftdCV>0?fmtCr(r.ftdCV):'<span style="color:#ccc">—</span>'}</td>
+                <td style="padding:7px 8px;text-align:center;border-bottom:1px solid #f0f0f0;background:#fff0f0">
+                  ${r.ftdNewCh>0?`<span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:8px;font-weight:700">${r.ftdNewCh}</span>`:'<span style="color:#ccc">—</span>'}
+                </td>
+              </tr>`;
+            }).join('')}
           </tbody>
+          <tfoot>
+            <tr style="background:#e8eaf6;font-weight:700">
+              <td style="padding:8px 10px" colspan="2">TOTAL (${rows.length} BMs)</td>
+              <td colspan="${role==='RH'?3:2}"></td>
+              <td style="padding:8px;text-align:right">${fmtCr(rows.reduce((s,r)=>s+r.totTgt,0))}</td>
+              <td style="padding:8px;text-align:right">${fmtCr(totDisb)}</td>
+              <td style="padding:8px;text-align:right">${fmtCr(rows.reduce((s,r)=>s+r.ucTgt,0))}</td>
+              <td style="padding:8px;text-align:right;color:#1565c0">${fmtCr(totUC)}</td>
+              <td></td>
+              <td style="padding:8px;text-align:right">${fmtCr(rows.reduce((s,r)=>s+r.cvTgt,0))}</td>
+              <td style="padding:8px;text-align:right;color:#6a1b9a">${fmtCr(totCV)}</td>
+              <td></td>
+              <td style="padding:8px;text-align:right">${rows.reduce((s,r)=>s+(r.chTgt||0),0)}</td>
+              <td style="padding:8px;text-align:right;color:#00838f">${rows.reduce((s,r)=>s+r.ch,0)}</td>
+              <td></td>
+              <td style="padding:8px;text-align:right;color:#1565c0">${fmtCr(rows.reduce((s,r)=>s+r.ftdUC,0))}</td>
+              <td style="padding:8px;text-align:right;color:#6a1b9a">${fmtCr(rows.reduce((s,r)=>s+r.ftdCV,0))}</td>
+              <td style="padding:8px;text-align:center">${rows.reduce((s,r)=>s+r.ftdNewCh,0)||'—'}</td>
+            </tr>
+          </tfoot>
         </table>
+      </div>
+      <div style="font-size:10px;color:#9e9e9e;margin-top:8px">
+        ACH% = Current MTD vs Target &nbsp;|&nbsp; vs LMTD = Growth vs ${getPrevMonthLabel()} same days &nbsp;|&nbsp; FTD New Ch = UC channels activated today for first time this month
       </div>`;
   }
 
-  // Dropdown HTML
   const thOptions = thList.map(e=>`<option value="${e.id}">${e.name}</option>`).join('');
   const amOptions = amList.map(e=>`<option value="${e.id}">${e.name}</option>`).join('');
 
   el.innerHTML = `
-    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:20px;padding:14px 16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07)">
-      <span style="font-size:13px;font-weight:700;color:#1a237e"> Filter:</span>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px 16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07)">
+      <span style="font-size:13px;font-weight:700;color:#1a237e">Filter:</span>
       ${role==='RH'?`<select id="hierTHFilter" onchange="applyHierFilter()" style="padding:6px 12px;border:1px solid #c5cae9;border-radius:8px;font-size:13px;color:#333;background:#f5f7ff">
         <option value="">All TH</option>${thOptions}
       </select>`:''}
       <select id="hierAMFilter" onchange="applyHierFilter()" style="padding:6px 12px;border:1px solid #c5cae9;border-radius:8px;font-size:13px;color:#333;background:#f5f7ff">
         <option value="">All AM</option>${amOptions}
       </select>
-      <button onclick="document.getElementById('hierTHFilter')&&(document.getElementById('hierTHFilter').value='');document.getElementById('hierAMFilter').value='';applyHierFilter()" 
+      <button onclick="(document.getElementById('hierTHFilter')&&(document.getElementById('hierTHFilter').value=''));document.getElementById('hierAMFilter').value='';applyHierFilter()"
         style="padding:6px 12px;border:1px solid #e0e0e0;border-radius:8px;font-size:12px;background:#fff;cursor:pointer;color:#666">Reset</button>
     </div>
-    <div id="hierTableBody">
-      ${renderTable('', '')}
-    </div>
+    <div id="hierTableBody">${renderTable('', '')}</div>
   `;
 
-  // Store render function for filter changes
   window._hierRenderFn = renderTable;
   window._hierRole = role;
 }
