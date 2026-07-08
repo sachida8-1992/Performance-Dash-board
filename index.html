@@ -375,7 +375,7 @@ async function tryLoadLiveData() {
 
     // Skip if data hasn't changed since last fetch
     if (data.updated_at === lastUpdatedAt && dataLoaded) {
-      console.log('ℹ️ Data unchanged, skipping refresh');
+      console.log('ℹ Data unchanged, skipping refresh');
       return;
     }
     lastUpdatedAt = data.updated_at;
@@ -398,7 +398,7 @@ async function tryLoadLiveData() {
       const el = document.getElementById('dataUpdateTime');
       if (el) {
         const d = new Date(data.updated_at);
-        el.textContent = '🟢 Live data: ' + d.toLocaleString('en-IN', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+        el.textContent = ' Live data: ' + d.toLocaleString('en-IN', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
         el.style.display = 'block';
         el.style.color = '#43a047';
       }
@@ -433,17 +433,17 @@ async function tryLoadLiveData() {
       const liveEl = document.getElementById('liveIndicator');
       if (liveEl && data.updated_at) {
         const d = new Date(data.updated_at);
-        liveEl.textContent = '🟢 ' + d.toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+        liveEl.textContent = ' ' + d.toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
         liveEl.style.display = 'inline-block';
       }
     }
 
-    console.log('✅ Live data loaded:', data.updated_at,
+    console.log(' Live data loaded:', data.updated_at,
       '| Emp:', window._LIVE_EMP.length,
       '| Jun txn:', window._LIVE_TXN.length,
       '| May txn:', window._LIVE_MAY.length);
   } catch(e) {
-    console.log('ℹ️ Using embedded data:', e.message);
+    console.log('ℹ Using embedded data:', e.message);
   }
 }
 
@@ -728,7 +728,7 @@ async function doLogin() {
 function toggleDarkMode() {
   const isDark = document.body.classList.toggle('dark-theme');
   const btn = document.getElementById('themeBtn');
-  if (btn) btn.textContent = isDark ? '☀️' : '🌙';
+  if (btn) btn.textContent = isDark ? '' : '';
   try { localStorage.setItem('rupyy_theme', isDark ? 'dark' : 'light'); } catch(e) {}
 }
 // Restore saved theme on load
@@ -746,9 +746,9 @@ async function manualRefresh() {
   await tryLoadLiveData();
 
   if (btn) {
-    btn.textContent = '✅';
+    btn.textContent = '';
     btn.disabled = false;
-    setTimeout(() => { btn.textContent = '🔄'; }, 2000);
+    setTimeout(() => { btn.textContent = ''; }, 2000);
   }
 }
 
@@ -783,7 +783,7 @@ function initApp() {
   document.getElementById('topBadge').textContent = currentUser.designation;
   // Sync theme toggle button icon
   const themeBtn = document.getElementById('themeBtn');
-  if (themeBtn) themeBtn.textContent = document.body.classList.contains('dark-theme') ? '☀️' : '🌙';
+  if (themeBtn) themeBtn.textContent = document.body.classList.contains('dark-theme') ? '' : '';
 
   const pages = buildPageList();
   const nav = document.getElementById('navBar');
@@ -798,62 +798,62 @@ function initApp() {
 function buildPageList() {
   const d = currentUser.designation;
   const pages = [
-    {id:'overview', label:'📊 Overview'},
+    {id:'overview', label:' Overview'},
   ];
 
   if (d === 'AM') {
-    pages.push({id:'insights',  label:'💡 Insights'});
-    pages.push({id:'team',      label:'👥 My Team'});
-    pages.push({id:'weekly',    label:'📅 Weekly Review'});
-    pages.push({id:'channels',  label:'🔗 Channels'});
-    pages.push({id:'dealers',   label:'🏪 Top Channels'});
-    pages.push({id:'banks',     label:'🏦 Banks'});
-    pages.push({id:'incentive', label:'💰 Team Incentive'});
-    pages.push({id:'deviation',  label:'📋 Deviation'});
-    pages.push({id:'scorecard',  label:'🎯 Scorecard'});
-    pages.push({id:'monthly',    label:'📅 Monthly Summary'});
-    pages.push({id:'channel6m',   label:'📊 Channel 6M'});
-    pages.push({id:'quarterly',   label:'📈 Q1 Scorecard'});
-    pages.push({id:'channeldrive',label:'🚀 Channel Drive'});
-    pages.push({id:'mailroom',    label:'📧 Send Mail'});
-    pages.push({id:'issues',      label:'🔔 Issues'});
+    pages.push({id:'insights',  label:' Insights'});
+    pages.push({id:'team',      label:' My Team'});
+    pages.push({id:'weekly',    label:' Weekly Review'});
+    pages.push({id:'channels',  label:' Channels'});
+    pages.push({id:'dealers',   label:' Top Channels'});
+    pages.push({id:'banks',     label:' Banks'});
+    pages.push({id:'incentive', label:' Team Incentive'});
+    pages.push({id:'deviation',  label:' Deviation'});
+    pages.push({id:'scorecard',  label:' Scorecard'});
+    pages.push({id:'monthly',    label:' Monthly Summary'});
+    pages.push({id:'channel6m',   label:' Channel 6M'});
+    pages.push({id:'quarterly',   label:' Q1 Scorecard'});
+    pages.push({id:'channeldrive',label:' Channel Drive'});
+    pages.push({id:'mailroom',    label:' Send Mail'});
+    pages.push({id:'issues',      label:' Issues'});
     return pages;
   }
 
   if (d === 'TH' || d === 'RH') {
-    pages.push({id:'hierarchy', label:'🏗️ Hierarchy View'});
-    pages.push({id:'weekly',    label:'📊 Weekly Review'});
+    pages.push({id:'hierarchy', label:' Hierarchy View'});
+    pages.push({id:'weekly',    label:' Weekly Review'});
   }
   if (d === 'BM') {
     pages.push(
-      {id:'channels', label:'🔗 Channels'},
-      {id:'banks',    label:'🏦 Banks'}
+      {id:'channels', label:' Channels'},
+      {id:'banks',    label:' Banks'}
     );
   } else {
     pages.push(
-      {id:'channels', label:'🔗 Channels'},
-      {id:'dealers',  label:'🏪 Top Channels'},
-      {id:'banks',    label:'🏦 Banks'}
+      {id:'channels', label:' Channels'},
+      {id:'dealers',  label:' Top Channels'},
+      {id:'banks',    label:' Banks'}
     );
   }
   if (d === 'BM') {
-    pages.push({id:'incentive', label:'💰 Incentive'});
+    pages.push({id:'incentive', label:' Incentive'});
   }
   if (d !== 'BM') {
-    pages.push({id:'incentive', label:'💰 Team Incentive'});
+    pages.push({id:'incentive', label:' Team Incentive'});
   }
-  pages.push({id:'insights', label:'💡 Insights'});
+  pages.push({id:'insights', label:' Insights'});
   if (d === 'BM') {
-    pages.push({id:'weekly', label:'📊 Weekly Review'});
+    pages.push({id:'weekly', label:' Weekly Review'});
   }
-  pages.push({id:'deviation',  label:'📋 Deviation Matrix'});
-  pages.push({id:'scorecard',   label:'🎯 Scorecard'});
-  pages.push({id:'monthly',     label:'📅 Monthly Summary'});
-  pages.push({id:'channel6m',   label:'📊 Channel 6M'});
-  pages.push({id:'quarterly',   label:'📈 Q1 Scorecard'});
-  pages.push({id:'channeldrive',label:'🚀 Channel Drive'});
-  pages.push({id:'mailroom',    label:'📧 Send Mail'});
-  pages.push({id:'issues',      label:'🔔 Issues'});
+  pages.push({id:'deviation',  label:' Deviation Matrix'});
+  pages.push({id:'scorecard',   label:' Scorecard'});
+  pages.push({id:'monthly',     label:' Monthly Summary'});
+  pages.push({id:'channel6m',   label:' Channel 6M'});
+  pages.push({id:'quarterly',   label:' Q1 Scorecard'});
+  pages.push({id:'channeldrive',label:' Channel Drive'});
+  pages.push({id:'mailroom',    label:' Send Mail'});
+  pages.push({id:'issues',      label:' Issues'});
   return pages;
 }
 
@@ -896,7 +896,7 @@ function buildPage(id, el) {
   } catch(err) {
     console.error('[buildPage:'+id+']', err);
     el.innerHTML = '<div style="padding:20px;color:#c62828;background:#fff3e0;border-radius:8px;margin:16px">'
-      + '<b>⚠️ Error loading ' + id + ' tab</b><br><br>'
+      + '<b> Error loading ' + id + ' tab</b><br><br>'
       + '<code style="font-size:12px">' + err.message + '</code><br><br>'
       + '<pre style="font-size:10px;overflow:auto;max-height:200px;color:#555">' + err.stack + '</pre>'
       + '</div>';
@@ -995,7 +995,7 @@ function buildOverview(el) {
       <!-- RH: AM/TH Performance Table replaces pie chart -->
       <div class="card" style="grid-column:1/-1;padding:16px 18px" id="rhPerfTableCard">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-          <div class="card-title" style="margin-bottom:0">📊 AM / TH Performance — MTD vs LMTD</div>
+          <div class="card-title" style="margin-bottom:0"> AM / TH Performance — MTD vs LMTD</div>
           <div style="display:flex;align-items:center;gap:8px">
             <label style="font-size:12px;color:#757575;font-weight:600">Product:</label>
             <select id="rhPerfFilter" onchange="buildRHPerfTable()"
@@ -1022,7 +1022,7 @@ function buildOverview(el) {
       </div>
       `}
       <div class="card" id="ftdCard" ${d === 'RH' ? 'style="display:none"' : ''}>
-        <div class="card-title">📅 Today's Performance (FTD)</div>
+        <div class="card-title"> Today's Performance (FTD)</div>
         <div id="ftdContent" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px"></div>
       </div>
     </div>
@@ -1030,12 +1030,12 @@ function buildOverview(el) {
     <!-- Month Comparison Card -->
     <div class="card" style="margin-bottom:20px" id="monthCompareCard">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-        <div class="card-title" style="margin-bottom:0">📅 Month-on-Month Comparison</div>
+        <div class="card-title" style="margin-bottom:0"> Month-on-Month Comparison</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <div style="display:flex;gap:4px">
-            <button id="mcFilterUC" class="city-tab-btn active" onclick="setMCFilter('UC')">🚗 UC</button>
-            <button id="mcFilterCV" class="city-tab-btn" onclick="setMCFilter('CV')">🚛 CV</button>
-            <button id="mcFilterAll" class="city-tab-btn" onclick="setMCFilter('ALL')">🏦 All</button>
+            <button id="mcFilterUC" class="city-tab-btn active" onclick="setMCFilter('UC')"> UC</button>
+            <button id="mcFilterCV" class="city-tab-btn" onclick="setMCFilter('CV')"> CV</button>
+            <button id="mcFilterAll" class="city-tab-btn" onclick="setMCFilter('ALL')"> All</button>
           </div>
           <div style="display:flex;align-items:center;gap:6px">
             <label style="font-size:12px;color:#757575">Till date:</label>
@@ -1117,23 +1117,23 @@ function buildOverview(el) {
 
     drrRow.innerHTML = `
       <div class="kpi" style="border-left:4px solid #e53935">
-        <div class="kpi-label">📉 Shortfall to Target</div>
+        <div class="kpi-label"> Shortfall to Target</div>
         <div class="kpi-value" style="color:#e53935;font-size:24px">${fmtCr(shortfall)}</div>
         <div class="kpi-sub">Target ${fmtCr(totalTgt)} − Achieved ${fmtCr(totalAmt)}</div>
       </div>
       <div class="kpi" style="border-left:4px solid #f9a825">
-        <div class="kpi-label">⚡ Daily Required Rate (DRR)</div>
+        <div class="kpi-label"> Daily Required Rate (DRR)</div>
         <div class="kpi-value" style="color:#f9a825;font-size:24px">₹${fmtL(drr)}<span style="font-size:13px;font-weight:400;color:#9e9e9e"> /day</span></div>
         <div class="kpi-sub">${fmtCr(shortfall)} ÷ ${remaining} working day${remaining!==1?'s':''} left</div>
       </div>
       ${isCV ? `` : `
       <div class="kpi" style="border-left:4px solid #1565c0">
-        <div class="kpi-label">🚗 UC Shortfall &amp; DRR</div>
+        <div class="kpi-label"> UC Shortfall &amp; DRR</div>
         <div class="kpi-value" style="color:#1565c0;font-size:24px">${fmtCr(ucShort)}</div>
         <div class="kpi-sub">UC DRR: <b>₹${fmtL(ucDrr)}/day</b> &nbsp;|&nbsp; ${remaining} days left</div>
       </div>
       <div class="kpi" style="border-left:4px solid #6a1b9a">
-        <div class="kpi-label">🚚 CV Shortfall</div>
+        <div class="kpi-label"> CV Shortfall</div>
         <div class="kpi-value" style="color:#6a1b9a;font-size:24px">${fmtCr(cvShort)}</div>
         <div class="kpi-sub">CV Target ${fmtCr(cvTgt)} − Achieved ${fmtCr(cvAmt+ncvAmt)}</div>
       </div>
@@ -1152,7 +1152,7 @@ function buildOverview(el) {
 
     // Update card title to show today's date
     const ftdTitle = document.querySelector('#ftdCard .card-title');
-    if (ftdTitle) ftdTitle.textContent = `📅 Today's Performance — ${todayLabel}`;
+    if (ftdTitle) ftdTitle.textContent = ` Today's Performance — ${todayLabel}`;
 
     // Filter myTxns to today only — match on disbursed_date (June data only)
     const todayTxns = myTxns.filter(t => t.date && t.date.slice(0,10) === todayStr);
@@ -1170,22 +1170,22 @@ function buildOverview(el) {
 
     ftdDiv.innerHTML = `
       <div style="background:#e3f2fd;border-radius:10px;padding:14px;text-align:center">
-        <div style="font-size:11px;font-weight:700;color:#1565c0;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">🚗 UC GMV</div>
+        <div style="font-size:11px;font-weight:700;color:#1565c0;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px"> UC GMV</div>
         <div style="font-size:22px;font-weight:800;color:#1565c0">${noData ? '—' : fmtCr(ftdUC)}</div>
         <div style="font-size:11px;color:#1976d2;margin-top:4px">${noData ? 'No data today' : todayTxns.filter(t=>t.product==='Used Car').length + ' cases'}</div>
       </div>
       <div style="background:#f3e5f5;border-radius:10px;padding:14px;text-align:center">
-        <div style="font-size:11px;font-weight:700;color:#6a1b9a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">🚚 CV GMV</div>
+        <div style="font-size:11px;font-weight:700;color:#6a1b9a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px"> CV GMV</div>
         <div style="font-size:22px;font-weight:800;color:#6a1b9a">${noData ? '—' : fmtCr(ftdUCV+ftdNCV)}</div>
         <div style="font-size:11px;color:#7b1fa2;margin-top:4px">${noData ? 'No data today' : 'UCV: ' + fmtCr(ftdUCV) + ' | NCV: ' + fmtCr(ftdNCV)}</div>
       </div>
       <div style="background:#e8f5e9;border-radius:10px;padding:14px;text-align:center">
-        <div style="font-size:11px;font-weight:700;color:#2e7d32;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">🔗 UC Channels Today</div>
+        <div style="font-size:11px;font-weight:700;color:#2e7d32;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px"> UC Channels Today</div>
         <div style="font-size:22px;font-weight:800;color:#2e7d32">${noData ? '—' : ftdChannels}</div>
         <div style="font-size:11px;color:#388e3c;margin-top:4px">${noData ? 'No data today' : 'All products: ' + ftdAllChannels + ' unique dealers'}</div>
       </div>
       <div style="background:#fff8e1;border-radius:10px;padding:14px;text-align:center">
-        <div style="font-size:11px;font-weight:700;color:#f57f17;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">📋 Total Cases</div>
+        <div style="font-size:11px;font-weight:700;color:#f57f17;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px"> Total Cases</div>
         <div style="font-size:22px;font-weight:800;color:#f57f17">${noData ? '—' : ftdCases}</div>
         <div style="font-size:11px;color:#f9a825;margin-top:4px">${noData ? 'No disbursals today' : 'Total GMV: ' + fmtCr(ftdUC+ftdUCV+ftdNCV)}</div>
       </div>
@@ -1332,9 +1332,9 @@ function buildOverview(el) {
       const badgeEl = document.getElementById('zeroDaysBadge');
       if (badgeEl) {
         if (zeroPast.length === 0) {
-          badgeEl.innerHTML = `<span style="background:#e8f5e9;color:#2e7d32;font-size:12px;font-weight:700;padding:4px 10px;border-radius:12px">✅ No zero days</span>`;
+          badgeEl.innerHTML = `<span style="background:#e8f5e9;color:#2e7d32;font-size:12px;font-weight:700;padding:4px 10px;border-radius:12px"> No zero days</span>`;
         } else {
-          badgeEl.innerHTML = `<span style="background:#ffebee;color:#c62828;font-size:12px;font-weight:700;padding:4px 10px;border-radius:12px">🔴 ${zeroPast.length} zero day${zeroPast.length>1?'s':''}</span>`;
+          badgeEl.innerHTML = `<span style="background:#ffebee;color:#c62828;font-size:12px;font-weight:700;padding:4px 10px;border-radius:12px"> ${zeroPast.length} zero day${zeroPast.length>1?'s':''}</span>`;
         }
       }
 
@@ -1454,9 +1454,9 @@ function renderMonthCompare() {
               ${barW <= 20 ? `<span style="font-size:12px;font-weight:700;color:${m.color};min-width:60px">${fmtCr(m.s.amt)}</span>` : ''}
             </div>
             <div style="padding-left:84px;display:flex;gap:16px">
-              <span style="font-size:11px;color:#9e9e9e">📦 <b style="color:#555">${m.s.cases}</b> cases</span>
-              <span style="font-size:11px;color:#9e9e9e">🔗 <b style="color:#555">${m.s.channels}</b> channels</span>
-              <span style="font-size:11px;color:#9e9e9e">💰 <b style="color:#555">${fmtCr(m.s.amt)}</b></span>
+              <span style="font-size:11px;color:#9e9e9e"> <b style="color:#555">${m.s.cases}</b> cases</span>
+              <span style="font-size:11px;color:#9e9e9e"> <b style="color:#555">${m.s.channels}</b> channels</span>
+              <span style="font-size:11px;color:#9e9e9e"> <b style="color:#555">${fmtCr(m.s.amt)}</b></span>
             </div>
           </div>`;
       }).join('')}
@@ -1631,7 +1631,7 @@ function buildRHPerfTable() {
   function fmtL(v) { return (v/1e5).toFixed(2)+'L'; }
   function shortCell(v) {
     return v <= 0
-      ? `<span style="color:#2e7d32;font-weight:700">✅ On Track</span>`
+      ? `<span style="color:#2e7d32;font-weight:700"> On Track</span>`
       : `<span style="color:#c62828;font-weight:700">${fmtL(v)}</span>`;
   }
   function diffCell(v) {
@@ -1913,10 +1913,10 @@ function buildChannels(el) {
 
 function getDealerBonusInfo(ucDealers) {
   let bonus = 0, label = 'No bonus (< 9 dealers)';
-  if (ucDealers >= 13) { bonus = 15; label = '🎉 +15% bonus (13+ dealers)'; }
-  else if (ucDealers >= 11) { bonus = 12; label = '✨ +12% bonus (11-12 dealers)'; }
-  else if (ucDealers >= 9) { bonus = 10; label = '✅ +10% bonus (9-10 dealers)'; }
-  else { label = `❌ No bonus — need ${9-ucDealers} more dealer(s) to unlock 10% bonus`; }
+  if (ucDealers >= 13) { bonus = 15; label = ' +15% bonus (13+ dealers)'; }
+  else if (ucDealers >= 11) { bonus = 12; label = ' +12% bonus (11-12 dealers)'; }
+  else if (ucDealers >= 9) { bonus = 10; label = ' +10% bonus (9-10 dealers)'; }
+  else { label = ` No bonus — need ${9-ucDealers} more dealer(s) to unlock 10% bonus`; }
   return `<div style="font-size:16px;font-weight:600;color:${bonus>0?'#2e7d32':'#e53935'}">${label}</div>
           <div style="margin-top:8px;font-size:13px;color:#757575">You have <b>${ucDealers}</b> unique Used Car dealers active this month.</div>`;
 }
@@ -2052,14 +2052,14 @@ function buildDealersRH(el) {
     if (panel) panel.style.display = 'block';
   };
 
-  const tabBtns = ['🌐 All', ...cities].map((c, i) =>
-    `<button class="city-tab-btn ${i===0?'active':''}" onclick="switchCityTab(this,'city_tab_${i}')">${c === '🌐 All' ? c : '🗺️ '+c}</button>`
+  const tabBtns = [' All', ...cities].map((c, i) =>
+    `<button class="city-tab-btn ${i===0?'active':''}" onclick="switchCityTab(this,'city_tab_${i}')">${c === ' All' ? c : ' '+c}</button>`
   ).join('');
 
-  const tabPanels = ['🌐 All'].concat(cities).map((c, i) => {
-    const txns = c === '🌐 All' ? myTxns : myTxns.filter(t => (t.state||t.city||'Unknown') === c);
-    const top   = c === '🌐 All' ? 15 : 10;
-    const title = c === '🌐 All' ? 'Top 15 Channels — All States' : `Top 10 Channels — ${c} (${fmtCr(cityTotals[c])} | ${txns.length} cases)`;
+  const tabPanels = [' All'].concat(cities).map((c, i) => {
+    const txns = c === ' All' ? myTxns : myTxns.filter(t => (t.state||t.city||'Unknown') === c);
+    const top   = c === ' All' ? 15 : 10;
+    const title = c === ' All' ? 'Top 15 Channels — All States' : `Top 10 Channels — ${c} (${fmtCr(cityTotals[c])} | ${txns.length} cases)`;
     return `<div id="city_tab_${i}" class="city-tab-panel" style="display:${i===0?'block':'none'}">
       <div class="card-title" style="margin-bottom:12px">${title}</div>
       ${dealerTable(txns, top)}
@@ -2190,7 +2190,7 @@ function buildBanks(el) {
     }).join('');
 
     const totalEl = document.getElementById('bankTotal');
-    if (totalEl) totalEl.textContent = `${filtered.length} cases · ${fmtCr(total)}` + (state !== 'all' ? ` · 📍 ${state}` : '');
+    if (totalEl) totalEl.textContent = `${filtered.length} cases · ${fmtCr(total)}` + (state !== 'all' ? ` ·  ${state}` : '');
 
     if (charts.banks) { try { charts.banks.destroy(); } catch(e){} delete charts.banks; }
     setTimeout(() => {
@@ -2276,7 +2276,7 @@ function buildTeamIncentive(el) {
     if (!inc) return '<span style="color:#9e9e9e;font-size:11px">No data</span>';
     if (inc.isCV) {
       if (!inc.eligible && inc.cvTgt > 0) {
-        return `<div style="color:#c62828;font-weight:700;font-size:11px">❌ Not eligible</div>`
+        return `<div style="color:#c62828;font-weight:700;font-size:11px"> Not eligible</div>`
              + `<div style="font-size:10px;color:#9e9e9e">${inc.tgtAchPct}% of ${fmtCr(inc.cvTgt)} tgt (need 80%)</div>`;
       }
       return `<div style="font-weight:700;color:#e65100">₹${inc.totalIncentive.toLocaleString()}</div>`
@@ -2563,7 +2563,7 @@ function buildIncentive(el) {
 
         <!-- Base Incentive -->
         <div class="card" style="padding:0;overflow:hidden">
-          <div style="background:#e8eaf6;padding:12px 16px;font-size:13px;font-weight:700;color:#1a237e;text-align:center">📦 Base Incentive (UC + UCV Cases)</div>
+          <div style="background:#e8eaf6;padding:12px 16px;font-size:13px;font-weight:700;color:#1a237e;text-align:center"> Base Incentive (UC + UCV Cases)</div>
           <div style="padding:12px 16px">
             <table style="width:100%">
               <thead><tr>
@@ -2632,7 +2632,7 @@ function buildIncentive(el) {
             return `
               ${!eligible && cvTgt > 0 ? `
               <div style="background:#ffebee;border:1.5px solid #ef9a9a;border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
-                <div style="font-size:22px">❌</div>
+                <div style="font-size:22px"></div>
                 <div>
                   <div style="font-weight:700;color:#c62828;font-size:13px">Not eligible for incentive this month</div>
                   <div style="font-size:12px;color:#555;margin-top:2px">Achievement: <b>${fmtCr(totalAmt)}</b> = <b>${tgtAchPct}%</b> of target <b>${fmtCr(cvTgt)}</b> — Need ≥80% to qualify</div>
@@ -2667,7 +2667,7 @@ function buildIncentive(el) {
                 </div>
                 <div style="background:#1a237e;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center">
                   <div style="font-size:12px;color:rgba(255,255,255,.7)">June Est. Total (capped ₹50K)</div>
-                  <b style="color:#fff;font-size:18px">${jS.eligible ? '₹'+jS.total.toLocaleString() : '❌ Not eligible ('+jS.tgtAchPct+'%)'}</b>
+                  <b style="color:#fff;font-size:18px">${jS.eligible ? '₹'+jS.total.toLocaleString() : ' Not eligible ('+jS.tgtAchPct+'%)'}</b>
                 </div>
                 <!-- May vs June comparison -->
                 <div style="margin-top:12px;border-top:1px solid #e0e0e0;padding-top:12px">
@@ -2682,8 +2682,8 @@ function buildIncentive(el) {
                       <tr><td>Total GMV</td><td style="text-align:right">${fmtCr(mS.totalAmt)}</td><td style="text-align:right">${fmtCr(jS.totalAmt)}</td></tr>
                       <tr><td>Target (CV TGT)</td><td style="text-align:right">${fmtCr(mS.cv_tgt)}</td><td style="text-align:right">${fmtCr(jS.cv_tgt)}</td></tr>
                       <tr><td>Achievement %</td>
-                        <td style="text-align:right;font-weight:700;color:${mS.eligible?'#2e7d32':'#c62828'}">${mS.tgtAchPct}% ${mS.eligible?'✅':'❌'}</td>
-                        <td style="text-align:right;font-weight:700;color:${jS.eligible?'#2e7d32':'#c62828'}">${jS.tgtAchPct}% ${jS.eligible?'✅':'❌'}</td>
+                        <td style="text-align:right;font-weight:700;color:${mS.eligible?'#2e7d32':'#c62828'}">${mS.tgtAchPct}% ${mS.eligible?'':''}</td>
+                        <td style="text-align:right;font-weight:700;color:${jS.eligible?'#2e7d32':'#c62828'}">${jS.tgtAchPct}% ${jS.eligible?'':''}</td>
                       </tr>
                       <tr><td>UC+UCV Cases</td><td style="text-align:right">${mS.ucvucCases}</td><td style="text-align:right">${jS.ucvucCases}</td></tr>
                       <tr><td>UCV GMV</td><td style="text-align:right">${fmtCr(mS.ucvAmt)}</td><td style="text-align:right">${fmtCr(jS.ucvAmt)}</td></tr>
@@ -2692,8 +2692,8 @@ function buildIncentive(el) {
                       <tr><td>UCV Bonus</td><td style="text-align:right;color:#2e7d32">${mS.ucvBonus>0?'₹'+mS.ucvBonus.toLocaleString():'—'}</td><td style="text-align:right;color:#2e7d32">${jS.ucvBonus>0?'₹'+jS.ucvBonus.toLocaleString():'—'}</td></tr>
                       <tr><td>NCV Bonus</td><td style="text-align:right;color:#880e4f">${mS.ncvBonus>0?'₹'+mS.ncvBonus.toLocaleString():'—'}</td><td style="text-align:right;color:#880e4f">${jS.ncvBonus>0?'₹'+jS.ncvBonus.toLocaleString():'—'}</td></tr>
                       <tr style="font-weight:800;background:#f5f7ff"><td>Total Incentive</td>
-                        <td style="text-align:right;color:#1565c0;font-size:14px">${mS.eligible?'₹'+mS.total.toLocaleString():'❌ —'}</td>
-                        <td style="text-align:right;color:#1a237e;font-size:14px">${jS.eligible?'₹'+jS.total.toLocaleString():'❌ —'}</td>
+                        <td style="text-align:right;color:#1565c0;font-size:14px">${mS.eligible?'₹'+mS.total.toLocaleString():' —'}</td>
+                        <td style="text-align:right;color:#1a237e;font-size:14px">${jS.eligible?'₹'+jS.total.toLocaleString():' —'}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -2706,7 +2706,7 @@ function buildIncentive(el) {
 
       <!-- UCV Bonus -->
       <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
-        <div style="background:#e8f5e9;padding:12px 16px;font-size:13px;font-weight:700;color:#1b5e20;text-align:center">🚛 UCV Bonus Incentive (on Total UCV GMV Slab)</div>
+        <div style="background:#e8f5e9;padding:12px 16px;font-size:13px;font-weight:700;color:#1b5e20;text-align:center"> UCV Bonus Incentive (on Total UCV GMV Slab)</div>
         <div style="overflow-x:auto">
           <table style="width:100%">
             <thead><tr>
@@ -2724,7 +2724,7 @@ function buildIncentive(el) {
 
       <!-- NCV Bonus -->
       <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
-        <div style="background:#fce4ec;padding:12px 16px;font-size:13px;font-weight:700;color:#880e4f;text-align:center">🚌 NCV Bonus — Per Case (based on individual loan amount)</div>
+        <div style="background:#fce4ec;padding:12px 16px;font-size:13px;font-weight:700;color:#880e4f;text-align:center"> NCV Bonus — Per Case (based on individual loan amount)</div>
         <div style="overflow-x:auto">
           <table style="width:100%">
             <thead><tr>
@@ -2744,7 +2744,7 @@ function buildIncentive(el) {
 
       <!-- T&C -->
       <div class="card" style="background:#fffde7;border-left:4px solid #f9a825">
-        <div style="font-size:13px;font-weight:700;color:#f57f17;margin-bottom:8px">📋 Terms & Conditions</div>
+        <div style="font-size:13px;font-weight:700;color:#f57f17;margin-bottom:8px"> Terms & Conditions</div>
         <ul style="font-size:12px;color:#555;margin:0;padding-left:18px;line-height:2">
           <li>Minimum <b>80% of target GMV</b> required for bonus eligibility</li>
           <li>Bonus is over and above base incentive with <b>no additional conditions</b></li>
@@ -2899,7 +2899,7 @@ function buildIncentive(el) {
         </table>
         <div style="margin-top:16px;font-size:12px;color:#757575">
           Tier: <b>${tier}</b> &nbsp;|&nbsp; Tenure: <b>${tenMo} months</b> &nbsp;|&nbsp;
-          ${gt1yr ? '⚠️ >1yr tenure rules apply' : '✅ Full slab range eligible'}
+          ${gt1yr ? ' >1yr tenure rules apply' : ' Full slab range eligible'}
         </div>
       </div>
 
@@ -2921,7 +2921,7 @@ function buildIncentive(el) {
           }).join('')}
         </div>
         <div style="margin-top:12px;font-size:12px;color:#757575;padding:0 4px">
-          💡 Dealer bonus (UC only): 9-10 dealers=+10%, 11-12=+12%, 13+=+15%
+           Dealer bonus (UC only): 9-10 dealers=+10%, 11-12=+12%, 13+=+15%
         </div>
       </div>
     </div>
@@ -2993,7 +2993,7 @@ function buildTeam(el) {
     </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div style="padding:14px 20px;background:#e8eaf6;font-size:13px;font-weight:700;color:#1a237e">
-        👥 BM Performance — ${getCurMonthLabel()}
+         BM Performance — ${getCurMonthLabel()}
         <span style="font-weight:400;font-size:11px;margin-left:10px;color:#3949ab">UC: ${fmtCr(teamUC)} | CV: ${fmtCr(teamCV)}</span>
       </div>
       <div style="overflow-x:auto">
@@ -3057,13 +3057,13 @@ function buildInsights(el) {
     // Achievement status
     if (totalTgt > 0) {
       if (achPct >= 100) {
-        insights.push({type:'good', title:`🏆 Target Achieved! ${achPct}%`, body:`You have disbursed ${fmtCr(totalAmt)} against a target of ${fmtCr(totalTgt)}. Outstanding performance this month!`});
+        insights.push({type:'good', title:` Target Achieved! ${achPct}%`, body:`You have disbursed ${fmtCr(totalAmt)} against a target of ${fmtCr(totalTgt)}. Outstanding performance this month!`});
       } else if (achPct >= 70) {
         const shortfall = totalTgt - totalAmt;
-        insights.push({type:'warn', title:`📈 ${achPct}% Achieved — Keep Pushing`, body:`You need ${fmtCr(shortfall)} more to hit your target. You're on track — focus on closing pending cases.`});
+        insights.push({type:'warn', title:` ${achPct}% Achieved — Keep Pushing`, body:`You need ${fmtCr(shortfall)} more to hit your target. You're on track — focus on closing pending cases.`});
       } else {
         const shortfall = totalTgt - totalAmt;
-        insights.push({type:'action', title:`⚠️ Only ${achPct}% Achieved`, body:`Shortfall of ${fmtCr(shortfall)} remaining. Urgently increase disbursement pace to avoid missing target.`});
+        insights.push({type:'action', title:` Only ${achPct}% Achieved`, body:`Shortfall of ${fmtCr(shortfall)} remaining. Urgently increase disbursement pace to avoid missing target.`});
       }
     }
 
@@ -3071,9 +3071,9 @@ function buildInsights(el) {
     if (ucTgt > 0) {
       const ucAch = pct(ucAmt, ucTgt);
       if (ucAch < 70) {
-        insights.push({type:'action', title:`🚗 UC Achievement Low: ${ucAch}%`, body:`Used Car disbursement is ${fmtCr(ucAmt)} vs target ${fmtCr(ucTgt)}. Focus on UC deals to improve product mix.`});
+        insights.push({type:'action', title:` UC Achievement Low: ${ucAch}%`, body:`Used Car disbursement is ${fmtCr(ucAmt)} vs target ${fmtCr(ucTgt)}. Focus on UC deals to improve product mix.`});
       } else {
-        insights.push({type:'good', title:`🚗 UC Achievement: ${ucAch}%`, body:`Used Car disbursement at ${fmtCr(ucAmt)} — ${ucAch >= 100 ? 'target crossed!' : 'progressing well.'}`});
+        insights.push({type:'good', title:` UC Achievement: ${ucAch}%`, body:`Used Car disbursement at ${fmtCr(ucAmt)} — ${ucAch >= 100 ? 'target crossed!' : 'progressing well.'}`});
       }
     }
 
@@ -3081,9 +3081,9 @@ function buildInsights(el) {
     if (chTgt > 0) {
       const chPct = pct(chActive, chTgt);
       if (chPct < 70) {
-        insights.push({type:'action', title:`🔗 Channel Activation: ${chActive}/${chTgt} (${chPct}%)`, body:`You have activated ${chActive} out of ${chTgt} target channels. Onboard more dealers to increase pipeline.`});
+        insights.push({type:'action', title:` Channel Activation: ${chActive}/${chTgt} (${chPct}%)`, body:`You have activated ${chActive} out of ${chTgt} target channels. Onboard more dealers to increase pipeline.`});
       } else {
-        insights.push({type:'good', title:`🔗 Channel Activation: ${chActive}/${chTgt} (${chPct}%)`, body:`Good channel coverage! ${chActive} active channels contributing to healthy disbursement pipeline.`});
+        insights.push({type:'good', title:` Channel Activation: ${chActive}/${chTgt} (${chPct}%)`, body:`Good channel coverage! ${chActive} active channels contributing to healthy disbursement pipeline.`});
       }
     }
 
@@ -3094,15 +3094,15 @@ function buildInsights(el) {
     if (topDealer) {
       const dep = pct(topDealer[1], totalAmt);
       if (dep > 40) {
-        insights.push({type:'warn', title:`🏪 High Dealer Dependency: ${dep}%`, body:`${topDealer[0]} contributes ${dep}% of your disbursement. Diversify across more channels to reduce risk.`});
+        insights.push({type:'warn', title:` High Dealer Dependency: ${dep}%`, body:`${topDealer[0]} contributes ${dep}% of your disbursement. Diversify across more channels to reduce risk.`});
       } else {
-        insights.push({type:'good', title:`🏪 Top Dealer: ${topDealer[0]}`, body:`${topDealer[0]} contributes ${fmtCr(topDealer[1])} (${dep}%) — healthy dealer spread overall.`});
+        insights.push({type:'good', title:` Top Dealer: ${topDealer[0]}`, body:`${topDealer[0]} contributes ${fmtCr(topDealer[1])} (${dep}%) — healthy dealer spread overall.`});
       }
     }
 
     // Bank concentration
     if (topBank && pct(topBank[1],totalAmt) > 50) {
-      insights.push({type:'warn', title:`🏦 High Bank Concentration`, body:`${topBank[0].slice(0,40)} accounts for ${pct(topBank[1],totalAmt)}% of your disbursements. Try diversifying lender mix.`});
+      insights.push({type:'warn', title:` High Bank Concentration`, body:`${topBank[0].slice(0,40)} accounts for ${pct(topBank[1],totalAmt)}% of your disbursements. Try diversifying lender mix.`});
     }
 
     // Zero days (if any)
@@ -3116,9 +3116,9 @@ function buildInsights(el) {
         if (d.getDay()!==0 && !byDate[d.toISOString().slice(0,10)]) zeroDays++;
       }
       if (zeroDays > 0) {
-        insights.push({type:'action', title:`🔴 ${zeroDays} Zero Productivity Day${zeroDays>1?'s':''}`, body:`You had ${zeroDays} working day${zeroDays>1?'s':''} with no disbursement this month. Consistent daily activity drives better results.`});
+        insights.push({type:'action', title:` ${zeroDays} Zero Productivity Day${zeroDays>1?'s':''}`, body:`You had ${zeroDays} working day${zeroDays>1?'s':''} with no disbursement this month. Consistent daily activity drives better results.`});
       } else {
-        insights.push({type:'good', title:`✅ No Zero Productivity Days`, body:`Great consistency! You have maintained disbursement activity on every working day this month.`});
+        insights.push({type:'good', title:` No Zero Productivity Days`, body:`Great consistency! You have maintained disbursement activity on every working day this month.`});
       }
     }
   }
@@ -3153,46 +3153,46 @@ function buildInsights(el) {
     if (teamTgt > 0) {
       const teamAch = pct(totalAmt, teamTgt);
       if (teamAch >= 100) {
-        insights.push({type:'good', title:`🏆 Team Target Achieved! ${teamAch}%`, body:`Team disbursed ${fmtCr(totalAmt)} against target of ${fmtCr(teamTgt)}. Excellent team performance!`});
+        insights.push({type:'good', title:` Team Target Achieved! ${teamAch}%`, body:`Team disbursed ${fmtCr(totalAmt)} against target of ${fmtCr(teamTgt)}. Excellent team performance!`});
       } else {
-        insights.push({type: teamAch>=70?'warn':'action', title:`📊 Team Achievement: ${teamAch}%`, body:`Team has disbursed ${fmtCr(totalAmt)} vs target ${fmtCr(teamTgt)}. Shortfall: ${fmtCr(teamTgt-totalAmt)}.`});
+        insights.push({type: teamAch>=70?'warn':'action', title:` Team Achievement: ${teamAch}%`, body:`Team has disbursed ${fmtCr(totalAmt)} vs target ${fmtCr(teamTgt)}. Shortfall: ${fmtCr(teamTgt-totalAmt)}.`});
       }
     }
 
     // Top performer
     const topBM = [...bms].sort((a,b)=>b.amt-a.amt)[0];
     if (topBM) {
-      insights.push({type:'good', title:`🏆 Top Performer: ${topBM.empName}`, body:`Disbursed ${fmtCr(topBM.amt)} with ${topBM.cases} cases this month. Excellent contribution to the team.`});
+      insights.push({type:'good', title:` Top Performer: ${topBM.empName}`, body:`Disbursed ${fmtCr(topBM.amt)} with ${topBM.cases} cases this month. Excellent contribution to the team.`});
     }
 
     // BMs below 70%
     const laggards = bms.filter(b => b.achPct !== null && b.achPct < 70);
     if (laggards.length > 0) {
-      insights.push({type:'action', title:`⚠️ ${laggards.length} BM(s) Below 70% Achievement`, body:`${laggards.map(b=>b.empName+' ('+b.achPct+'%)').join(', ')} need immediate attention and support.`});
+      insights.push({type:'action', title:` ${laggards.length} BM(s) Below 70% Achievement`, body:`${laggards.map(b=>b.empName+' ('+b.achPct+'%)').join(', ')} need immediate attention and support.`});
     }
 
     // BMs at 100%+
     const achievers = bms.filter(b => b.achPct !== null && b.achPct >= 100);
     if (achievers.length > 0) {
-      insights.push({type:'good', title:`✅ ${achievers.length} BM(s) at 100%+ Achievement`, body:`${achievers.map(b=>b.empName).join(', ')} have crossed their targets. Consider stretch goals.`});
+      insights.push({type:'good', title:` ${achievers.length} BM(s) at 100%+ Achievement`, body:`${achievers.map(b=>b.empName).join(', ')} have crossed their targets. Consider stretch goals.`});
     }
 
     // Channel gaps
     const chGap = bms.filter(b => b.chTgt > 0 && b.ch < b.chTgt * 0.7);
     if (chGap.length > 0) {
-      insights.push({type:'warn', title:`🔗 ${chGap.length} BM(s) Have Channel Activation Gaps`, body:`${chGap.map(b=>b.empName+' ('+b.ch+'/'+b.chTgt+')').join(', ')}. Focus on dealer onboarding.`});
+      insights.push({type:'warn', title:` ${chGap.length} BM(s) Have Channel Activation Gaps`, body:`${chGap.map(b=>b.empName+' ('+b.ch+'/'+b.chTgt+')').join(', ')}. Focus on dealer onboarding.`});
     }
 
     // UC mix
     if (ucPct < 60) {
-      insights.push({type:'warn', title:`📦 Low Used Car Mix: ${ucPct}%`, body:`Used Car is only ${ucPct}% of total disbursement. Push BMs to focus on UC pipeline.`});
+      insights.push({type:'warn', title:` Low Used Car Mix: ${ucPct}%`, body:`Used Car is only ${ucPct}% of total disbursement. Push BMs to focus on UC pipeline.`});
     } else {
-      insights.push({type:'good', title:`📦 Healthy Used Car Mix: ${ucPct}%`, body:`Used Car contributes ${ucPct}% of total disbursement — good product balance.`});
+      insights.push({type:'good', title:` Healthy Used Car Mix: ${ucPct}%`, body:`Used Car contributes ${ucPct}% of total disbursement — good product balance.`});
     }
 
     // Bank concentration
     if (topBank && pct(topBank[1],totalAmt) > 40) {
-      insights.push({type:'warn', title:`🏦 High Bank Concentration`, body:`${topBank[0].slice(0,40)} accounts for ${pct(topBank[1],totalAmt)}% of disbursements. Consider diversifying lender mix.`});
+      insights.push({type:'warn', title:` High Bank Concentration`, body:`${topBank[0].slice(0,40)} accounts for ${pct(topBank[1],totalAmt)}% of disbursements. Consider diversifying lender mix.`});
     }
 
     // BM Productivity vs ₹1.75 Cr benchmark
@@ -3212,12 +3212,12 @@ function buildInsights(el) {
     const belowBench   = allBMsInScope.filter(e => (bms.find(b => b.bm_id === e.id)?.amt || 0) < PROD_BENCH);
     if (bmProdAvg >= PROD_BENCH) {
       insights.push({type:'good',
-        title:`👥 BM Productivity: ${fmtCr(bmProdAvg)}/BM (${bmProdPct}% of ₹1.75 Cr)`,
+        title:` BM Productivity: ${fmtCr(bmProdAvg)}/BM (${bmProdPct}% of ₹1.75 Cr)`,
         body:`Avg disbursement per BM is ${fmtCr(bmProdAvg)} across ${totalBMCount} BMs — above the ₹1.75 Cr benchmark. Excellent team efficiency!`
       });
     } else {
       insights.push({type: bmProdPct >= 70 ? 'warn' : 'action',
-        title:`👥 BM Productivity: ${fmtCr(bmProdAvg)}/BM (${bmProdPct}% of ₹1.75 Cr benchmark)`,
+        title:` BM Productivity: ${fmtCr(bmProdAvg)}/BM (${bmProdPct}% of ₹1.75 Cr benchmark)`,
         body:`Avg per BM is ${fmtCr(bmProdAvg)} vs ₹1.75 Cr target across ${totalBMCount} BMs. Gap: ${fmtCr(PROD_BENCH - bmProdAvg)}/BM.`
           + (belowBench.length > 0 ? ` BMs below benchmark: ${belowBench.map(e => { const n=resolveEmpById(e.id)?.name||e.name; const a=bms.find(b=>b.bm_id===e.id)?.amt||0; return n+' ('+fmtCr(a)+')'; }).join(', ')}.` : '')
       });
@@ -3415,7 +3415,7 @@ function buildMonthlySummary(el) {
 
   el.innerHTML = getAMFilterBar('buildMonthlySummary') + buildAMSummaryCard() + `
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px 16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07)">
-      <span style="font-size:13px;font-weight:700;color:#1a237e">👤 View:</span>
+      <span style="font-size:13px;font-weight:700;color:#1a237e"> View:</span>
       ${roleOptions.map(r=>`<button onclick="window._mthRole='${r}';document.getElementById('mthBody').innerHTML=window._mthRender('${r}')"
         style="padding:6px 16px;border-radius:20px;border:1px solid #c5cae9;font-size:12px;cursor:pointer;font-weight:600;background:${r===selectedRole?'#1a237e':'#fff'};color:${r===selectedRole?'#fff':'#333'}">${r}</button>`).join('')}
       <span style="font-size:11px;color:#9e9e9e;margin-left:8px">Each cell: Amount | Cases | Channels | UC | CV | Ach%</span>
@@ -3484,8 +3484,8 @@ function buildChannel6M(el) {
 
   el.innerHTML = getAMFilterBar('buildChannel6M') + `
     <div style="margin-bottom:12px;padding:12px 16px;background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);font-size:12px;color:#555">
-      📊 <b>${dealers.length} channels</b> tracked across last 6 months &nbsp;|&nbsp;
-      🟢 Active = had txns that month &nbsp;|&nbsp; 🔴 Gap = no txns
+       <b>${dealers.length} channels</b> tracked across last 6 months &nbsp;|&nbsp;
+       Active = had txns that month &nbsp;|&nbsp;  Gap = no txns
     </div>
     <div style="overflow-x:auto">
       <table style="min-width:800px">
@@ -3658,7 +3658,7 @@ function buildScorecard(el) {
     ${lostChData.length > 0 ? `
     <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
       <div style="padding:12px 20px;background:#ffebee;font-size:13px;font-weight:700;color:#c62828">
-        🔴 Lost Channels — Active in ${getPrevMonthLabel()}, Missing in ${getCurMonthLabel()} (${lostChData.length})
+         Lost Channels — Active in ${getPrevMonthLabel()}, Missing in ${getCurMonthLabel()} (${lostChData.length})
         <span style="font-size:11px;font-weight:400;margin-left:8px">Total GMV at risk: ${fmtCr(lostChData.reduce((s,c)=>s+c.gmv,0))}</span>
       </div>
       <div style="overflow-x:auto"><table>
@@ -3679,7 +3679,7 @@ function buildScorecard(el) {
     ${inactiveChData.length > 0 ? `
     <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
       <div style="padding:12px 20px;background:#fff8e1;font-size:13px;font-weight:700;color:#f57f17">
-        🟡 Inactive Channels — Last 3 Months but Not This Month (${inactiveChData.length})
+         Inactive Channels — Last 3 Months but Not This Month (${inactiveChData.length})
         <span style="font-size:11px;font-weight:400;margin-left:8px">Est. potential: ${fmtCr(inactiveChData.reduce((s,c)=>s+c.avg,0))}/month</span>
       </div>
       <div style="overflow-x:auto"><table>
@@ -3699,7 +3699,7 @@ function buildScorecard(el) {
 
     <!-- Last 3 months unique channel trend -->
     <div class="card" style="margin-bottom:16px">
-      <div class="card-title">📈 Channel Activation Trend — Last 3 Months</div>
+      <div class="card-title"> Channel Activation Trend — Last 3 Months</div>
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px">
         ${last3.map(m=>{
           const txns = scopeTxns(m.data());
@@ -3920,7 +3920,7 @@ function buildChannelDrive(el) {
       ${lost.length?`
       <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
         <div style="padding:12px 20px;background:#ffebee;font-weight:700;font-size:13px;color:#c62828">
-          🔴 Re-engage These Channels — Were Active Last Month (${lost.length})
+           Re-engage These Channels — Were Active Last Month (${lost.length})
         </div>
         <table><thead><tr><th>#</th><th>Dealer</th><th style="text-align:right">${getPrevMonthLabel().split(' ')[0]} GMV</th><th>Cases</th><th>Priority</th></tr></thead>
         <tbody>${lost.map((d,i)=>`<tr>
@@ -3928,13 +3928,13 @@ function buildChannelDrive(el) {
           <td><b>${d.dealer}</b><div style="font-size:10px;color:#9e9e9e">${d.dcid}</div></td>
           <td style="text-align:right;color:#c62828;font-weight:700">${fmtCr(d.gmv)}</td>
           <td>${d.cases}</td>
-          <td><span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:10px;font-size:10px">🔥 High</span></td>
+          <td><span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:10px;font-size:10px"> High</span></td>
         </tr>`).join('')}</tbody></table>
       </div>`:''}
       ${inactive.length?`
       <div class="card" style="padding:0;overflow:hidden">
         <div style="padding:12px 20px;background:#fff8e1;font-weight:700;font-size:13px;color:#f57f17">
-          🟡 Reactivate These Channels — Active in Last 3 Months (${inactive.length})
+           Reactivate These Channels — Active in Last 3 Months (${inactive.length})
         </div>
         <table><thead><tr><th>#</th><th>Dealer</th><th style="text-align:right">L3M GMV</th><th>Cases</th></tr></thead>
         <tbody>${inactive.map((d,i)=>`<tr>
@@ -3989,7 +3989,7 @@ function buildChannelDrive(el) {
     </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div style="padding:12px 20px;background:#e8eaf6;font-weight:700;font-size:13px;color:#1a237e">
-        🚀 BM-wise Channel Health — Focus Areas
+         BM-wise Channel Health — Focus Areas
       </div>
       <div style="overflow-x:auto"><table>
         <thead><tr style="background:#f5f7ff">
@@ -4014,14 +4014,14 @@ function buildChannelDrive(el) {
               <td style="padding:8px;text-align:center;font-weight:700;color:#2e7d32">${r.bmCurCh}</td>
               <td style="padding:8px;text-align:center;color:#555">${r.bmPrevCh}</td>
               <td style="padding:8px;text-align:center;color:#666">${r.chTgt||'—'}</td>
-              <td style="padding:8px;text-align:center;font-weight:700;color:${r.chGap>0?'#c62828':'#2e7d32'}">${r.chGap>0?'-'+r.chGap:'✅'}</td>
+              <td style="padding:8px;text-align:center;font-weight:700;color:${r.chGap>0?'#c62828':'#2e7d32'}">${r.chGap>0?'-'+r.chGap:''}</td>
               <td style="padding:8px;text-align:center;font-weight:700;color:${r.bmLost>0?'#c62828':'#9e9e9e'}">${r.bmLost>0?r.bmLost:'—'}</td>
               <td style="padding:8px;text-align:center;font-weight:700;color:${r.bmInact>0?'#f57f17':'#9e9e9e'}">${r.bmInact>0?r.bmInact:'—'}</td>
               <td style="padding:8px 12px;text-align:right"><b>${fmtCr(r.bmAmt)}</b></td>
               <td style="padding:8px;text-align:center">
-                ${urgent?'<span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">🔥 Urgent</span>'
-                 :warn?'<span style="background:#fff8e1;color:#f57f17;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">⚠️ Watch</span>'
-                 :'<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">✅ OK</span>'}
+                ${urgent?'<span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700"> Urgent</span>'
+                 :warn?'<span style="background:#fff8e1;color:#f57f17;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700"> Watch</span>'
+                 :'<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700"> OK</span>'}
               </td>
             </tr>`;
           }).join('')}
@@ -4045,7 +4045,7 @@ function promptASUrl() {
   );
   if (url && url.startsWith('http')) {
     setASUrl(url);
-    alert('✅ Saved! You can now send emails.');
+    alert(' Saved! You can now send emails.');
     return url;
   }
   return existing;
@@ -4056,7 +4056,7 @@ async function sendEmail({ to, cc, subject, htmlBody, statusEl }) {
   let url = getASUrl();
   if (!url) { url = promptASUrl(); }
   if (!url) {
-    statusEl.innerHTML = '<span style="color:#c62828">⚠️ No Apps Script URL set</span>';
+    statusEl.innerHTML = '<span style="color:#c62828"> No Apps Script URL set</span>';
     return;
   }
 
@@ -4069,9 +4069,9 @@ async function sendEmail({ to, cc, subject, htmlBody, statusEl }) {
       body: JSON.stringify({ to, cc: cc||[], subject, htmlBody }),
       mode: 'no-cors'
     });
-    statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">✅ Sent to ${to.length} recipient${to.length>1?'s':''}!</span>`;
+    statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700"> Sent to ${to.length} recipient${to.length>1?'s':''}!</span>`;
   } catch(e) {
-    statusEl.innerHTML = `<span style="color:#c62828">❌ ${e.message}</span>`;
+    statusEl.innerHTML = `<span style="color:#c62828"> ${e.message}</span>`;
   }
 }
 
@@ -4426,7 +4426,7 @@ function achCap(ach) {
   if (ach===null) return cap('No Target','#f5f5f5','#9e9e9e');
   const col = ach>=100?'#1b5e20':ach>=70?'#0d47a1':'#b71c1c';
   const bg  = ach>=100?'#e8f5e9':ach>=70?'#e3f2fd':'#ffebee';
-  const icon= ach>=100?'★':ach>=70?'●':'▲';
+  const icon= ach>=100?'':ach>=70?'●':'▲';
   return `<span style="display:inline-block;background:${bg};color:${col};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">${icon} ${ach}%</span>`;
 }
 
@@ -6100,11 +6100,11 @@ async function submitIssue() {
       await loadIssues();
     } else {
       msg.style.color = '#e53935';
-      msg.textContent = '❌ Error: ' + (res.error || 'Unknown error');
+      msg.textContent = ' Error: ' + (res.error || 'Unknown error');
     }
   } catch(e) {
     msg.style.color = '#e53935';
-    msg.textContent = '❌ Network error. Check your internet connection.';
+    msg.textContent = ' Network error. Check your internet connection.';
   }
 
   btn.disabled = false;
@@ -6460,7 +6460,7 @@ function buildFlatHierarchy(el, scopeTxns, role) {
 
   el.innerHTML = `
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:20px;padding:14px 16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07)">
-      <span style="font-size:13px;font-weight:700;color:#1a237e">🔍 Filter:</span>
+      <span style="font-size:13px;font-weight:700;color:#1a237e"> Filter:</span>
       ${role==='RH'?`<select id="hierTHFilter" onchange="applyHierFilter()" style="padding:6px 12px;border:1px solid #c5cae9;border-radius:8px;font-size:13px;color:#333;background:#f5f7ff">
         <option value="">All TH</option>${thOptions}
       </select>`:''}
