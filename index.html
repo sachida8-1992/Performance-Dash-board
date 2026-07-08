@@ -4152,7 +4152,7 @@ function buildMailroom(el) {
               <div style="display:flex;gap:6px">
                 <button onclick="toggleSection('sc-am-list')" style="padding:4px 10px;background:#e8eaf6;color:#1a237e;border:none;border-radius:6px;font-size:11px;cursor:pointer">Select</button>
                 <button onclick="previewScEmail('am')" style="padding:4px 10px;background:#e8eaf6;color:#1a237e;border:none;border-radius:6px;font-size:11px;cursor:pointer">Preview</button>
-                <button onclick="sendScorecardToAMs()" style="padding:4px 14px;background:#1a237e;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">Send</button>
+                <button onclick="sendScorecardToBMsForAM()" style="padding:4px 14px;background:#1a237e;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">Send</button>
               </div>
             </div>
             <div id="sc-am-list" style="display:none;max-height:120px;overflow-y:auto;border-top:1px solid #e8eaf6">
@@ -4171,7 +4171,7 @@ function buildMailroom(el) {
               </div>
               <div style="display:flex;gap:6px">
                 <button onclick="toggleSection('sc-th-list')" style="padding:4px 10px;background:#e8eaf6;color:#1a237e;border:none;border-radius:6px;font-size:11px;cursor:pointer">Select</button>
-                <button onclick="sendScorecardToTHs()" style="padding:4px 14px;background:#1a237e;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">Send</button>
+                <button onclick="sendScorecardToBMsForTH()" style="padding:4px 14px;background:#1a237e;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">Send</button>
               </div>
             </div>
             <div id="sc-th-list" style="display:none;max-height:100px;overflow-y:auto;border-top:1px solid #e8eaf6">
@@ -4485,6 +4485,7 @@ function metricCard(label, cur, prev, color, unit='amt') {
 function buildBMScorecardHTML(bm) {
   const cur     = myTxns.filter(t=>t.bm_id===bm.id);
   const prev    = toLMTD((window._LIVE_MAY||[]).filter(t=>t.bm_id===bm.id));
+  const month     = getCurMonthLabel();
   const prevMonth = getPrevMonthLabel();
   const todayDay  = getTodayDay();
   const ucAmt   = cur.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
@@ -5008,6 +5009,106 @@ function previewQ1Email() {
   if (!panel) return;
   const bm = emps.find(e=>e.designation==='BM'&&e.rh_id===currentUser.id);
   if (bm) panel.innerHTML = buildQ1EmailHTML(bm);
+}
+
+// ── Send Scorecard to BMs (individual email, CC AM+TH) ─────
+async function sendScorecardToBMs() {
+  const emps     = getEmpData();
+  const checked  = [...document.querySelectorAll('.sc-bm-chk:checked')];
+  const statusEl = document.getElementById('sc-bm-status');
+  if (!checked.length) { statusEl.innerHTML = '<span style="color:#c62828">Select at least one BM</span>'; return; }
+  if (!getASUrl()) { promptASUrl(); return; }
+
+  statusEl.innerHTML = 'Sending to ' + checked.length + ' BMs...';
+  let sent=0;
+
+  for (const chk of checked) {
+    const bm    = emps.find(e=>e.id===chk.dataset.id);
+    if (!bm || !bm.email) { continue; }
+    const amEmp = emps.find(e=>e.id===bm.am_id);
+    const thEmp = emps.find(e=>e.id===bm.th_id);
+    const cc    = [amEmp?.email, thEmp?.email].filter(Boolean);
+    const ach   = (() => {
+      const t   = myTxns.filter(x=>x.bm_id===bm.id);
+      const tot = t.reduce((s,x)=>s+x.amt,0);
+      const tgt = ((bm.uc_tgt||0)+(bm.cv_tgt||0))*1e5;
+      return tgt>0 ? Math.round((tot/tgt)*100) : null;
+    })();
+    try {
+      await fetch(getASUrl(), {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          to: [bm.email], cc,
+          subject: getCurMonthLabel() + ' Scorecard - ' + bm.name + (ach!==null?' - '+ach+'% achieved':''),
+          htmlBody: buildBMScorecardHTML(bm)
+        }),
+        mode:'no-cors'
+      });
+      sent++;
+    } catch(e) {}
+    statusEl.innerHTML = 'Sent ' + sent + '/' + checked.length + '...';
+    await new Promise(r=>setTimeout(r,400));
+  }
+  statusEl.innerHTML = '<span style="color:#2e7d32">Sent to ' + sent + ' BMs | CC: AM & TH</span>';
+}
+
+// ── Send Scorecard to AMs ───────────────────────────────────
+async function sendScorecardToBMsForAM() {
+  // Called from AM section send button
+  const emps     = getEmpData();
+  const checked  = [...document.querySelectorAll('.sc-am-chk:checked')];
+  const statusEl = document.getElementById('sc-am-status');
+  if (!checked.length) { statusEl.innerHTML = '<span style="color:#c62828">Select at least one AM</span>'; return; }
+  if (!getASUrl()) { promptASUrl(); return; }
+
+  statusEl.innerHTML = 'Sending to ' + checked.length + ' AMs...';
+  let sent=0;
+  for (const chk of checked) {
+    const am    = emps.find(e=>e.id===chk.dataset.id);
+    if (!am || !am.email) continue;
+    const thEmp = emps.find(e=>e.id===am.th_id);
+    const cc    = [thEmp?.email].filter(Boolean);
+    try {
+      await fetch(getASUrl(), {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          to: [am.email], cc,
+          subject: getCurMonthLabel() + ' Team Scorecard - ' + am.name,
+          htmlBody: buildAMScorecardHTML(am)
+        }),
+        mode:'no-cors'
+      });
+      sent++;
+    } catch(e) {}
+    statusEl.innerHTML = 'Sent ' + sent + '/' + checked.length + '...';
+    await new Promise(r=>setTimeout(r,400));
+  }
+  statusEl.innerHTML = '<span style="color:#2e7d32">Sent to ' + sent + ' AMs | CC: TH</span>';
+}
+
+// ── Send Scorecard to THs ───────────────────────────────────
+async function sendScorecardToBMsForTH() {
+  const emps     = getEmpData();
+  const checked  = [...document.querySelectorAll('.sc-th-chk:checked')];
+  const statusEl = document.getElementById('sc-th-status');
+  if (!checked.length) { statusEl.innerHTML = '<span style="color:#c62828">Select at least one TH</span>'; return; }
+  if (!getASUrl()) { promptASUrl(); return; }
+
+  const tos = checked.map(c=>c.dataset.email).filter(Boolean);
+  try {
+    await fetch(getASUrl(), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        to: tos, cc: [],
+        subject: getCurMonthLabel() + ' Region Scorecard',
+        htmlBody: buildTHScorecardHTML()
+      }),
+      mode:'no-cors'
+    });
+    statusEl.innerHTML = '<span style="color:#2e7d32">Sent to ' + tos.length + ' THs</span>';
+  } catch(e) {
+    statusEl.innerHTML = '<span style="color:#c62828">Error: ' + e.message + '</span>';
+  }
 }
 
 async function sendQ1ScoreCard() {
