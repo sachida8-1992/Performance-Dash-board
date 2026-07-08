@@ -521,6 +521,7 @@ function parseTransactions(rows) {
     return s === '' || s === 'nan' || s === 'undefined' ? '' : s;
   }
   function safeCh(v) {
+    if (!v || v === '-' || v === '') return 0;
     const n = parseInt(v); return isNaN(n) ? 0 : n;
   }
   function safeAmt(r) {
@@ -569,7 +570,7 @@ function parseTransactions(rows) {
       dcid:     String(r['DCID'] || r['dcid'] || '').trim(),
       city:     String(r['Final City'] || r['final_city'] || r['city'] || '').trim(),
       state:    String(r['Filter State DSA'] || r['filter_state_dsa'] || '').trim(),
-      ch_check: safeCh(r['Channel Check'] || r['channel_check'] || 0),
+      ch_check: safeCh(r['Channel Check'] || r['channel_check'] || '0'),
       date:     dateStr,
       day:      dayNum,
     };
