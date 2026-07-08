@@ -384,9 +384,10 @@ async function tryLoadLiveData() {
     window._LIVE_EMP_RAW = data.employees; // store raw for milestone target columns
     window._LIVE_EMP = parseEmployees(data.employees);
 
-    // transactions = current month (raw format) → parse it
-    // may_data     = previous month (already slim-parsed by Apps Script) → use directly
-    window._LIVE_TXN = parseTransactions(data.transactions || []);
+    // Detect if transactions is slim format (has 'bm_id' key) or raw (has 'BM ID' key)
+    const txnSample = (data.transactions||[])[0] || {};
+    const isSlim = 'bm_id' in txnSample && !('BM ID' in txnSample);
+    window._LIVE_TXN = isSlim ? data.transactions : parseTransactions(data.transactions || []);
     window._LIVE_MAY = (data.may_data && data.may_data.length) ? data.may_data : TXN_DATA;
     window._LIVE_APR = data.apr_data ? parseTransactions(data.apr_data) : APR_DATA;
     window._LIVE_MAR = data.mar_data ? parseTransactions(data.mar_data) : MAR_DATA;
