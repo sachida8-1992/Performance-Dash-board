@@ -2244,7 +2244,7 @@ function buildTeamIncentive(el) {
   }
 
   const juneTxns = scopeFilter(getTxnData().filter(t => t.date && t.date.startsWith(getCurMonth())));
-  const mayTxns  = toLMTD(scopeFilter(getMayData()));
+  const mayTxns  = scopeFilter(getMayData()); // Full previous month for incentive calc
 
   const juneMap = getBmMap(juneTxns);
   const mayMap  = getBmMap(mayTxns);
@@ -3236,9 +3236,9 @@ function buildInsights(el) {
     </div>`}
   `;
 }
-</script>
 
-<script>
+
+
 // ========== HISTORICAL DATA HELPER ==========
 // ── Indian FY: April → March ──────────────────────────────────
 // Returns FY start year (e.g. 2026 for FY2026-27, i.e. Apr 2026 - Mar 2027)
@@ -3419,7 +3419,15 @@ function buildMonthlySummary(el) {
     <div id="mthBody">${renderTable(selectedRole)}</div>
   `;
 
-  window._mthRender = renderTable;
+  window._mthRender = function(showRole) {
+    const base = renderTable(showRole);
+    if (_activeAMFilter && showRole !== 'BM') {
+      const am = getSelectedAM();
+      const amLabel = am ? am.name : 'AM';
+      return base + '<div style="margin-top:20px"><div style="padding:10px 0 8px;font-size:13px;font-weight:700;color:#1a237e">BM Span of ' + amLabel + '</div>' + renderTable('BM') + '</div>';
+    }
+    return base;
+  };
 }
 
 // ========== TAB 2: CHANNEL 6-MONTH PERFORMANCE ==========
@@ -3431,9 +3439,9 @@ function buildChannel6M(el) {
   function scopeFilter(txns) {
     if (role==='BM') return txns.filter(t=>t.bm_id===currentUser.id);
     if (role==='AM') return txns.filter(t=>t.am_id===currentUser.id);
-    if (role==='TH') return txns.filter(t=>t.th_id===currentUser.id);
-    if (role==='RH') return txns.filter(t=>t.rh_id===currentUser.id);
-    return txns;
+    if (role==='TH') return txns.filter(t=>t.th_id===currentUser.id||t.am_id===currentUser.id);
+    if (_activeAMFilter) return txns.filter(t=>t.am_id===_activeAMFilter);
+    return txns.filter(t=>t.rh_id===currentUser.id);
   }
 
   // Build dealer map across all months
@@ -3596,6 +3604,30 @@ function buildScorecard(el) {
   const potentialGMV = lostChData.reduce((s,c)=>s+c.gmv,0) + inactiveChData.reduce((s,c)=>s+c.avg,0);
 
   el.innerHTML = getAMFilterBar('buildScorecard') + `
+    <!-- Channel Activation Trend (moved to top) -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">Channel Activation Trend — Last 3 Months</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px">
+        ${last3.map(m=>{
+          const txns = scopeTxns(m.data());
+          const ch   = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+          const amt  = txns.reduce((s,t)=>s+t.amt,0);
+          return '<div style="flex:1;min-width:130px;background:#f5f7ff;border-radius:10px;padding:14px;text-align:center">'
+            +'<div style="font-size:12px;font-weight:700;color:#1a237e">'+m.label+'</div>'
+            +'<div style="font-size:28px;font-weight:800;color:#283593;margin:6px 0">'+ch+'</div>'
+            +'<div style="font-size:11px;color:#555">unique channels</div>'
+            +'<div style="font-size:13px;color:#1565c0;margin-top:4px">'+fmtCr(amt)+'</div>'
+            +'</div>';
+        }).join('')}
+        <div style="flex:1;min-width:130px;background:#e8f5e9;border-radius:10px;padding:14px;text-align:center">
+          <div style="font-size:12px;font-weight:700;color:#2e7d32">Gap (L3M to Now)</div>
+          <div style="font-size:28px;font-weight:800;color:#c62828;margin:6px 0">${inactiveCh.length}</div>
+          <div style="font-size:11px;color:#555">channels dropped</div>
+          <div style="font-size:13px;color:#e65100;margin-top:4px">~${fmtCr(potentialGMV)} potential</div>
+        </div>
+      </div>
+    </div>
+
     <!-- YTD KPIs -->
     <div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px">
       <div class="kpi"><div class="kpi-label">FY ${getFYStartYear()}-${String(getFYStartYear()+1).slice(2)} Disbursement</div><div class="kpi-value">${fmtCr(ytdAmt)}</div></div>
@@ -3686,9 +3718,9 @@ function buildScorecard(el) {
     </div>
   `;
 }
-</script>
 
-<script>
+
+
 // ========== Q1 QUARTERLY SCORECARD (Apr-Jun) ==========
 function buildQuarterly(el) {
   const role  = currentUser.designation;
@@ -3913,7 +3945,7 @@ function buildChannelDrive(el) {
   const bmList = emps.filter(e => {
     if (e.designation !== 'BM') return false;
     if (role==='AM') return e.am_id === currentUser.id;
-    if (role==='TH') return e.th_id === currentUser.id;
+    if (role==='TH') return e.th_id === currentUser.id || e.am_id === currentUser.id;
     if (_activeAMFilter) return e.am_id === _activeAMFilter;
     return e.rh_id === currentUser.id;
   });
@@ -5218,12 +5250,9 @@ function selectGroup(prefix, role) {
   });
 }
 
-</script>
 
-</body>
-</html>
 
-<script>
+
 // ========== WEEKLY REVIEW ==========
 const MILESTONES = [
   { day:10, label:'10th July', ucCol:'10Th July UC Target',  cvCol:'10Th July CV Target',  chCol:'10Th July Channel Target' },
@@ -6183,9 +6212,9 @@ async function toggleStatus(issueId, newStatus) {
     alert('Could not update status.');
   }
 }
-</script>
 
-<script>
+
+
 // ========== HIERARCHY VIEW (TH & RH) ==========
 
 // Helper: compute stats for a set of transactions + emp target
@@ -6246,7 +6275,9 @@ function buildFlatHierarchy(el, scopeTxns, role) {
 
   // All BMs in scope
   const allBMs = emps.filter(e => e.designation === 'BM' &&
-    (role === 'RH' ? e.rh_id === currentUser.id : e.th_id === currentUser.id));
+    (role === 'RH' ? e.rh_id === currentUser.id :
+     role === 'TH' ? (e.th_id === currentUser.id || e.am_id === currentUser.id) :
+     e.th_id === currentUser.id));
 
   function renderTable(filterTH, filterAM) {
     // Filter BMs by selected TH/AM
