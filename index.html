@@ -4483,136 +4483,150 @@ function metricCard(label, cur, prev, color, unit='amt') {
 // BM SCORECARD EMAIL
 // ═══════════════════════════════════════════════════════════
 function buildBMScorecardHTML(bm) {
-  const cur     = myTxns.filter(t=>t.bm_id===bm.id);
-  const prev    = toLMTD((window._LIVE_MAY||[]).filter(t=>t.bm_id===bm.id));
-  const month     = getCurMonthLabel();
-  const prevMonth = getPrevMonthLabel();
-  const todayDay  = getTodayDay();
-  const ucAmt   = cur.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
-  const cvAmt   = cur.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-  const tot     = ucAmt+cvAmt;
-  const prevUC  = prev.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
-  const prevCV  = prev.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-  const prevTot = prevUC+prevCV;
-  const bmEmpObj= resolveEmpById(bm.id);
-  const ch      = countChannels(cur, bmEmpObj);
-  const prevCh  = countChannels(prev, bmEmpObj);
-  const cases   = cur.length;
-  const prevCases=prev.length;
-  const ucTgt   = (bm.uc_tgt||0)*1e5;
-  const cvTgt   = (bm.cv_tgt||0)*1e5;
-  const tgt     = ucTgt+cvTgt;
-  const ach     = tgt>0?Math.round((tot/tgt)*100):null;
-  const shortfall = tgt>0?Math.max(tgt-tot,0):0;
-  const date    = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
-  const achCol  = ach===null?'#555':ach>=100?'#2e7d32':ach>=70?'#1565c0':'#c62828';
+  const cur      = myTxns.filter(t=>t.bm_id===bm.id);
+  const prev     = toLMTD((window._LIVE_MAY||[]).filter(t=>t.bm_id===bm.id));
+  const month    = getCurMonthLabel();
+  const prevMonth= getPrevMonthLabel();
+  const todayDay = getTodayDay();
+  const ucAmt    = cur.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+  const cvAmt    = cur.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+  const tot      = ucAmt+cvAmt;
+  const prevUC   = prev.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+  const prevCV   = prev.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+  const prevTot  = prevUC+prevCV;
+  const bmEmpObj = resolveEmpById(bm.id);
+  const ch       = countChannels(cur, bmEmpObj);
+  const prevCh   = countChannels(prev, bmEmpObj);
+  const cases    = cur.length;
+  const prevCases= prev.length;
+  const ucTgt    = (bm.uc_tgt||0)*1e5;
+  const cvTgt    = (bm.cv_tgt||0)*1e5;
+  const tgt      = ucTgt+cvTgt;
+  const ach      = tgt>0?Math.round((tot/tgt)*100):null;
+  const shortfall= tgt>0?Math.max(tgt-tot,0):0;
+  const date     = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const achCol   = ach===null?'#555':ach>=100?'#2e7d32':ach>=70?'#1565c0':'#c62828';
+  const achBg    = ach===null?'#f5f5f5':ach>=100?'#e8f5e9':ach>=70?'#e3f2fd':'#ffebee';
+  const achLabel = ach===null?'No Target':ach>=100?'Target Achieved':ach>=70?'On Track':'Behind Target';
 
-  const bars = barChart([
-    {label:'Used Car (UC)', val:ucAmt, prev:prevUC, color:'#1565c0', color2:'#1976d2'},
-    {label:'Commercial Vehicle (CV)', val:cvAmt, prev:prevCV, color:'#6a1b9a', color2:'#7b1fa2'},
-  ], Math.max(ucAmt,cvAmt,prevUC,prevCV,1));
+  function gRow(cur, prev, isAmt) {
+    if (!prev && prev!==0) return '<span style="color:#9e9e9e;font-size:11px">-</span>';
+    const diff = cur-prev;
+    const pct  = prev>0?Math.round((diff/prev)*100):null;
+    const up   = diff>=0;
+    const col  = up?'#1b5e20':'#b71c1c';
+    const bg   = up?'#e8f5e9':'#ffebee';
+    const sign = up?'+':'';
+    const val  = isAmt ? sign+fmtCr(Math.abs(diff)) : sign+Math.abs(diff);
+    return '<span style="display:inline-block;background:'+bg+';color:'+col+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">'+(up?'&#9650;':'&#9660;')+' '+sign+(pct!==null?pct+'%':'-')+' ('+val+')</span>';
+  }
 
-  return `<!DOCTYPE html><html><head>${emailStyles()}</head><body>
-  <div style="max-width:600px;margin:0 auto;padding:16px">
+  // Progress bar (table-based, Gmail-safe)
+  function pBar(val, total, color) {
+    if (!total) return '';
+    const w = Math.min(Math.round((val/total)*100), 100);
+    return '<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:4px">'
+      +'<tr><td style="background:#e0e0e0;border-radius:4px;height:8px;padding:0">'
+      +'<table width="'+w+'%" cellpadding="0" cellspacing="0"><tr>'
+      +'<td style="background:'+color+';border-radius:4px;height:8px;padding:0;display:block"></td>'
+      +'</tr></table></td></tr></table>';
+  }
 
-    <!-- Header -->
-    <div style="background:linear-gradient(135deg,#1a237e 0%,#283593 50%,#1565c0 100%);border-radius:16px 16px 0 0;padding:28px 32px;position:relative;overflow:hidden">
-      <div style="position:absolute;right:-20px;top:-20px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.06)"></div>
-      <div style="position:absolute;right:40px;bottom:-30px;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.04)"></div>
-      <div style="font-size:11px;color:rgba(255,255,255,.6);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">RUPYY PERFORMANCE</div>
-      <div style="color:#fff;font-size:22px;font-weight:800;margin-bottom:4px">${month} Scorecard</div>
-      <div style="color:rgba(255,255,255,.75);font-size:13px">Hi <b>${bm.name}</b> &nbsp;|&nbsp; ${date}</div>
-      ${ach!==null?`<div style="margin-top:12px;display:inline-block;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:20px;padding:4px 14px;font-size:12px;color:#fff;font-weight:700">
-        ${ach>=100?'Target Achieved!':ach>=70?'On Track':'Behind Target'} &nbsp;|&nbsp; ${ach}% achieved
-      </div>`:''}
-    </div>
+  return '<!DOCTYPE html><html><body style="margin:0;padding:16px;background:#f0f2f5;font-family:Arial,Helvetica,sans-serif">'
 
-    <!-- Achievement Ring + Key Metrics -->
-    <div style="background:#fff;padding:20px 24px;border-bottom:1px solid #f0f0f0">
-      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-        ${ach!==null?`<div style="text-align:center">
-          ${progressRing(ach, 72)}
-          <div style="font-size:10px;color:#9e9e9e;margin-top:4px;font-weight:600">vs Target</div>
-        </div>`:''}
-        <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:10px;min-width:280px">
-          ${metricCard('Total GMV', tot, prevTot, '#1a237e')}
-          ${metricCard('Used Car', ucAmt, prevUC, '#1565c0')}
-          ${metricCard('CV', cvAmt, prevCV, '#6a1b9a')}
-          ${metricCard('Channels', ch, prevCh, '#00838f', 'num')}
-        </div>
-      </div>
-    </div>
+    // ── HEADER ──────────────────────────────────────────────
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center" style="background:linear-gradient(135deg,#1a237e,#283593);border-radius:12px 12px 0 0">'
+    +'<tr><td style="padding:24px 28px">'
+    +'<div style="color:rgba(255,255,255,.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">RUPYY PERFORMANCE DASHBOARD</div>'
+    +'<div style="color:#fff;font-size:22px;font-weight:800;margin-bottom:4px">'+month+' Scorecard</div>'
+    +'<div style="color:rgba(255,255,255,.75);font-size:13px">Hi <b>'+bm.name+'</b> &nbsp;|&nbsp; '+date+'</div>'
+    +'<table cellpadding="0" cellspacing="0" style="margin-top:12px"><tr>'
+    +'<td style="background:'+achBg+';border-radius:20px;padding:4px 16px">'
+    +'<span style="color:'+achCol+';font-size:12px;font-weight:700">'+(ach!==null?ach+'% — '+achLabel:'No Target Set')+'</span>'
+    +'</td></tr></table>'
+    +'</td></tr></table>'
 
-    <!-- Bar Chart -->
-    <div style="background:#f8f9ff;padding:20px 24px;border-bottom:1px solid #f0f0f0">
-      <div style="font-size:12px;font-weight:700;color:#1a237e;margin-bottom:14px;text-transform:uppercase;letter-spacing:.5px">
-        Disbursement Breakdown &nbsp;
-        <span style="background:#e8eaf6;padding:2px 8px;border-radius:8px;font-weight:400;font-size:10px;color:#3949ab">vs ${prevMonth.split(' ')[0]}</span>
-      </div>
-      ${bars}
-      <div style="display:flex;gap:8px;margin-top:6px">
-        <span style="font-size:10px;color:#9e9e9e;display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:10px;height:10px;background:#c5cae9;border-radius:2px"></span>${prevMonth.split(' ')[0]}</span>
-        <span style="font-size:10px;color:#9e9e9e;display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:10px;height:10px;background:linear-gradient(90deg,#1a237e,#3949ab);border-radius:2px"></span>${month.split(' ')[0]}</span>
-      </div>
-    </div>
+    // ── 4 KPI CARDS (2x2 table) ─────────────────────────────
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center" style="background:#fff;border-left:1px solid #e8eaf6;border-right:1px solid #e8eaf6">'
+    +'<tr>'
+    +'<td width="50%" style="padding:16px 20px;border-right:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;vertical-align:top">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:4px">Total GMV</div>'
+    +'<div style="font-size:22px;font-weight:800;color:#1a237e">'+fmtCr(tot)+'</div>'
+    +'<div style="font-size:11px;color:#9e9e9e;margin:3px 0">LMTD '+prevMonth.split(' ')[0]+' 1-'+todayDay+': '+fmtCr(prevTot)+'</div>'
+    +gRow(tot,prevTot,true)
+    +(tgt>0?pBar(tot,tgt,'#1a237e'):'')
+    +'</td>'
+    +'<td width="50%" style="padding:16px 20px;border-bottom:1px solid #f0f0f0;vertical-align:top">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:4px">Achievement vs Target</div>'
+    +(ach!==null
+      ? '<div style="font-size:36px;font-weight:800;color:'+achCol+'">'+ach+'%</div>'
+      +'<div style="font-size:11px;color:#9e9e9e;margin:3px 0">Target: '+(tgt>0?fmtCr(tgt):'Not set')+'</div>'
+      +(shortfall>0?'<div style="font-size:11px;color:#c62828;font-weight:600">Shortfall: '+fmtCr(shortfall)+'</div>':'<div style="font-size:11px;color:#2e7d32;font-weight:600">Target Achieved!</div>')
+      : '<div style="font-size:22px;color:#9e9e9e">--</div>')
+    +'</td>'
+    +'</tr><tr>'
+    +'<td style="padding:16px 20px;border-right:1px solid #f0f0f0;vertical-align:top">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:4px">Used Car (UC)</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#1565c0">'+fmtCr(ucAmt)+'</div>'
+    +'<div style="font-size:11px;color:#9e9e9e;margin:3px 0">LMTD: '+fmtCr(prevUC)+'</div>'
+    +gRow(ucAmt,prevUC,true)
+    +(ucTgt>0?pBar(ucAmt,ucTgt,'#1565c0'):'')
+    +'</td>'
+    +'<td style="padding:16px 20px;vertical-align:top">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:4px">Commercial Vehicle (CV)</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#6a1b9a">'+fmtCr(cvAmt)+'</div>'
+    +'<div style="font-size:11px;color:#9e9e9e;margin:3px 0">LMTD: '+fmtCr(prevCV)+'</div>'
+    +gRow(cvAmt,prevCV,true)
+    +(cvTgt>0?pBar(cvAmt,cvTgt,'#6a1b9a'):'')
+    +'</td>'
+    +'</tr></table>'
 
-    <!-- Performance Table -->
-    <div style="background:#fff;padding:20px 24px;border-bottom:1px solid #f0f0f0">
-      <div style="font-size:12px;font-weight:700;color:#1a237e;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">This Month vs Last Month</div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <tr style="background:#f5f7ff">
-          <th style="padding:8px 10px;text-align:left;color:#555;font-weight:600;border-radius:8px 0 0 8px">Metric</th>
-          <th style="padding:8px 10px;text-align:right;color:#1a237e;font-weight:700">${month.split(' ')[0]} MTD</th>
-          <th style="padding:8px 10px;text-align:right;color:#9e9e9e;font-weight:600">${prevMonth.split(' ')[0]} 1-${todayDay} LMTD</th>
-          <th style="padding:8px 10px;text-align:center;border-radius:0 8px 8px 0">Growth</th>
-        </tr>
-        ${[
-          ['Total GMV', tot, prevTot, true],
-          ['Used Car (UC)', ucAmt, prevUC, true],
-          ['CV', cvAmt, prevCV, true],
-          ['Cases', cases, prevCases, false],
-          ['Active Channels', ch, prevCh, false],
-          ['Channel Target', bm.ch_tgt||0, null, false],
-          ['Monthly Target', tgt, null, true],
-        ].map(([label,cur,prv,isAmt],i)=>`
-        <tr style="background:${i%2===0?'#fff':'#fafafa'}">
-          <td style="padding:9px 10px;color:#444;border-bottom:1px solid #f5f5f5">${label}</td>
-          <td style="padding:9px 10px;text-align:right;font-weight:700;color:#1a237e;border-bottom:1px solid #f5f5f5">${isAmt?fmtCr(cur):cur}</td>
-          <td style="padding:9px 10px;text-align:right;color:#9e9e9e;border-bottom:1px solid #f5f5f5">${prv!==null?(isAmt?fmtCr(prv):prv):'—'}</td>
-          <td style="padding:9px 10px;text-align:center;border-bottom:1px solid #f5f5f5">${prv!==null?gCap(cur,prv,isAmt):'—'}</td>
-        </tr>`).join('')}
-        ${tgt>0?`<tr style="background:#f5f7ff;font-weight:700">
-          <td style="padding:9px 10px;color:#1a237e;border-radius:8px 0 0 8px">Achievement</td>
-          <td colspan="3" style="padding:9px 10px;text-align:right;border-radius:0 8px 8px 0">${achCap(ach)}</td>
-        </tr>`:''}
-      </table>
-    </div>
+    // ── STATS ROW ────────────────────────────────────────────
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center" style="background:#f8f9ff;border:1px solid #e8eaf6">'
+    +'<tr>'
+    +'<td style="padding:12px 16px;text-align:center;border-right:1px solid #e8eaf6">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Cases</div>'
+    +'<div style="font-size:18px;font-weight:800;color:#333">'+cases+'</div>'
+    +'<div style="font-size:10px;color:#9e9e9e">LMTD: '+prevCases+'</div>'
+    +'</td>'
+    +'<td style="padding:12px 16px;text-align:center;border-right:1px solid #e8eaf6">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Active Channels</div>'
+    +'<div style="font-size:18px;font-weight:800;color:#00838f">'+ch+'</div>'
+    +'<div style="font-size:10px;color:#9e9e9e">Target: '+(bm.ch_tgt||'-')+' | LMTD: '+prevCh+'</div>'
+    +'</td>'
+    +'<td style="padding:12px 16px;text-align:center;border-right:1px solid #e8eaf6">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Channel Growth</div>'
+    +gRow(ch,prevCh,false)
+    +'<div style="font-size:10px;color:#9e9e9e;margin-top:4px">vs '+prevMonth.split(' ')[0]+' LMTD</div>'
+    +'</td>'
+    +'<td style="padding:12px 16px;text-align:center">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Case Growth</div>'
+    +gRow(cases,prevCases,false)
+    +'<div style="font-size:10px;color:#9e9e9e;margin-top:4px">vs '+prevMonth.split(' ')[0]+' LMTD</div>'
+    +'</td>'
+    +'</tr></table>'
 
-    <!-- Message Banner -->
-    ${ach!==null?`
-    <div style="background:${ach>=100?'linear-gradient(135deg,#1b5e20,#2e7d32)':ach>=70?'linear-gradient(135deg,#0d47a1,#1565c0)':'linear-gradient(135deg,#b71c1c,#c62828)'};padding:16px 24px">
-      <div style="color:#fff;font-weight:800;font-size:14px;margin-bottom:4px">
-        ${ach>=100?'Excellent work! Target achieved!':ach>=70?'Good progress — you are on track!':'Action needed — behind target'}
-      </div>
-      <div style="color:rgba(255,255,255,.85);font-size:12px">
-        ${ach>=100?'You have successfully met your monthly disbursement target. Keep up the momentum!':
-          ach>=70?'Push to close '+fmtCr(shortfall)+' more before month end. You can do it!':
-          'Shortfall: '+fmtCr(shortfall)+'. Focus on channel visits and converting pending cases this week.'}
-      </div>
-    </div>`:''}
+    // ── MOTIVATION BANNER ────────────────────────────────────
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center" style="background:'
+    +(ach===null?'#f5f5f5':ach>=100?'#1b5e20':ach>=70?'#0d47a1':'#b71c1c')
+    +';border-radius:0 0 12px 12px"><tr><td style="padding:14px 28px">'
+    +'<div style="color:#fff;font-weight:800;font-size:14px">'
+    +(ach===null?'Keep going! — No target configured.'
+      :ach>=100?'Excellent! You have achieved your target this month!'
+      :ach>=70?'Good progress! Push to close '+fmtCr(shortfall)+' more before month end.'
+      :'Action needed. Shortfall: '+fmtCr(shortfall)+'. Focus on channel visits and conversions.')
+    +'</div>'
+    +'</td></tr></table>'
 
-    <!-- Footer -->
-    <div style="background:#1a237e;padding:14px 24px;border-radius:0 0 16px 16px;display:flex;justify-content:space-between;align-items:center">
-      <div style="color:rgba(255,255,255,.9);font-size:12px;font-weight:700">Rupyy Performance Dashboard</div>
-      <div style="color:rgba(255,255,255,.5);font-size:11px">${date}</div>
-    </div>
+    // ── FOOTER ───────────────────────────────────────────────
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center"><tr>'
+    +'<td style="padding:10px 0;text-align:center">'
+    +'<div style="color:#9e9e9e;font-size:10px">Rupyy Performance Dashboard &nbsp;|&nbsp; '+date+'</div>'
+    +'</td></tr></table>'
 
-  </div></body></html>`;
+    +'</body></html>';
 }
 
-// ═══════════════════════════════════════════════════════════
-// AM SCORECARD EMAIL
-// ═══════════════════════════════════════════════════════════
 function buildAMScorecardHTML(am) {
   const emps     = getEmpData();
   const prevData = window._LIVE_MAY||[];
@@ -4629,9 +4643,8 @@ function buildAMScorecardHTML(am) {
     const prvAmt = prv.reduce((s,t)=>s+t.amt,0);
     const curUC  = cur.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
     const curCV  = cur.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-    const bmEmpObj2 = resolveEmpById(bm.id);
-    const curCh  = countChannels(cur, bmEmpObj2);
-    const prvCh  = countChannels(prv, bmEmpObj2);
+    const curCh  = countChannels(cur, resolveEmpById(bm.id));
+    const prvCh  = countChannels(prv, resolveEmpById(bm.id));
     const tgt    = ((bm.uc_tgt||0)+(bm.cv_tgt||0))*1e5;
     const ach    = tgt>0?Math.round((curAmt/tgt)*100):null;
     const diff   = curAmt-prvAmt;
@@ -4647,92 +4660,658 @@ function buildAMScorecardHTML(am) {
   const prvCh   = rows.reduce((s,r)=>s+r.prvCh,0);
   const onTrack = rows.filter(r=>r.ach!==null&&r.ach>=70).length;
   const behind  = rows.filter(r=>r.ach!==null&&r.ach<70).length;
+  const totDiff = totCur-totPrv;
+  const gPct    = totPrv>0?Math.round((totDiff/totPrv)*100):null;
+  const up      = totDiff>=0;
 
-  const barsData = rows.slice(0,8).map(r=>({label:r.bm.name, val:r.curAmt, prev:r.prvAmt, color:'#1a237e', color2:'#3949ab'}));
+  const tblRows = rows.map((r,i)=>{
+    const achCol = r.ach===null?'#555':r.ach>=100?'#2e7d32':r.ach>=70?'#1565c0':'#c62828';
+    const achBg  = r.ach===null?'#f5f5f5':r.ach>=100?'#e8f5e9':r.ach>=70?'#e3f2fd':'#ffebee';
+    const rowBg  = i%2===0?'#ffffff':'#f8f9ff';
+    const up2    = r.diff>=0;
+    const gTag   = r.gPct!==null
+      ? '<span style="background:'+(up2?'#e8f5e9':'#ffebee')+';color:'+(up2?'#1b5e20':'#b71c1c')+';padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700">'+(up2?'&#9650;':'&#9660;')+' '+(up2?'+':'')+r.gPct+'%</span>'
+      : '-';
+    return '<tr style="background:'+rowBg+'">'
+      +'<td style="padding:8px 10px;font-weight:700;color:#1a237e;border-bottom:1px solid #f0f0f0">'+r.bm.name+'</td>'
+      +'<td style="padding:8px 8px;border-bottom:1px solid #f0f0f0;text-align:center"><span style="background:#e8eaf6;color:#3949ab;padding:1px 6px;border-radius:8px;font-size:10px">'+( r.bm.tier||'-')+'</span></td>'
+      +'<td style="padding:8px 10px;text-align:right;font-weight:700;border-bottom:1px solid #f0f0f0">'+fmtCr(r.curAmt)+'</td>'
+      +'<td style="padding:8px 10px;text-align:right;color:#9e9e9e;font-size:11px;border-bottom:1px solid #f0f0f0">'+fmtCr(r.prvAmt)+'</td>'
+      +'<td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0">'+gTag+'</td>'
+      +'<td style="padding:8px 8px;text-align:right;color:#1565c0;font-size:11px;border-bottom:1px solid #f0f0f0">'+fmtCr(r.curUC)+'</td>'
+      +'<td style="padding:8px 8px;text-align:right;color:#6a1b9a;font-size:11px;border-bottom:1px solid #f0f0f0">'+fmtCr(r.curCV)+'</td>'
+      +'<td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0"><span style="background:'+achBg+';color:'+achCol+';padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">'+(r.ach!==null?r.ach+'%':'--')+'</span></td>'
+      +'<td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0"><b>'+r.curCh+'</b>'+(r.chDiff!==0?'<span style="font-size:10px;color:'+(r.chDiff>0?'#2e7d32':'#c62828')+';margin-left:2px">'+(r.chDiff>0?'+':'')+r.chDiff+'</span>':'')+'</td>'
+      +'</tr>';
+  }).join('');
 
-  return `<!DOCTYPE html><html><head>${emailStyles()}</head><body>
-  <div style="max-width:640px;margin:0 auto;padding:16px">
+  return '<!DOCTYPE html><html><body style="margin:0;padding:16px;background:#f0f2f5;font-family:Arial,Helvetica,sans-serif">'
+    // Header
+    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:linear-gradient(135deg,#1a237e,#283593);border-radius:12px 12px 0 0"><tr><td style="padding:22px 28px">'
+    +'<div style="color:rgba(255,255,255,.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">TEAM PERFORMANCE REPORT</div>'
+    +'<div style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">'+month+' Team Scorecard</div>'
+    +'<div style="color:rgba(255,255,255,.75);font-size:12px">Hi <b>'+am.name+'</b> &nbsp;|&nbsp; '+date+'</div>'
+    +'</td></tr></table>'
+    // Summary row
+    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:#fff;border:1px solid #e8eaf6;border-top:none"><tr>'
+    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Team GMV</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#1a237e">'+fmtCr(totCur)+'</div>'
+    +'<div style="font-size:10px;color:#9e9e9e">LMTD: '+fmtCr(totPrv)+'</div>'
+    +(gPct!==null?'<div style="margin-top:4px"><span style="background:'+(up?'#e8f5e9':'#ffebee')+';color:'+(up?'#1b5e20':'#b71c1c')+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">'+(up?'&#9650;':'&#9660;')+' '+(up?'+':'')+gPct+'% ('+(up?'+':'')+fmtCr(Math.abs(totDiff))+')</span></div>':'')
+    +'</td>'
+    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">UC</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#1565c0">'+fmtCr(totUC)+'</div>'
+    +'</td>'
+    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">CV</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#6a1b9a">'+fmtCr(totCV)+'</div>'
+    +'</td>'
+    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Channels</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#00838f">'+totCh+'</div>'
+    +'<div style="font-size:10px;color:#9e9e9e">LMTD: '+prvCh+'</div>'
+    +'</td>'
+    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">On Track</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#2e7d32">'+onTrack+'/'+rows.length+'</div>'
+    +'</td>'
+    +'<td style="padding:14px 16px;text-align:center">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Behind</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#c62828">'+behind+'</div>'
+    +'</td>'
+    +'</tr></table>'
+    // BM Table
+    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:#fff;border:1px solid #e8eaf6;border-top:none">'
+    +'<tr style="background:#1a237e">'
+    +'<th style="padding:8px 10px;text-align:left;color:#fff;font-size:11px">BM Name</th>'
+    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">Tier</th>'
+    +'<th style="padding:8px 10px;text-align:right;color:#fff;font-size:11px">'+month.split(' ')[0]+'</th>'
+    +'<th style="padding:8px 10px;text-align:right;color:rgba(255,255,255,.7);font-size:11px">LMTD</th>'
+    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">Growth</th>'
+    +'<th style="padding:8px 8px;text-align:right;color:#90caf9;font-size:11px">UC</th>'
+    +'<th style="padding:8px 8px;text-align:right;color:#ce93d8;font-size:11px">CV</th>'
+    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">Ach%</th>'
+    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">Ch</th>'
+    +'</tr>'
+    +tblRows
+    +'<tr style="background:#e8eaf6">'
+    +'<td style="padding:8px 10px;font-weight:800;color:#1a237e" colspan="2">TEAM TOTAL</td>'
+    +'<td style="padding:8px 10px;text-align:right;font-weight:800;color:#1a237e">'+fmtCr(totCur)+'</td>'
+    +'<td style="padding:8px 10px;text-align:right;color:#9e9e9e;font-size:11px">'+fmtCr(totPrv)+'</td>'
+    +'<td style="padding:8px 8px;text-align:center">'+(gPct!==null?'<span style="background:'+(up?'#e8f5e9':'#ffebee')+';color:'+(up?'#1b5e20':'#b71c1c')+';padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700">'+(up?'&#9650;':'&#9660;')+' '+(up?'+':'')+gPct+'%</span>':'-')+'</td>'
+    +'<td style="padding:8px 8px;text-align:right;color:#1565c0;font-size:11px">'+fmtCr(totUC)+'</td>'
+    +'<td style="padding:8px 8px;text-align:right;color:#6a1b9a;font-size:11px">'+fmtCr(totCV)+'</td>'
+    +'<td style="padding:8px 8px;text-align:center;font-size:11px">'+onTrack+'/'+rows.length+' on track</td>'
+    +'<td style="padding:8px 8px;text-align:center;font-weight:800">'+totCh+'</td>'
+    +'</tr>'
+    +'</table>'
+    // Footer
+    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:#1a237e;border-radius:0 0 12px 12px"><tr>'
+    +'<td style="padding:12px 28px;text-align:center"><div style="color:rgba(255,255,255,.6);font-size:10px">Rupyy Performance Dashboard &nbsp;|&nbsp; '+date+'</div></td>'
+    +'</tr></table>'
+    +'</body></html>';
+}
 
-    <!-- Header -->
-    <div style="background:linear-gradient(135deg,#1a237e,#283593,#1565c0);border-radius:16px 16px 0 0;padding:28px 32px;position:relative;overflow:hidden">
-      <div style="position:absolute;right:-10px;top:-10px;width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,.07)"></div>
-      <div style="font-size:11px;color:rgba(255,255,255,.6);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">TEAM PERFORMANCE REPORT</div>
-      <div style="color:#fff;font-size:22px;font-weight:800;margin-bottom:4px">${month} Team Scorecard</div>
-      <div style="color:rgba(255,255,255,.75);font-size:13px">Hi <b>${am.name}</b> &nbsp;|&nbsp; ${date}</div>
-      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-        ${cap(rows.length+' BMs','rgba(255,255,255,.15)','#fff')}
-        ${cap(onTrack+' On Track','#e8f5e9','#1b5e20')}
-        ${behind>0?cap(behind+' Behind','#ffebee','#b71c1c'):''}
-      </div>
+function buildTHScorecardHTML() {
+  const emps     = getEmpData();
+  const prevData = window._LIVE_MAY||[];
+  const date     = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const month    = getCurMonthLabel();
+  const prevMonth= getPrevMonthLabel();
+  const todayDay = getTodayDay();
+
+  const bmList = emps.filter(e=>e.designation==='BM'&&e.rh_id===currentUser.id);
+  const amList = emps.filter(e=>e.designation==='AM'&&e.rh_id===currentUser.id);
+
+  const amRows = amList.map(am=>{
+    const cur    = myTxns.filter(t=>t.am_id===am.id);
+    const prv    = toLMTD(prevData.filter(t=>t.am_id===am.id));
+    const curAmt = cur.reduce((s,t)=>s+t.amt,0);
+    const prvAmt = prv.reduce((s,t)=>s+t.amt,0);
+    const curCh  = new Set(cur.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    const prvCh  = new Set(prv.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    const amBMs  = bmList.filter(b=>b.am_id===am.id);
+    const onT    = amBMs.filter(b=>{
+      const t=myTxns.filter(x=>x.bm_id===b.id);
+      const tgt=((b.uc_tgt||0)+(b.cv_tgt||0))*1e5;
+      return tgt>0&&Math.round((t.reduce((s,x)=>s+x.amt,0)/tgt)*100)>=70;
+    }).length;
+    const diff   = curAmt-prvAmt;
+    const gPct   = prvAmt>0?Math.round((diff/prvAmt)*100):null;
+    return {am,curAmt,prvAmt,curCh,prvCh,bmCount:amBMs.length,onTrack:onT,diff,gPct,chDiff:curCh-prvCh};
+  }).sort((a,b)=>b.curAmt-a.curAmt);
+
+  const totCur  = amRows.reduce((s,r)=>s+r.curAmt,0);
+  const totPrv  = amRows.reduce((s,r)=>s+r.prvAmt,0);
+  const totCh   = amRows.reduce((s,r)=>s+r.curCh,0);
+  const prvCh   = amRows.reduce((s,r)=>s+r.prvCh,0);
+  const totOnT  = amRows.reduce((s,r)=>s+r.onTrack,0);
+  const totUC   = myTxns.filter(t=>t.rh_id===currentUser.id&&t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+  const totCV   = myTxns.filter(t=>t.rh_id===currentUser.id&&t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+  const totDiff = totCur-totPrv;
+  const gPct    = totPrv>0?Math.round((totDiff/totPrv)*100):null;
+  const up      = totDiff>=0;
+
+  const tblRows = amRows.map((r,i)=>{
+    const rowBg = i%2===0?'#ffffff':'#f8f9ff';
+    const up2   = r.diff>=0;
+    const gTag  = r.gPct!==null
+      ? '<span style="background:'+(up2?'#e8f5e9':'#ffebee')+';color:'+(up2?'#1b5e20':'#b71c1c')+';padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700">'+(up2?'&#9650;':'&#9660;')+' '+(up2?'+':'')+r.gPct+'% ('+(up2?'+':'')+fmtCr(Math.abs(r.diff))+')</span>'
+      : '-';
+    const onTBg = r.onTrack===r.bmCount?'#e8f5e9':'#fff8e1';
+    const onTCol= r.onTrack===r.bmCount?'#1b5e20':'#e65100';
+    return '<tr style="background:'+rowBg+'">'
+      +'<td style="padding:8px 10px;font-weight:700;color:#1a237e;border-bottom:1px solid #f0f0f0">'+r.am.name+'</td>'
+      +'<td style="padding:8px 10px;text-align:right;font-weight:700;border-bottom:1px solid #f0f0f0">'+fmtCr(r.curAmt)+'</td>'
+      +'<td style="padding:8px 10px;text-align:right;color:#9e9e9e;font-size:11px;border-bottom:1px solid #f0f0f0">'+fmtCr(r.prvAmt)+'</td>'
+      +'<td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0">'+gTag+'</td>'
+      +'<td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0"><span style="background:'+onTBg+';color:'+onTCol+';padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">'+r.onTrack+'/'+r.bmCount+'</span></td>'
+      +'<td style="padding:8px 8px;text-align:center;font-size:11px;border-bottom:1px solid #f0f0f0"><b>'+r.curCh+'</b>'+(r.chDiff!==0?'<span style="font-size:10px;color:'+(r.chDiff>0?'#2e7d32':'#c62828')+';margin-left:2px">'+(r.chDiff>0?'+':'')+r.chDiff+'</span>':'')+'</td>'
+      +'<td style="padding:8px 8px;text-align:center;font-size:11px;border-bottom:1px solid #f0f0f0">'+r.bmCount+'</td>'
+      +'</tr>';
+  }).join('');
+
+  return '<!DOCTYPE html><html><body style="margin:0;padding:16px;background:#f0f2f5;font-family:Arial,Helvetica,sans-serif">'
+    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:linear-gradient(135deg,#0d47a1,#1a237e);border-radius:12px 12px 0 0"><tr><td style="padding:22px 28px">'
+    +'<div style="color:rgba(255,255,255,.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">REGION PERFORMANCE REPORT</div>'
+    +'<div style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">'+month+' Region Scorecard</div>'
+    +'<div style="color:rgba(255,255,255,.75);font-size:12px">'+date+' &nbsp;|&nbsp; From: '+currentUser.name+'</div>'
+    +'</td></tr></table>'
+    // Region KPIs
+    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:#fff;border:1px solid #e8eaf6;border-top:none"><tr>'
+    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0"><div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Region GMV</div><div style="font-size:20px;font-weight:800;color:#1a237e">'+fmtCr(totCur)+'</div><div style="font-size:10px;color:#9e9e9e">LMTD: '+fmtCr(totPrv)+'</div>'+(gPct!==null?'<div style="margin-top:4px"><span style="background:'+(up?'#e8f5e9':'#ffebee')+';color:'+(up?'#1b5e20':'#b71c1c')+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">'+(up?'&#9650;':'&#9660;')+' '+(up?'+':'')+gPct+'%</span></div>':'')+'</td>'
+    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0"><div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">UC</div><div style="font-size:20px;font-weight:800;color:#1565c0">'+fmtCr(totUC)+'</div></td>'
+    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0"><div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">CV</div><div style="font-size:20px;font-weight:800;color:#6a1b9a">'+fmtCr(totCV)+'</div></td>'
+    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0"><div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Channels</div><div style="font-size:20px;font-weight:800;color:#00838f">'+totCh+'</div><div style="font-size:10px;color:#9e9e9e">LMTD: '+prvCh+'</div></td>'
+    +'<td style="padding:14px 16px;text-align:center"><div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">BMs On Track</div><div style="font-size:20px;font-weight:800;color:#2e7d32">'+totOnT+'/'+bmList.length+'</div></td>'
+    +'</tr></table>'
+    // AM Table
+    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:#fff;border:1px solid #e8eaf6;border-top:none">'
+    +'<tr style="background:#1a237e">'
+    +'<th style="padding:8px 10px;text-align:left;color:#fff;font-size:11px">AM Name</th>'
+    +'<th style="padding:8px 10px;text-align:right;color:#fff;font-size:11px">'+month.split(' ')[0]+'</th>'
+    +'<th style="padding:8px 10px;text-align:right;color:rgba(255,255,255,.7);font-size:11px">LMTD</th>'
+    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">Growth</th>'
+    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">On Track</th>'
+    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">Channels</th>'
+    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">BMs</th>'
+    +'</tr>'
+    +tblRows
+    +'<tr style="background:#e8eaf6">'
+    +'<td style="padding:8px 10px;font-weight:800;color:#1a237e">REGION TOTAL</td>'
+    +'<td style="padding:8px 10px;text-align:right;font-weight:800;color:#1a237e">'+fmtCr(totCur)+'</td>'
+    +'<td style="padding:8px 10px;text-align:right;color:#9e9e9e;font-size:11px">'+fmtCr(totPrv)+'</td>'
+    +'<td style="padding:8px 8px;text-align:center">'+(gPct!==null?'<span style="background:'+(up?'#e8f5e9':'#ffebee')+';color:'+(up?'#1b5e20':'#b71c1c')+';padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700">'+(up?'&#9650;':'&#9660;')+' '+(up?'+':'')+gPct+'%</span>':'-')+'</td>'
+    +'<td style="padding:8px 8px;text-align:center;font-size:11px">'+totOnT+'/'+bmList.length+'</td>'
+    +'<td style="padding:8px 8px;text-align:center;font-weight:800">'+totCh+'</td>'
+    +'<td style="padding:8px 8px;text-align:center">'+bmList.length+'</td>'
+    +'</tr></table>'
+    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:#1a237e;border-radius:0 0 12px 12px"><tr>'
+    +'<td style="padding:12px 28px;text-align:center"><div style="color:rgba(255,255,255,.6);font-size:10px">Rupyy Performance Dashboard &nbsp;|&nbsp; '+date+'</div></td>'
+    +'</tr></table>'
+    +'</body></html>';
+}
+
+// ── Generic Scorecard Email (for AM/TH type selector) ──────
+function buildScorecardEmailHTML(type, note) {
+  if (type === 'q1') return buildQ1EmailHTML(resolveEmpById(currentUser.id) || {name:currentUser.name, designation:currentUser.designation, id:currentUser.id});
+  // MTD or weekly — use TH scorecard
+  return buildTHScorecardHTML();
+}
+
+// ── Channel Drive Email HTML ────────────────────────────────
+function buildChannelEmailHTML(type, note) {
+  const prevData = window._LIVE_MAY || [];
+  const l3Data   = getLast6Months().slice(-3).flatMap(m => m.data().filter(t => t.rh_id === currentUser.id));
+  const dateStr  = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const month    = getCurMonthLabel();
+  const prevMonth= getPrevMonthLabel();
+
+  const curTxns  = myTxns;
+  const prevTxns = prevData.filter(t => t.rh_id === currentUser.id);
+  const curCh    = new Set(curTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+  const prevCh   = new Set(prevTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+  const l3Ch     = new Set(l3Data.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+
+  const lostDcids     = [...prevCh].filter(d=>!curCh.has(d));
+  const inactiveDcids = [...l3Ch].filter(d=>!curCh.has(d)&&!lostDcids.includes(d));
+
+  function dealerRow(dcid, pool, idx) {
+    const t      = pool.filter(x=>x.dcid===dcid);
+    const dealer = t[0]?.dealer || dcid;
+    const gmv    = t.reduce((s,x)=>s+x.amt,0);
+    const bm     = resolveEmpById(t[0]?.bm_id)?.name || t[0]?.bm || '—';
+    return '<tr style="background:' + (idx%2===0?'#fff':'#fff8f8') + '">'
+      + '<td style="padding:7px 10px;color:#9e9e9e">' + (idx+1) + '</td>'
+      + '<td style="padding:7px 10px;font-weight:700">' + dealer + '<div style="font-size:10px;color:#9e9e9e">' + dcid + '</div></td>'
+      + '<td style="padding:7px 10px">' + bm + '</td>'
+      + '<td style="padding:7px 10px;text-align:right;font-weight:700;color:#c62828">' + fmtCr(gmv) + '</td>'
+      + '</tr>';
+  }
+
+  const showLost     = type==='lost'||type==='full';
+  const showInactive = type==='inactive'||type==='full';
+
+  return '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif">'
+    + '<div style="max-width:680px;margin:0 auto;padding:16px">'
+    + '<div style="background:linear-gradient(135deg,#b71c1c,#c62828);border-radius:12px 12px 0 0;padding:24px 28px">'
+    + '<div style="color:#fff;font-size:20px;font-weight:800">Channel Drive Alert</div>'
+    + '<div style="color:rgba(255,255,255,.75);font-size:12px;margin-top:4px">' + dateStr + ' | Action Required | From: ' + currentUser.name + '</div>'
+    + '</div>'
+    + '<div style="background:#fff;padding:16px 28px;display:flex;gap:0;border-bottom:2px solid #ffcdd2">'
+    + '<div style="flex:1;text-align:center;padding:8px;border-right:1px solid #ffebee"><div style="font-size:10px;color:#9e9e9e;font-weight:600">ACTIVE NOW</div><div style="font-size:20px;font-weight:800;color:#2e7d32">' + curCh.size + '</div></div>'
+    + '<div style="flex:1;text-align:center;padding:8px;border-right:1px solid #ffebee"><div style="font-size:10px;color:#9e9e9e;font-weight:600">LAST MONTH</div><div style="font-size:20px;font-weight:800;color:#1565c0">' + prevCh.size + '</div></div>'
+    + '<div style="flex:1;text-align:center;padding:8px;border-right:1px solid #ffebee"><div style="font-size:10px;color:#9e9e9e;font-weight:600">LOST</div><div style="font-size:20px;font-weight:800;color:#c62828">' + lostDcids.length + '</div></div>'
+    + '<div style="flex:1;text-align:center;padding:8px"><div style="font-size:10px;color:#9e9e9e;font-weight:600">INACTIVE (L3M)</div><div style="font-size:20px;font-weight:800;color:#f57f17">' + inactiveDcids.length + '</div></div>'
+    + '</div>'
+    + (note ? '<div style="background:#fff3e0;padding:12px 28px;border-left:4px solid #f57f17"><b>Action Required:</b> <span style="color:#333">' + note + '</span></div>' : '')
+    + (showLost && lostDcids.length ? '<div style="background:#fff;padding:16px 28px"><div style="font-weight:700;color:#c62828;font-size:14px;margin-bottom:10px">Lost Channels — Were Active Last Month (' + lostDcids.length + ')</div>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#ffebee"><th style="padding:7px 10px;text-align:left">#</th><th style="padding:7px 10px;text-align:left">Dealer</th><th style="padding:7px 10px;text-align:left">BM</th><th style="padding:7px 10px;text-align:right">' + prevMonth.split(' ')[0] + ' GMV</th></tr></thead><tbody>'
+      + lostDcids.map((d,i) => dealerRow(d, prevTxns, i)).join('')
+      + '</tbody></table></div>' : '')
+    + (showInactive && inactiveDcids.length ? '<div style="background:#fff;padding:16px 28px;border-top:1px solid #f5f5f5"><div style="font-weight:700;color:#f57f17;font-size:14px;margin-bottom:10px">Inactive Channels — Last 3 Months Not Active (' + inactiveDcids.length + ')</div>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#fff8e1"><th style="padding:7px 10px;text-align:left">#</th><th style="padding:7px 10px;text-align:left">Dealer</th><th style="padding:7px 10px;text-align:left">BM</th><th style="padding:7px 10px;text-align:right">L3M GMV</th></tr></thead><tbody>'
+      + inactiveDcids.map((d,i) => dealerRow(d, l3Data, i)).join('')
+      + '</tbody></table></div>' : '')
+    + '<div style="background:#c62828;padding:12px 28px;border-radius:0 0 12px 12px;display:flex;justify-content:space-between;align-items:center">'
+    + '<div style="color:rgba(255,255,255,.9);font-size:12px;font-weight:700">Rupyy Performance Dashboard</div>'
+    + '<div style="color:rgba(255,255,255,.5);font-size:11px">' + dateStr + '</div>'
+    + '</div></div></body></html>';
+}
+
+// ── Preview functions ───────────────────────────────────────
+function previewScEmail(type) {
+  const emps   = getEmpData();
+  const panel  = document.getElementById('sc-preview-panel');
+  if (!panel) return;
+  if (type === 'bm') {
+    // Preview for first checked BM
+    const checked = [...document.querySelectorAll('.sc-bm-chk:checked')];
+    const bmId = checked[0]?.dataset.id;
+    const bm   = bmId ? emps.find(e=>e.id===bmId) : null;
+    panel.innerHTML = bm ? buildBMScorecardHTML(bm) : '<div style="color:#9e9e9e;text-align:center;padding:20px">Select a BM first</div>';
+  } else {
+    // Preview AM view using first checked AM, or TH view
+    const amChecked = [...document.querySelectorAll('.sc-am-chk:checked')];
+    const emps2 = getEmpData();
+    const amEmp = amChecked[0] ? emps2.find(e=>e.id===amChecked[0].dataset.id) : null;
+    panel.innerHTML = amEmp ? buildAMScorecardHTML(amEmp) : buildTHScorecardHTML();
+  }
+}
+
+function previewChEmail(type) {
+  const panel = document.getElementById('ch-preview-panel');
+  if (!panel) return;
+  panel.innerHTML = buildChannelEmailHTML('full','');
+}
+
+// ── Build individual BM scorecard HTML (no emoji in subject) ─
+// ═══════════════════════════════════════════════════════════
+// SHARED EMAIL HELPERS
+// ═══════════════════════════════════════════════════════════
+function emailStyles() {
+  return `
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+      * { box-sizing: border-box; }
+      body { margin:0; padding:0; background:#f0f2f5; font-family:Arial,Helvetica,sans-serif; }
+    </style>`;
+}
+
+// Capsule badge
+function cap(text, bg, color) {
+  return `<span style="display:inline-block;background:${bg};color:${color};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px">${text}</span>`;
+}
+
+// Growth capsule
+function gCap(cur, prev, isAmt=true) {
+  if (!prev && prev!==0) return cap('—','#f5f5f5','#9e9e9e');
+  const diff = cur-prev;
+  const pct  = prev>0 ? Math.round((diff/prev)*100) : (cur>0?100:0);
+  const up   = diff>=0;
+  const sign = up?'+':'';
+  const arrow= up?'&#9650;':'&#9660;';
+  const col  = up?'#1b5e20':'#b71c1c';
+  const bg   = up?'#e8f5e9':'#ffebee';
+  const val  = isAmt ? sign+fmtCr(Math.abs(diff)) : sign+Math.abs(diff);
+  return `<span style="display:inline-block;background:${bg};color:${col};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">${arrow} ${sign}${pct}% &nbsp;${val}</span>`;
+}
+
+// Achievement capsule
+function achCap(ach) {
+  if (ach===null) return cap('No Target','#f5f5f5','#9e9e9e');
+  const col = ach>=100?'#1b5e20':ach>=70?'#0d47a1':'#b71c1c';
+  const bg  = ach>=100?'#e8f5e9':ach>=70?'#e3f2fd':'#ffebee';
+  const icon= ach>=100?'':ach>=70?'●':'▲';
+  return `<span style="display:inline-block;background:${bg};color:${col};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">${icon} ${ach}%</span>`;
+}
+
+// Horizontal bar chart (HTML only, email-safe)
+function barChart(items, maxVal) {
+  const max = maxVal || Math.max(...items.map(i=>i.val), 1);
+  return items.map(i => {
+    const w = Math.round((i.val/max)*100);
+    const prev_w = i.prev ? Math.round((i.prev/max)*100) : 0;
+    return `
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+          <span style="font-size:11px;color:#555;font-weight:600">${i.label}</span>
+          <span style="font-size:11px;font-weight:700;color:#1a237e">${fmtCr(i.val)}</span>
+        </div>
+        <div style="background:#f0f0f0;border-radius:6px;height:10px;position:relative;overflow:hidden">
+          ${i.prev?`<div style="position:absolute;top:0;left:0;width:${prev_w}%;height:100%;background:#c5cae9;border-radius:6px"></div>`:''}
+          <div style="position:absolute;top:0;left:0;width:${w}%;height:100%;background:linear-gradient(90deg,${i.color||'#1a237e'},${i.color2||'#3949ab'});border-radius:6px"></div>
+        </div>
+        ${i.prev?`<div style="font-size:10px;color:#9e9e9e;margin-top:2px">vs ${fmtCr(i.prev)} last month</div>`:''}
+      </div>`;
+  }).join('');
+}
+
+// Progress ring (CSS only)
+function progressRing(pct, size=60) {
+  const p    = Math.min(pct||0, 100);
+  const col  = p>=100?'#2e7d32':p>=70?'#1565c0':p>=50?'#f57f17':'#c62828';
+  const bg   = p>=100?'#e8f5e9':p>=70?'#e3f2fd':p>=50?'#fff8e1':'#ffebee';
+  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:conic-gradient(${col} ${p}%, #e0e0e0 0%);display:flex;align-items:center;justify-content:center;position:relative">
+    <div style="width:${size-12}px;height:${size-12}px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:${size>50?13:10}px;font-weight:800;color:${col}">${p}%</div>
+  </div>`;
+}
+
+// Metric card
+function metricCard(label, cur, prev, color, unit='amt') {
+  const isAmt = unit==='amt';
+  const curFmt= isAmt?fmtCr(cur):String(cur);
+  const prevFmt=isAmt?fmtCr(prev):String(prev);
+  const diff  = cur-prev;
+  const pct   = prev>0?Math.round((diff/prev)*100):null;
+  const up    = diff>=0;
+  return `<div style="background:#fff;border-radius:12px;padding:14px 16px;border-top:3px solid ${color};min-width:100px">
+    <div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">${label}</div>
+    <div style="font-size:18px;font-weight:800;color:${color};margin-bottom:4px">${curFmt}</div>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      <span style="font-size:10px;color:#9e9e9e">was ${prevFmt}</span>
+      ${pct!==null?`<span style="background:${up?'#e8f5e9':'#ffebee'};color:${up?'#1b5e20':'#b71c1c'};padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">${up?'&#9650;':'&#9660;'} ${up?'+':''}${pct}%</span>`:''}
     </div>
-
-    <!-- Team KPI Cards -->
-    <div style="background:#fff;padding:20px 24px;border-bottom:1px solid #f0f0f0">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
-        ${metricCard('Team GMV', totCur, totPrv, '#1a237e')}
-        ${metricCard('Used Car', totUC, rows.reduce((s,r)=>s+r.prvAmt*(r.curUC>0?r.curUC/r.curAmt:0),0), '#1565c0')}
-        ${metricCard('CV', totCV, rows.reduce((s,r)=>s+r.prvAmt*(r.curCV>0?r.curCV/r.curAmt:0),0), '#6a1b9a')}
-        ${metricCard('Channels', totCh, prvCh, '#00838f','num')}
-      </div>
-    </div>
-
-    <!-- BM Bar Chart -->
-    <div style="background:#f8f9ff;padding:20px 24px;border-bottom:1px solid #f0f0f0">
-      <div style="font-size:12px;font-weight:700;color:#1a237e;margin-bottom:14px;text-transform:uppercase;letter-spacing:.5px">
-        BM-wise Disbursement &nbsp;
-        <span style="background:#e8eaf6;padding:2px 8px;border-radius:8px;font-weight:400;font-size:10px;color:#3949ab">vs ${prevMonth.split(' ')[0]}</span>
-      </div>
-      ${barChart(barsData, Math.max(...barsData.map(b=>Math.max(b.val,b.prev||0)),1))}
-    </div>
-
-    <!-- BM Detail Table -->
-    <div style="background:#fff;padding:20px 24px;border-bottom:1px solid #f0f0f0">
-      <div style="font-size:12px;font-weight:700;color:#1a237e;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">BM-wise Performance</div>
-      <table style="width:100%;border-collapse:collapse;font-size:11px">
-        <tr style="background:#1a237e;color:#fff">
-          <th style="padding:8px 10px;text-align:left;border-radius:8px 0 0 0">BM Name</th>
-          <th style="padding:8px 8px;text-align:left">Tier</th>
-          <th style="padding:8px 10px;text-align:right">${month.split(' ')[0]} MTD</th>
-          <th style="padding:8px 10px;text-align:right">${prevMonth.split(' ')[0]} 1-${todayDay} LMTD</th>
-          <th style="padding:8px 8px;text-align:center">Growth</th>
-          <th style="padding:8px 8px;text-align:center">Ach%</th>
-          <th style="padding:8px 8px;text-align:center;border-radius:0 8px 0 0">Ch</th>
-        </tr>
-        ${rows.map((r,i)=>`
-        <tr style="background:${i%2===0?'#fff':'#f8f9ff'}">
-          <td style="padding:8px 10px;font-weight:700;color:#1a237e;border-bottom:1px solid #f0f0f0">${r.bm.name}</td>
-          <td style="padding:8px 8px;border-bottom:1px solid #f0f0f0">${cap(r.bm.tier||'—','#e8eaf6','#3949ab')}</td>
-          <td style="padding:8px 10px;text-align:right;font-weight:700;border-bottom:1px solid #f0f0f0">${fmtCr(r.curAmt)}</td>
-          <td style="padding:8px 10px;text-align:right;color:#9e9e9e;border-bottom:1px solid #f0f0f0">${fmtCr(r.prvAmt)}</td>
-          <td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0">${gCap(r.curAmt,r.prvAmt)}</td>
-          <td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0">${achCap(r.ach)}</td>
-          <td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0">
-            <b>${r.curCh}</b>
-            ${r.chDiff!==0?`<span style="font-size:10px;color:${r.chDiff>0?'#2e7d32':'#c62828'};margin-left:3px">${r.chDiff>0?'+':''}${r.chDiff}</span>`:''}
-          </td>
-        </tr>`).join('')}
-        <tr style="background:#e8eaf6">
-          <td style="padding:8px 10px;font-weight:800;color:#1a237e;border-radius:0 0 0 8px" colspan="2">TEAM TOTAL</td>
-          <td style="padding:8px 10px;text-align:right;font-weight:800;color:#1a237e">${fmtCr(totCur)}</td>
-          <td style="padding:8px 10px;text-align:right;color:#9e9e9e;font-weight:700">${fmtCr(totPrv)}</td>
-          <td style="padding:8px 8px;text-align:center">${gCap(totCur,totPrv)}</td>
-          <td style="padding:8px 8px;text-align:center">${cap(onTrack+'/'+rows.length+' on track','#e8f5e9','#1b5e20')}</td>
-          <td style="padding:8px 8px;text-align:center;font-weight:800;border-radius:0 0 8px 0">${totCh}</td>
-        </tr>
-      </table>
-    </div>
-
-    <!-- Footer -->
-    <div style="background:#1a237e;padding:14px 24px;border-radius:0 0 16px 16px;display:flex;justify-content:space-between;align-items:center">
-      <div style="color:rgba(255,255,255,.9);font-size:12px;font-weight:700">Rupyy Performance Dashboard</div>
-      <div style="color:rgba(255,255,255,.5);font-size:11px">${date}</div>
-    </div>
-  </div></body></html>`;
+  </div>`;
 }
 
 // ═══════════════════════════════════════════════════════════
-// TH/RH SCORECARD EMAIL
+// BM SCORECARD EMAIL
 // ═══════════════════════════════════════════════════════════
+function buildBMScorecardHTML(bm) {
+  const cur      = myTxns.filter(t=>t.bm_id===bm.id);
+  const prev     = toLMTD((window._LIVE_MAY||[]).filter(t=>t.bm_id===bm.id));
+  const month    = getCurMonthLabel();
+  const prevMonth= getPrevMonthLabel();
+  const todayDay = getTodayDay();
+  const ucAmt    = cur.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+  const cvAmt    = cur.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+  const tot      = ucAmt+cvAmt;
+  const prevUC   = prev.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+  const prevCV   = prev.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+  const prevTot  = prevUC+prevCV;
+  const bmEmpObj = resolveEmpById(bm.id);
+  const ch       = countChannels(cur, bmEmpObj);
+  const prevCh   = countChannels(prev, bmEmpObj);
+  const cases    = cur.length;
+  const prevCases= prev.length;
+  const ucTgt    = (bm.uc_tgt||0)*1e5;
+  const cvTgt    = (bm.cv_tgt||0)*1e5;
+  const tgt      = ucTgt+cvTgt;
+  const ach      = tgt>0?Math.round((tot/tgt)*100):null;
+  const shortfall= tgt>0?Math.max(tgt-tot,0):0;
+  const date     = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const achCol   = ach===null?'#555':ach>=100?'#2e7d32':ach>=70?'#1565c0':'#c62828';
+  const achBg    = ach===null?'#f5f5f5':ach>=100?'#e8f5e9':ach>=70?'#e3f2fd':'#ffebee';
+  const achLabel = ach===null?'No Target':ach>=100?'Target Achieved':ach>=70?'On Track':'Behind Target';
+
+  function gRow(cur, prev, isAmt) {
+    if (!prev && prev!==0) return '<span style="color:#9e9e9e;font-size:11px">-</span>';
+    const diff = cur-prev;
+    const pct  = prev>0?Math.round((diff/prev)*100):null;
+    const up   = diff>=0;
+    const col  = up?'#1b5e20':'#b71c1c';
+    const bg   = up?'#e8f5e9':'#ffebee';
+    const sign = up?'+':'';
+    const val  = isAmt ? sign+fmtCr(Math.abs(diff)) : sign+Math.abs(diff);
+    return '<span style="display:inline-block;background:'+bg+';color:'+col+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">'+(up?'&#9650;':'&#9660;')+' '+sign+(pct!==null?pct+'%':'-')+' ('+val+')</span>';
+  }
+
+  // Progress bar (table-based, Gmail-safe)
+  function pBar(val, total, color) {
+    if (!total) return '';
+    const w = Math.min(Math.round((val/total)*100), 100);
+    return '<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:4px">'
+      +'<tr><td style="background:#e0e0e0;border-radius:4px;height:8px;padding:0">'
+      +'<table width="'+w+'%" cellpadding="0" cellspacing="0"><tr>'
+      +'<td style="background:'+color+';border-radius:4px;height:8px;padding:0;display:block"></td>'
+      +'</tr></table></td></tr></table>';
+  }
+
+  return '<!DOCTYPE html><html><body style="margin:0;padding:16px;background:#f0f2f5;font-family:Arial,Helvetica,sans-serif">'
+
+    // ── HEADER ──────────────────────────────────────────────
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center" style="background:linear-gradient(135deg,#1a237e,#283593);border-radius:12px 12px 0 0">'
+    +'<tr><td style="padding:24px 28px">'
+    +'<div style="color:rgba(255,255,255,.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">RUPYY PERFORMANCE DASHBOARD</div>'
+    +'<div style="color:#fff;font-size:22px;font-weight:800;margin-bottom:4px">'+month+' Scorecard</div>'
+    +'<div style="color:rgba(255,255,255,.75);font-size:13px">Hi <b>'+bm.name+'</b> &nbsp;|&nbsp; '+date+'</div>'
+    +'<table cellpadding="0" cellspacing="0" style="margin-top:12px"><tr>'
+    +'<td style="background:'+achBg+';border-radius:20px;padding:4px 16px">'
+    +'<span style="color:'+achCol+';font-size:12px;font-weight:700">'+(ach!==null?ach+'% — '+achLabel:'No Target Set')+'</span>'
+    +'</td></tr></table>'
+    +'</td></tr></table>'
+
+    // ── 4 KPI CARDS (2x2 table) ─────────────────────────────
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center" style="background:#fff;border-left:1px solid #e8eaf6;border-right:1px solid #e8eaf6">'
+    +'<tr>'
+    +'<td width="50%" style="padding:16px 20px;border-right:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;vertical-align:top">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:4px">Total GMV</div>'
+    +'<div style="font-size:22px;font-weight:800;color:#1a237e">'+fmtCr(tot)+'</div>'
+    +'<div style="font-size:11px;color:#9e9e9e;margin:3px 0">LMTD '+prevMonth.split(' ')[0]+' 1-'+todayDay+': '+fmtCr(prevTot)+'</div>'
+    +gRow(tot,prevTot,true)
+    +(tgt>0?pBar(tot,tgt,'#1a237e'):'')
+    +'</td>'
+    +'<td width="50%" style="padding:16px 20px;border-bottom:1px solid #f0f0f0;vertical-align:top">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:4px">Achievement vs Target</div>'
+    +(ach!==null
+      ? '<div style="font-size:36px;font-weight:800;color:'+achCol+'">'+ach+'%</div>'
+      +'<div style="font-size:11px;color:#9e9e9e;margin:3px 0">Target: '+(tgt>0?fmtCr(tgt):'Not set')+'</div>'
+      +(shortfall>0?'<div style="font-size:11px;color:#c62828;font-weight:600">Shortfall: '+fmtCr(shortfall)+'</div>':'<div style="font-size:11px;color:#2e7d32;font-weight:600">Target Achieved!</div>')
+      : '<div style="font-size:22px;color:#9e9e9e">--</div>')
+    +'</td>'
+    +'</tr><tr>'
+    +'<td style="padding:16px 20px;border-right:1px solid #f0f0f0;vertical-align:top">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:4px">Used Car (UC)</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#1565c0">'+fmtCr(ucAmt)+'</div>'
+    +'<div style="font-size:11px;color:#9e9e9e;margin:3px 0">LMTD: '+fmtCr(prevUC)+'</div>'
+    +gRow(ucAmt,prevUC,true)
+    +(ucTgt>0?pBar(ucAmt,ucTgt,'#1565c0'):'')
+    +'</td>'
+    +'<td style="padding:16px 20px;vertical-align:top">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:4px">Commercial Vehicle (CV)</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#6a1b9a">'+fmtCr(cvAmt)+'</div>'
+    +'<div style="font-size:11px;color:#9e9e9e;margin:3px 0">LMTD: '+fmtCr(prevCV)+'</div>'
+    +gRow(cvAmt,prevCV,true)
+    +(cvTgt>0?pBar(cvAmt,cvTgt,'#6a1b9a'):'')
+    +'</td>'
+    +'</tr></table>'
+
+    // ── STATS ROW ────────────────────────────────────────────
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center" style="background:#f8f9ff;border:1px solid #e8eaf6">'
+    +'<tr>'
+    +'<td style="padding:12px 16px;text-align:center;border-right:1px solid #e8eaf6">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Cases</div>'
+    +'<div style="font-size:18px;font-weight:800;color:#333">'+cases+'</div>'
+    +'<div style="font-size:10px;color:#9e9e9e">LMTD: '+prevCases+'</div>'
+    +'</td>'
+    +'<td style="padding:12px 16px;text-align:center;border-right:1px solid #e8eaf6">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Active Channels</div>'
+    +'<div style="font-size:18px;font-weight:800;color:#00838f">'+ch+'</div>'
+    +'<div style="font-size:10px;color:#9e9e9e">Target: '+(bm.ch_tgt||'-')+' | LMTD: '+prevCh+'</div>'
+    +'</td>'
+    +'<td style="padding:12px 16px;text-align:center;border-right:1px solid #e8eaf6">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Channel Growth</div>'
+    +gRow(ch,prevCh,false)
+    +'<div style="font-size:10px;color:#9e9e9e;margin-top:4px">vs '+prevMonth.split(' ')[0]+' LMTD</div>'
+    +'</td>'
+    +'<td style="padding:12px 16px;text-align:center">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Case Growth</div>'
+    +gRow(cases,prevCases,false)
+    +'<div style="font-size:10px;color:#9e9e9e;margin-top:4px">vs '+prevMonth.split(' ')[0]+' LMTD</div>'
+    +'</td>'
+    +'</tr></table>'
+
+    // ── MOTIVATION BANNER ────────────────────────────────────
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center" style="background:'
+    +(ach===null?'#f5f5f5':ach>=100?'#1b5e20':ach>=70?'#0d47a1':'#b71c1c')
+    +';border-radius:0 0 12px 12px"><tr><td style="padding:14px 28px">'
+    +'<div style="color:#fff;font-weight:800;font-size:14px">'
+    +(ach===null?'Keep going! — No target configured.'
+      :ach>=100?'Excellent! You have achieved your target this month!'
+      :ach>=70?'Good progress! Push to close '+fmtCr(shortfall)+' more before month end.'
+      :'Action needed. Shortfall: '+fmtCr(shortfall)+'. Focus on channel visits and conversions.')
+    +'</div>'
+    +'</td></tr></table>'
+
+    // ── FOOTER ───────────────────────────────────────────────
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center"><tr>'
+    +'<td style="padding:10px 0;text-align:center">'
+    +'<div style="color:#9e9e9e;font-size:10px">Rupyy Performance Dashboard &nbsp;|&nbsp; '+date+'</div>'
+    +'</td></tr></table>'
+
+    +'</body></html>';
+}
+
+function buildAMScorecardHTML(am) {
+  const emps     = getEmpData();
+  const prevData = window._LIVE_MAY||[];
+  const date     = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const month    = getCurMonthLabel();
+  const prevMonth= getPrevMonthLabel();
+  const todayDay = getTodayDay();
+
+  const bmList = emps.filter(e=>e.designation==='BM'&&e.am_id===am.id);
+  const rows   = bmList.map(bm=>{
+    const cur    = myTxns.filter(t=>t.bm_id===bm.id);
+    const prv    = toLMTD(prevData.filter(t=>t.bm_id===bm.id));
+    const curAmt = cur.reduce((s,t)=>s+t.amt,0);
+    const prvAmt = prv.reduce((s,t)=>s+t.amt,0);
+    const curUC  = cur.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+    const curCV  = cur.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+    const curCh  = countChannels(cur, resolveEmpById(bm.id));
+    const prvCh  = countChannels(prv, resolveEmpById(bm.id));
+    const tgt    = ((bm.uc_tgt||0)+(bm.cv_tgt||0))*1e5;
+    const ach    = tgt>0?Math.round((curAmt/tgt)*100):null;
+    const diff   = curAmt-prvAmt;
+    const gPct   = prvAmt>0?Math.round((diff/prvAmt)*100):null;
+    return {bm,curAmt,prvAmt,curUC,curCV,curCh,prvCh,cases:cur.length,tgt,ach,diff,gPct,chDiff:curCh-prvCh};
+  }).sort((a,b)=>b.curAmt-a.curAmt);
+
+  const totCur  = rows.reduce((s,r)=>s+r.curAmt,0);
+  const totPrv  = rows.reduce((s,r)=>s+r.prvAmt,0);
+  const totUC   = rows.reduce((s,r)=>s+r.curUC,0);
+  const totCV   = rows.reduce((s,r)=>s+r.curCV,0);
+  const totCh   = rows.reduce((s,r)=>s+r.curCh,0);
+  const prvCh   = rows.reduce((s,r)=>s+r.prvCh,0);
+  const onTrack = rows.filter(r=>r.ach!==null&&r.ach>=70).length;
+  const behind  = rows.filter(r=>r.ach!==null&&r.ach<70).length;
+  const totDiff = totCur-totPrv;
+  const gPct    = totPrv>0?Math.round((totDiff/totPrv)*100):null;
+  const up      = totDiff>=0;
+
+  const tblRows = rows.map((r,i)=>{
+    const achCol = r.ach===null?'#555':r.ach>=100?'#2e7d32':r.ach>=70?'#1565c0':'#c62828';
+    const achBg  = r.ach===null?'#f5f5f5':r.ach>=100?'#e8f5e9':r.ach>=70?'#e3f2fd':'#ffebee';
+    const rowBg  = i%2===0?'#ffffff':'#f8f9ff';
+    const up2    = r.diff>=0;
+    const gTag   = r.gPct!==null
+      ? '<span style="background:'+(up2?'#e8f5e9':'#ffebee')+';color:'+(up2?'#1b5e20':'#b71c1c')+';padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700">'+(up2?'&#9650;':'&#9660;')+' '+(up2?'+':'')+r.gPct+'%</span>'
+      : '-';
+    return '<tr style="background:'+rowBg+'">'
+      +'<td style="padding:8px 10px;font-weight:700;color:#1a237e;border-bottom:1px solid #f0f0f0">'+r.bm.name+'</td>'
+      +'<td style="padding:8px 8px;border-bottom:1px solid #f0f0f0;text-align:center"><span style="background:#e8eaf6;color:#3949ab;padding:1px 6px;border-radius:8px;font-size:10px">'+( r.bm.tier||'-')+'</span></td>'
+      +'<td style="padding:8px 10px;text-align:right;font-weight:700;border-bottom:1px solid #f0f0f0">'+fmtCr(r.curAmt)+'</td>'
+      +'<td style="padding:8px 10px;text-align:right;color:#9e9e9e;font-size:11px;border-bottom:1px solid #f0f0f0">'+fmtCr(r.prvAmt)+'</td>'
+      +'<td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0">'+gTag+'</td>'
+      +'<td style="padding:8px 8px;text-align:right;color:#1565c0;font-size:11px;border-bottom:1px solid #f0f0f0">'+fmtCr(r.curUC)+'</td>'
+      +'<td style="padding:8px 8px;text-align:right;color:#6a1b9a;font-size:11px;border-bottom:1px solid #f0f0f0">'+fmtCr(r.curCV)+'</td>'
+      +'<td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0"><span style="background:'+achBg+';color:'+achCol+';padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">'+(r.ach!==null?r.ach+'%':'--')+'</span></td>'
+      +'<td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0"><b>'+r.curCh+'</b>'+(r.chDiff!==0?'<span style="font-size:10px;color:'+(r.chDiff>0?'#2e7d32':'#c62828')+';margin-left:2px">'+(r.chDiff>0?'+':'')+r.chDiff+'</span>':'')+'</td>'
+      +'</tr>';
+  }).join('');
+
+  return '<!DOCTYPE html><html><body style="margin:0;padding:16px;background:#f0f2f5;font-family:Arial,Helvetica,sans-serif">'
+    // Header
+    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:linear-gradient(135deg,#1a237e,#283593);border-radius:12px 12px 0 0"><tr><td style="padding:22px 28px">'
+    +'<div style="color:rgba(255,255,255,.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">TEAM PERFORMANCE REPORT</div>'
+    +'<div style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">'+month+' Team Scorecard</div>'
+    +'<div style="color:rgba(255,255,255,.75);font-size:12px">Hi <b>'+am.name+'</b> &nbsp;|&nbsp; '+date+'</div>'
+    +'</td></tr></table>'
+    // Summary row
+    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:#fff;border:1px solid #e8eaf6;border-top:none"><tr>'
+    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Team GMV</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#1a237e">'+fmtCr(totCur)+'</div>'
+    +'<div style="font-size:10px;color:#9e9e9e">LMTD: '+fmtCr(totPrv)+'</div>'
+    +(gPct!==null?'<div style="margin-top:4px"><span style="background:'+(up?'#e8f5e9':'#ffebee')+';color:'+(up?'#1b5e20':'#b71c1c')+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">'+(up?'&#9650;':'&#9660;')+' '+(up?'+':'')+gPct+'% ('+(up?'+':'')+fmtCr(Math.abs(totDiff))+')</span></div>':'')
+    +'</td>'
+    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">UC</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#1565c0">'+fmtCr(totUC)+'</div>'
+    +'</td>'
+    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">CV</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#6a1b9a">'+fmtCr(totCV)+'</div>'
+    +'</td>'
+    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Channels</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#00838f">'+totCh+'</div>'
+    +'<div style="font-size:10px;color:#9e9e9e">LMTD: '+prvCh+'</div>'
+    +'</td>'
+    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">On Track</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#2e7d32">'+onTrack+'/'+rows.length+'</div>'
+    +'</td>'
+    +'<td style="padding:14px 16px;text-align:center">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Behind</div>'
+    +'<div style="font-size:20px;font-weight:800;color:#c62828">'+behind+'</div>'
+    +'</td>'
+    +'</tr></table>'
+    // BM Table
+    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:#fff;border:1px solid #e8eaf6;border-top:none">'
+    +'<tr style="background:#1a237e">'
+    +'<th style="padding:8px 10px;text-align:left;color:#fff;font-size:11px">BM Name</th>'
+    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">Tier</th>'
+    +'<th style="padding:8px 10px;text-align:right;color:#fff;font-size:11px">'+month.split(' ')[0]+'</th>'
+    +'<th style="padding:8px 10px;text-align:right;color:rgba(255,255,255,.7);font-size:11px">LMTD</th>'
+    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">Growth</th>'
+    +'<th style="padding:8px 8px;text-align:right;color:#90caf9;font-size:11px">UC</th>'
+    +'<th style="padding:8px 8px;text-align:right;color:#ce93d8;font-size:11px">CV</th>'
+    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">Ach%</th>'
+    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">Ch</th>'
+    +'</tr>'
+    +tblRows
+    +'<tr style="background:#e8eaf6">'
+    +'<td style="padding:8px 10px;font-weight:800;color:#1a237e" colspan="2">TEAM TOTAL</td>'
+    +'<td style="padding:8px 10px;text-align:right;font-weight:800;color:#1a237e">'+fmtCr(totCur)+'</td>'
+    +'<td style="padding:8px 10px;text-align:right;color:#9e9e9e;font-size:11px">'+fmtCr(totPrv)+'</td>'
+    +'<td style="padding:8px 8px;text-align:center">'+(gPct!==null?'<span style="background:'+(up?'#e8f5e9':'#ffebee')+';color:'+(up?'#1b5e20':'#b71c1c')+';padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700">'+(up?'&#9650;':'&#9660;')+' '+(up?'+':'')+gPct+'%</span>':'-')+'</td>'
+    +'<td style="padding:8px 8px;text-align:right;color:#1565c0;font-size:11px">'+fmtCr(totUC)+'</td>'
+    +'<td style="padding:8px 8px;text-align:right;color:#6a1b9a;font-size:11px">'+fmtCr(totCV)+'</td>'
+    +'<td style="padding:8px 8px;text-align:center;font-size:11px">'+onTrack+'/'+rows.length+' on track</td>'
+    +'<td style="padding:8px 8px;text-align:center;font-weight:800">'+totCh+'</td>'
+    +'</tr>'
+    +'</table>'
+    // Footer
+    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:#1a237e;border-radius:0 0 12px 12px"><tr>'
+    +'<td style="padding:12px 28px;text-align:center"><div style="color:rgba(255,255,255,.6);font-size:10px">Rupyy Performance Dashboard &nbsp;|&nbsp; '+date+'</div></td>'
+    +'</tr></table>'
+    +'</body></html>';
+}
+
 function buildTHScorecardHTML() {
   const emps     = getEmpData();
   const prevData = window._LIVE_MAY||[];
