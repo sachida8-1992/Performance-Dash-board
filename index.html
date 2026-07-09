@@ -7189,19 +7189,18 @@ function buildFlatHierarchy(el, scopeTxns, role) {
             }).join('')}
           </tbody>
           <tfoot>
-            <tr style="background:#e8eaf6;font-weight:700">
-              <td style="padding:8px 10px" colspan="2">TOTAL (${rows.length} BMs)</td>
-              <td colspan="${role==='RH'?3:2}"></td>
+            <tr style="background:#e8eaf6;font-weight:700;border-top:2px solid #1a237e">
+              <td style="padding:8px 10px;color:#1a237e" colspan="${role==='RH'?4:3}">TOTAL (${rows.length} BMs)</td>
               <td style="padding:8px;text-align:right">${fmtCr(rows.reduce((s,r)=>s+r.totTgt,0))}</td>
-              <td style="padding:8px;text-align:right">${fmtCr(totDisb)}</td>
+              <td style="padding:8px;text-align:right;font-size:13px">${fmtCr(totDisb)}</td>
               <td style="padding:8px;text-align:right">${fmtCr(rows.reduce((s,r)=>s+r.ucTgt,0))}</td>
-              <td style="padding:8px;text-align:right;color:#1565c0">${fmtCr(totUC)}</td>
+              <td style="padding:8px;text-align:right;color:#1565c0;font-size:13px">${fmtCr(totUC)}</td>
               <td></td>
               <td style="padding:8px;text-align:right">${fmtCr(rows.reduce((s,r)=>s+r.cvTgt,0))}</td>
-              <td style="padding:8px;text-align:right;color:#6a1b9a">${fmtCr(totCV)}</td>
+              <td style="padding:8px;text-align:right;color:#6a1b9a;font-size:13px">${fmtCr(totCV)}</td>
               <td></td>
               <td style="padding:8px;text-align:right">${rows.reduce((s,r)=>s+(r.chTgt||0),0)}</td>
-              <td style="padding:8px;text-align:right;color:#00838f">${rows.reduce((s,r)=>s+r.ch,0)}</td>
+              <td style="padding:8px;text-align:right;color:#00838f;font-size:13px">${rows.reduce((s,r)=>s+r.ch,0)}</td>
               <td></td>
               <td style="padding:8px;text-align:right;color:#1565c0">${fmtCr(rows.reduce((s,r)=>s+r.ftdUC,0))}</td>
               <td style="padding:8px;text-align:right;color:#6a1b9a">${fmtCr(rows.reduce((s,r)=>s+r.ftdCV,0))}</td>
