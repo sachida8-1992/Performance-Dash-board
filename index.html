@@ -753,12 +753,18 @@ function doLogout() {
 function filterMyTxns() {
   const d = currentUser.designation;
   const id = currentUser.id;
-  // Only include July 2026 transactions (exclude May 31 spillover)
   const juneTxns = getTxnData().filter(t => t.date && t.date.startsWith(getCurMonth()));
-  if (d === 'BM')      myTxns = juneTxns.filter(t => t.bm_id === id);
-  else if (d === 'AM') myTxns = juneTxns.filter(t => t.am_id === id);
-  else if (d === 'TH') myTxns = juneTxns.filter(t => t.th_id === id);
-  else if (d === 'RH') myTxns = juneTxns.filter(t => t.rh_id === id);
+  if (d === 'BM') {
+    myTxns = juneTxns.filter(t => t.bm_id === id);
+  } else if (d === 'AM') {
+    myTxns = juneTxns.filter(t => t.am_id === id);
+  } else if (d === 'TH') {
+    // Get all BM IDs under this TH (some txns have empty th_id)
+    const thBmIds = new Set(getEmpData().filter(e => e.designation==='BM' && (e.th_id===id || e.am_id===id)).map(e=>e.id));
+    myTxns = juneTxns.filter(t => t.th_id === id || thBmIds.has(t.bm_id));
+  } else if (d === 'RH') {
+    myTxns = juneTxns.filter(t => t.rh_id === id);
+  }
 }
 
 // ========== INIT APP ==========
