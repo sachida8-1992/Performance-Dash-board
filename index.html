@@ -379,6 +379,7 @@ async function tryLoadLiveData() {
     const isSlim = 'bm_id' in txnSample && !('BM ID' in txnSample);
     window._LIVE_TXN = isSlim ? data.transactions : parseTransactions(data.transactions || []);
     window._LIVE_MAY = (data.may_data && data.may_data.length) ? data.may_data : TXN_DATA;
+    window._LIVE_BANK_TIERS = data.bank_tiers || {};
     window._LIVE_APR = data.apr_data ? parseTransactions(data.apr_data) : APR_DATA;
     window._LIVE_MAR = data.mar_data ? parseTransactions(data.mar_data) : MAR_DATA;
     loadHistoricalData(data); // store hist_YYYY_MM arrays for scorecard/monthly tabs
@@ -2163,7 +2164,16 @@ function buildBanks(el) {
       <div class="card">
         <div class="card-title">Lender Breakdown</div>
         <table>
-          <thead><tr><th>Bank / NBFC</th><th>Cases</th><th style="text-align:right">${getCurMonthLabel()} GMV</th><th style="text-align:right">${getPrevMonthLabel()} GMV</th><th style="text-align:center">Growth</th><th>Share</th></tr></thead>
+          <thead><tr>
+            <th>Bank / NBFC</th>
+            <th style="text-align:center">Cases</th>
+            <th style="text-align:right">July MTD</th>
+            <th style="text-align:right">June LMTD</th>
+            <th style="text-align:center">Growth</th>
+            <th style="text-align:right">June Final</th>
+            <th style="text-align:center">July Share%</th>
+            <th style="text-align:center">June Share%</th>
+          </tr></thead>
           <tbody id="bankTableBody"></tbody>
         </table>
       </div>
@@ -2209,27 +2219,56 @@ function buildBanks(el) {
       if (bank) { if (!mayBankMap[bank]) mayBankMap[bank] = 0; mayBankMap[bank] += m.amt||0; }
     });
 
+    // Get bank tiers from data.json
+    const bankTiers = (window._LIVE_BANK_TIERS) || {};
+
+    // June full month data (not LMTD) for final GMV
+    const juneFull = getMayData().filter(t => {
+      const d2=currentUser.designation, id2=currentUser.id;
+      if(d2==='BM') return t.bm_id===id2;
+      if(d2==='AM') return t.am_id===id2;
+      if(d2==='TH') return t.th_id===id2||t.bm_id; // use bm filter
+      return t.rh_id===id2;
+    });
+    const juneFinalMap = {};
+    juneFull.forEach(m => {
+      const bank = m.dcid ? dcidToBank[m.dcid] : null;
+      if (bank) { if (!juneFinalMap[bank]) juneFinalMap[bank]=0; juneFinalMap[bank]+=m.amt||0; }
+    });
+    const juneTotal = Object.values(juneFinalMap).reduce((s,v)=>s+v,0)||1;
+
+    function tierBadge(bankName) {
+      const t = bankTiers[(bankName||'').toLowerCase()] || '';
+      if (!t) return '';
+      if (t.toLowerCase().includes('platinum')) return '<span style="display:inline-block;background:linear-gradient(135deg,#7b1fa2,#9c27b0);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;margin-left:4px">★ PLATINUM</span>';
+      if (t.toLowerCase().includes('gold'))     return '<span style="display:inline-block;background:linear-gradient(135deg,#f57f17,#ffa000);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;margin-left:4px">★ GOLD</span>';
+      return '';
+    }
+
     const tbody = document.getElementById('bankTableBody');
     if (tbody) tbody.innerHTML = banks.map(b => {
-      const mayAmt  = mayBankMap[b.name] || 0;
-      const growth  = b.amt - mayAmt;
-      const gPct    = mayAmt > 0 ? Math.round((growth/mayAmt)*100) : null;
-      const gColor  = growth > 0 ? '#2e7d32' : growth < 0 ? '#c62828' : '#757575';
-      const gCell   = mayAmt === 0
+      const mayAmt   = mayBankMap[b.name] || 0;
+      const juneFinal= juneFinalMap[b.name] || 0;
+      const growth   = b.amt - mayAmt;
+      const gPct     = mayAmt > 0 ? Math.round((growth/mayAmt)*100) : null;
+      const gColor   = growth > 0 ? '#2e7d32' : growth < 0 ? '#c62828' : '#757575';
+      const julShare = Math.round((b.amt/total)*100);
+      const junShare = juneTotal>0 ? Math.round((juneFinal/juneTotal)*100) : 0;
+      const gCell    = mayAmt === 0
         ? '<span style="color:#9e9e9e;font-size:11px">New</span>'
-        : `<span style="color:${gColor};font-weight:700">${growth>=0?'+':''}${fmtCr(growth)}</span>`
-          + (gPct!==null?`<div style="font-size:10px;color:${gColor}">${gPct>=0?'+':''}${gPct}%</div>`:'');
-      return `<tr>
-        <td style="font-size:12px">${b.name||'Unknown'}</td>
-        <td>${b.cases}</td>
-        <td style="text-align:right"><b>${fmtCr(b.amt)}</b></td>
-        <td style="text-align:right;color:#546e7a">${mayAmt>0?fmtCr(mayAmt):'<span style="color:#9e9e9e">—</span>'}</td>
-        <td style="text-align:center">${gCell}</td>
-        <td><div style="display:flex;align-items:center;gap:8px">
-          <div class="progress-wrap" style="flex:1"><div class="progress-bar bar-green" style="width:${pct(b.amt,total)}%"></div></div>
-          <span style="font-size:11px;width:32px;text-align:right">${pct(b.amt,total)}%</span>
-        </div></td>
-      </tr>`;
+        : '<span style="color:'+gColor+';font-weight:700">'+(growth>=0?'+':'')+fmtCr(growth)+'</span>'
+          + (gPct!==null?'<div style="font-size:10px;color:'+gColor+'">'+(gPct>=0?'+':'')+gPct+'%</div>':'');
+      const bname = (b.name||'Unknown').replace('HDB Financial Services Limited','HDB Fin.').replace('Cholamandalam Investment and Finance Company','Chola').replace('Mahindra & Mahindra Financial Services','Mahindra Fin.').replace('Sundaram Finance Limited','Sundaram Fin.');
+      return '<tr>'
+        +'<td style="font-size:12px;max-width:160px">'+bname+tierBadge(b.name)+'</td>'
+        +'<td style="text-align:center">'+b.cases+'</td>'
+        +'<td style="text-align:right;font-weight:700">'+fmtCr(b.amt)+'</td>'
+        +'<td style="text-align:right;color:#546e7a">'+(mayAmt>0?fmtCr(mayAmt):'<span style="color:#9e9e9e">—</span>')+'</td>'
+        +'<td style="text-align:center">'+gCell+'</td>'
+        +'<td style="text-align:right;color:#546e7a">'+(juneFinal>0?fmtCr(juneFinal):'<span style="color:#9e9e9e">—</span>')+'</td>'
+        +'<td style="text-align:center"><span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">'+julShare+'%</span></td>'
+        +'<td style="text-align:center"><span style="background:#f3e5f5;color:#7b1fa2;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">'+(junShare>0?junShare+'%':'—')+'</span></td>'
+        +'</tr>';
     }).join('');
 
     const totalEl = document.getElementById('bankTotal');
