@@ -394,12 +394,9 @@ async function tryLoadLiveData() {
       }
     }
 
-    // If user is already logged in, refresh dashboard with live data
+    // If user is already logged in, refresh data silently
     if (currentUser) {
       filterMyTxns();
-      // Show a brief "live data loaded" toast
-      const toast = document.getElementById('liveToast');
-      if (toast) { toast.style.display='block'; setTimeout(()=>toast.style.display='none',3000); }
 
       // Only rebuild the currently active page — don't touch others
       const activeBtn = document.querySelector('.nav-btn.active');
@@ -436,11 +433,7 @@ async function tryLoadLiveData() {
       '| Jun txn:', window._LIVE_TXN.length,
       '| May txn:', window._LIVE_MAY.length);
   } catch(e) {
-    console.log('ℹ Data fetch failed:', e.message, '- retrying in 8s');
-    // Retry automatically until successful
-    if (!dataLoaded) {
-      setTimeout(() => tryLoadLiveData(), 8000);
-    }
+    console.log('ℹ Using embedded data:', e.message);
   }
 }
 
@@ -695,31 +688,24 @@ function getAprData()  { return (dataLoaded && window._LIVE_APR) ? window._LIVE_
 function getMarData()  { return (dataLoaded && window._LIVE_MAR) ? window._LIVE_MAR : MAR_DATA; }
 
 async function doLogin() {
-  const name = document.getElementById('loginName').value.trim().toLowerCase();
-  const pass = document.getElementById('loginPass').value.trim();
-  const btn  = document.querySelector('.login-btn');
+  const name  = document.getElementById('loginName').value.trim().toLowerCase();
+  const pass  = document.getElementById('loginPass').value.trim();
   const errEl = document.getElementById('loginErr');
+  errEl.textContent = '';
 
-  // Auth against EMP_DATA (hardcoded) immediately - don't wait for live data
-  // Primary: email = username, password = Employee Code
-  let emp = getEmpData().find(e => e.email === name && String(e.password) === String(pass));
-  // Fallback: if Employee Codes are all wrong/same in sheet, allow email-only login
-  if (!emp) {
-    const ids = getEmpData().map(e => e.id).filter(Boolean);
-    const allSameCode = ids.length > 1 && new Set(ids).size <= 1;
-    if (allSameCode) emp = getEmpData().find(e => e.email === name);
-  }
+  // Authenticate against hardcoded EMP_DATA
+  const emp = getEmpData().find(e => e.email === name && String(e.password) === String(pass));
   if (!emp) {
     errEl.textContent = 'Invalid email or password';
     return;
   }
-  currentUser = emp;
 
-  // Always show dashboard immediately with whatever data is available
-  // Live data loads in background and refreshes automatically
+  // Login successful - show dashboard immediately
+  currentUser = emp;
   filterMyTxns();
   initApp();
-  // If live data not yet loaded, fetch it now and refresh dashboard when done
+
+  // Load live data in background, refresh dashboard when done
   if (!dataLoaded) {
     tryLoadLiveData();
   }
@@ -7436,21 +7422,12 @@ function toggleSection(id) {
 }
 
 </script>
-</script>
 <script>
-// Start fetching data immediately when DOM is ready
-document.addEventListener('DOMContentLoaded', function() {
-  // Small delay to ensure all inline scripts have parsed
-  setTimeout(function() {
-    if (typeof tryLoadLiveData === 'function') {
-      tryLoadLiveData();
-    }
-  }, 200);
-  // Auto-refresh every 30 min
+// Start background data fetch after page fully loads
+window.addEventListener('load', function() {
+  if (typeof tryLoadLiveData === 'function') tryLoadLiveData();
   setInterval(function() {
-    if (typeof currentUser !== 'undefined' && currentUser && typeof tryLoadLiveData === 'function') {
-      tryLoadLiveData();
-    }
+    if (typeof currentUser !== 'undefined' && currentUser) tryLoadLiveData();
   }, 30 * 60 * 1000);
 });
 </script>
