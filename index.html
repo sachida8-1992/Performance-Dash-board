@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <!-- v20260709-1702 -->
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -652,7 +653,7 @@ function getAMFilterBar(onChangeFn) {
 
 function setAMFilter(amId, rebuildFn) {
   _activeAMFilter = amId;
-  // Rebuild the current tab
+  window._activeBMFilter = ''; // reset BM filter when AM changes
   if (rebuildFn && window[rebuildFn]) {
     const el = document.querySelector('.page.active');
     if (el) window[rebuildFn](el);
@@ -3370,8 +3371,12 @@ function buildMonthlySummary(el) {
       if (filterRole && e.designation !== filterRole) return false;
       if (role === 'BM')  return e.id === currentUser.id;
       if (role === 'AM')  return e.am_id === currentUser.id || e.id === currentUser.id;
-      if (role === 'TH')  return e.th_id === currentUser.id || e.id === currentUser.id;
-      if (role === 'RH')  return e.rh_id === currentUser.id || e.id === currentUser.id;
+      if (role === 'TH')  return e.th_id === currentUser.id || e.am_id === currentUser.id || e.id === currentUser.id;
+      if (role === 'RH') {
+        if (window._activeBMFilter) return e.id === window._activeBMFilter;
+        if (_activeAMFilter) return e.am_id === _activeAMFilter;
+        return e.rh_id === currentUser.id;
+      }
       return false;
     });
   }
@@ -3455,7 +3460,7 @@ function buildMonthlySummary(el) {
       </div>`;
   }
 
-  el.innerHTML = getAMFilterBar('buildMonthlySummary') + buildAMSummaryCard() + `
+  el.innerHTML = getAMFilterBar('buildMonthlySummary') + getBMFilterBar('buildMonthlySummary') + `
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px 16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07)">
       <span style="font-size:13px;font-weight:700;color:#1a237e"> View:</span>
       ${roleOptions.map(r=>`<button onclick="window._mthRole='${r}';document.getElementById('mthBody').innerHTML=window._mthRender('${r}')"
