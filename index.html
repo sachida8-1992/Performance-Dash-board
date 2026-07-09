@@ -7,18 +7,7 @@
   <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rupyy Performance Dashboard</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js">
-// Fetch live data on page load (non-blocking)
-tryLoadLiveData();
-
-// Auto-refresh every 30 minutes silently while user is logged in
-setInterval(() => {
-  if (currentUser) {
-    console.log('⏰ Auto-refresh triggered at', new Date().toLocaleTimeString());
-    tryLoadLiveData();
-  }
-}, 30 * 60 * 1000); // 30 minutes
-</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -405,9 +394,12 @@ async function tryLoadLiveData() {
       }
     }
 
-    // If user is already logged in, refresh data silently
+    // If user is already logged in, refresh dashboard with live data
     if (currentUser) {
       filterMyTxns();
+      // Show a brief "live data loaded" toast
+      const toast = document.getElementById('liveToast');
+      if (toast) { toast.style.display='block'; setTimeout(()=>toast.style.display='none',3000); }
 
       // Only rebuild the currently active page — don't touch others
       const activeBtn = document.querySelector('.nav-btn.active');
@@ -444,7 +436,11 @@ async function tryLoadLiveData() {
       '| Jun txn:', window._LIVE_TXN.length,
       '| May txn:', window._LIVE_MAY.length);
   } catch(e) {
-    console.log('ℹ Using embedded data:', e.message);
+    console.log('ℹ Data fetch failed:', e.message, '- retrying in 8s');
+    // Retry automatically until successful
+    if (!dataLoaded) {
+      setTimeout(() => tryLoadLiveData(), 8000);
+    }
   }
 }
 
@@ -719,62 +715,13 @@ async function doLogin() {
   }
   currentUser = emp;
 
-  if (dataLoaded) {
-    // Data already loaded - show dashboard immediately
-    filterMyTxns();
-    initApp();
-  } else {
-    // First login - show loading screen, wait for data, then show dashboard
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('mainApp').style.display = 'none';
-
-    // Show loading overlay
-    let loadingDiv = document.getElementById('dataLoadingOverlay');
-    if (!loadingDiv) {
-      loadingDiv = document.createElement('div');
-      loadingDiv.id = 'dataLoadingOverlay';
-      loadingDiv.style.cssText = 'position:fixed;inset:0;background:linear-gradient(135deg,#1a237e,#283593);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999';
-      loadingDiv.innerHTML = '<div style="background:rgba(255,255,255,.12);border-radius:16px;padding:40px 60px;text-align:center">'
-        + '<div style="color:#fff;font-size:32px;font-weight:800;margin-bottom:16px">Rupyy</div>'
-        + '<div style="color:#fff;font-size:20px;font-weight:800;margin-bottom:8px">Loading Dashboard</div>'
-        + '<div id="loadingMsg" style="color:rgba(255,255,255,.7);font-size:13px;margin-bottom:24px">Fetching live data...</div>'
-        + '<div style="width:200px;height:4px;background:rgba(255,255,255,.2);border-radius:2px;overflow:hidden">'
-        + '<div id="loadingBar" style="height:100%;background:#fff;border-radius:2px;width:0%;transition:width .3s ease"></div>'
-        + '</div>'
-        + '</div>';
-      document.body.appendChild(loadingDiv);
-    } else {
-      loadingDiv.style.display = 'flex';
-    }
-
-    // Animate loading bar
-    let progress = 0;
-    const barEl = document.getElementById('loadingBar');
-    const msgEl = document.getElementById('loadingMsg');
-    const timer = setInterval(() => {
-      progress = Math.min(progress + 2, 85);
-      if (barEl) barEl.style.width = progress + '%';
-    }, 100);
-
-    // Load data then show dashboard
-    tryLoadLiveData().then(() => {
-      clearInterval(timer);
-      if (barEl) barEl.style.width = '100%';
-      if (msgEl) msgEl.textContent = 'Ready!';
-      setTimeout(() => {
-        if (loadingDiv) loadingDiv.style.display = 'none';
-        filterMyTxns();
-        initApp();
-      }, 300);
-    }).catch(() => {
-      clearInterval(timer);
-      if (msgEl) msgEl.textContent = 'Could not load live data — showing cached data';
-      setTimeout(() => {
-        if (loadingDiv) loadingDiv.style.display = 'none';
-        filterMyTxns();
-        initApp();
-      }, 1500);
-    });
+  // Always show dashboard immediately with whatever data is available
+  // Live data loads in background and refreshes automatically
+  filterMyTxns();
+  initApp();
+  // If live data not yet loaded, fetch it now and refresh dashboard when done
+  if (!dataLoaded) {
+    tryLoadLiveData();
   }
 }
 
@@ -7488,4 +7435,22 @@ function toggleSection(id) {
   if (arr) arr.textContent = isOpen ? '▼' : '▲';
 }
 
+</script>
+</script>
+<script>
+// Start fetching data immediately when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+  // Small delay to ensure all inline scripts have parsed
+  setTimeout(function() {
+    if (typeof tryLoadLiveData === 'function') {
+      tryLoadLiveData();
+    }
+  }, 200);
+  // Auto-refresh every 30 min
+  setInterval(function() {
+    if (typeof currentUser !== 'undefined' && currentUser && typeof tryLoadLiveData === 'function') {
+      tryLoadLiveData();
+    }
+  }, 30 * 60 * 1000);
+});
 </script>
