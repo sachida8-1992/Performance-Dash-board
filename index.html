@@ -574,6 +574,50 @@ function getCurMonth() { return window.CURRENT_MONTH || '2026-07'; }
 // ── Shared AM filter for RH view ─────────────────────────
 let _activeAMFilter = '';  // '' = All AMs
 
+function getBMFilterBar(onChangeFn) {
+  const role = currentUser.designation;
+  if (role === 'BM') return '';
+  const emps = getEmpData();
+  let bmList = [];
+  if (role === 'RH') bmList = emps.filter(e=>e.designation==='BM'&&e.rh_id===currentUser.id);
+  if (role === 'AM') bmList = emps.filter(e=>e.designation==='BM'&&e.am_id===currentUser.id);
+  if (role === 'TH') bmList = emps.filter(e=>e.designation==='BM'&&(e.th_id===currentUser.id||e.am_id===currentUser.id));
+  if (_activeAMFilter) bmList = bmList.filter(e=>e.am_id===_activeAMFilter);
+  if (!bmList.length) return '';
+
+  const opts = bmList.map(bm => '<option value="' + bm.id + '">' + bm.name + (bm.tier ? ' (' + bm.tier + ')' : '') + '</option>').join('');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.07);margin-bottom:12px';
+  div.innerHTML = '<span style="font-size:12px;font-weight:700;color:#1a237e">BM View:</span>'
+    + '<select id="bmFilterSelect" style="padding:5px 12px;border:1px solid #c5cae9;border-radius:8px;font-size:12px;color:#333;background:#f5f7ff;min-width:160px">'
+    + '<option value="">All BMs</option>' + opts + '</select>'
+    + '<button id="bmClearBtn" style="padding:4px 10px;border:1px solid #e0e0e0;border-radius:6px;font-size:11px;background:#fff;cursor:pointer;color:#666;display:none">Clear</button>';
+
+  setTimeout(function() {
+    const sel = document.getElementById('bmFilterSelect');
+    const clr = document.getElementById('bmClearBtn');
+    if (!sel) return;
+    if (window._activeBMFilter) { sel.value = window._activeBMFilter; if(clr) clr.style.display='inline-block'; }
+    sel.onchange = function() {
+      window._activeBMFilter = sel.value;
+      if (clr) clr.style.display = sel.value ? 'inline-block' : 'none';
+      const el = document.querySelector('.page.active');
+      if (el && window[onChangeFn]) window[onChangeFn](el);
+    };
+    if (clr) clr.onclick = function() {
+      window._activeBMFilter = '';
+      sel.value = '';
+      clr.style.display = 'none';
+      const el = document.querySelector('.page.active');
+      if (el && window[onChangeFn]) window[onChangeFn](el);
+    };
+  }, 50);
+
+  return div.outerHTML;
+}
+
+window._activeBMFilter = '';
+
 function getAMFilterBar(onChangeFn) {
   const role = currentUser.designation;
   if (role !== 'RH' && role !== 'TH') return '';
@@ -3415,10 +3459,12 @@ function buildMonthlySummary(el) {
 
   window._mthRender = function(showRole) {
     const base = renderTable(showRole);
-    if (_activeAMFilter && showRole !== 'BM') {
+    if (_activeAMFilter) {
       const am = getSelectedAM();
       const amLabel = am ? am.name : 'AM';
-      return base + '<div style="margin-top:20px"><div style="padding:10px 0 8px;font-size:13px;font-weight:700;color:#1a237e">BM Span of ' + amLabel + '</div>' + renderTable('BM') + '</div>';
+      if (showRole !== 'BM') {
+        return base + '<div style="margin-top:20px;padding-top:16px;border-top:2px solid #e8eaf6"><div style="font-size:13px;font-weight:700;color:#1a237e;margin-bottom:10px">BM Span — ' + amLabel + '</div>' + renderTable('BM') + '</div>';
+      }
     }
     return base;
   };
@@ -3431,11 +3477,13 @@ function buildChannel6M(el) {
 
   // Collect all transactions across 6 months scoped to current user
   function scopeFilter(txns) {
-    if (role==='BM') return txns.filter(t=>t.bm_id===currentUser.id);
-    if (role==='AM') return txns.filter(t=>t.am_id===currentUser.id);
-    if (role==='TH') return txns.filter(t=>t.th_id===currentUser.id||t.am_id===currentUser.id);
-    if (_activeAMFilter) return txns.filter(t=>t.am_id===_activeAMFilter);
-    return txns.filter(t=>t.rh_id===currentUser.id);
+    let out;
+    if (role==='BM') out = txns.filter(t=>t.bm_id===currentUser.id);
+    else if (role==='AM') out = txns.filter(t=>t.am_id===currentUser.id);
+    else if (role==='TH') out = txns.filter(t=>t.th_id===currentUser.id||t.am_id===currentUser.id);
+    else if (_activeAMFilter) out = txns.filter(t=>t.am_id===_activeAMFilter);
+    else out = txns.filter(t=>t.rh_id===currentUser.id);
+    return window._activeBMFilter ? out.filter(t=>t.bm_id===window._activeBMFilter) : out;
   }
 
   // Build dealer map across all months
@@ -3472,7 +3520,7 @@ function buildChannel6M(el) {
   const curPfx  = getCurMonthPrefix();
   const prevPfx = getPrevMonthPrefix();
 
-  el.innerHTML = getAMFilterBar('buildChannel6M') + `
+  el.innerHTML = getAMFilterBar('buildChannel6M') + getBMFilterBar('buildChannel6M') + `
     <div style="margin-bottom:12px;padding:12px 16px;background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);font-size:12px;color:#555">
        <b>${dealers.length} channels</b> tracked across last 6 months &nbsp;|&nbsp;
        Active = had txns that month &nbsp;|&nbsp;  Gap = no txns
@@ -3535,11 +3583,12 @@ function buildScorecard(el) {
 
   // Get all months data in scope
   function scopeTxns(txns) {
-    if (role==='BM') return txns.filter(t=>t.bm_id===currentUser.id);
-    if (role==='AM') return txns.filter(t=>t.am_id===currentUser.id);
-    if (role==='TH') return txns.filter(t=>t.th_id===currentUser.id);
-    // RH: apply AM filter if selected
-    return _activeAMFilter ? txns.filter(t=>t.am_id===_activeAMFilter||t.rh_id===currentUser.id&&!_activeAMFilter) : txns.filter(t=>t.rh_id===currentUser.id);
+    let out;
+    if (role==='BM') out = txns.filter(t=>t.bm_id===currentUser.id);
+    else if (role==='AM') out = txns.filter(t=>t.am_id===currentUser.id);
+    else if (role==='TH') out = txns.filter(t=>t.th_id===currentUser.id);
+    else out = _activeAMFilter ? txns.filter(t=>t.am_id===_activeAMFilter) : txns.filter(t=>t.rh_id===currentUser.id);
+    return window._activeBMFilter ? out.filter(t=>t.bm_id===window._activeBMFilter) : out;
   }
 
   const curTxns  = scopeTxns(window._LIVE_TXN||[]);
@@ -3597,7 +3646,7 @@ function buildScorecard(el) {
 
   const potentialGMV = lostChData.reduce((s,c)=>s+c.gmv,0) + inactiveChData.reduce((s,c)=>s+c.avg,0);
 
-  el.innerHTML = getAMFilterBar('buildScorecard') + `
+  el.innerHTML = getAMFilterBar('buildScorecard') + getBMFilterBar('buildScorecard') + `
     <!-- Channel Activation Trend (moved to top) -->
     <div class="card" style="margin-bottom:16px">
       <div class="card-title">Channel Activation Trend — Last 3 Months</div>
@@ -3843,7 +3892,7 @@ function buildQuarterly(el) {
       </div>`;
   }
 
-  el.innerHTML = getAMFilterBar('buildQuarterly') + buildAMSummaryCard() + `
+  el.innerHTML = getAMFilterBar('buildQuarterly') + `
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px 16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07)">
       <span style="font-size:13px;font-weight:700;color:#1a237e">Q1 ${getFYStartYear()}-${String(getFYStartYear()+1).slice(2)} (Apr-Jun) &nbsp;|&nbsp; View:</span>
       ${roleOptions.map((r,i)=>`
@@ -3970,7 +4019,7 @@ function buildChannelDrive(el) {
   const totGap   = bmRows.reduce((s,r)=>s+r.chGap,0);
   const needFocus= bmRows.filter(r=>r.bmLost>0||r.bmInact>2).length;
 
-  el.innerHTML = getAMFilterBar('buildChannelDrive') + buildAMSummaryCard() + `
+  el.innerHTML = getAMFilterBar('buildChannelDrive') + `
     <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
       <div class="kpi"><div class="kpi-label">BMs Needing Focus</div><div class="kpi-value" style="color:#c62828">${needFocus}</div></div>
       <div class="kpi"><div class="kpi-label">Total Lost Channels</div><div class="kpi-value" style="color:#c62828">${totLost}</div></div>
