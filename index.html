@@ -581,7 +581,13 @@ window._activeBMFilter = '';
 function setBMFilter(bmId, rebuildFn) {
   window._activeBMFilter = bmId;
   const el = document.querySelector('.page.active');
-  if (el && window[rebuildFn]) window[rebuildFn](el);
+  if (el && window[rebuildFn]) {
+    window[rebuildFn](el);
+  } else if (window._mthRender && document.getElementById('mthBody')) {
+    // Monthly Summary: update mthBody without full rebuild
+    const cur = window._mthRole || 'BM';
+    document.getElementById('mthBody').innerHTML = window._mthRender(cur);
+  }
 }
 
 function getBMFilterBar(onChangeFn) {
@@ -2184,6 +2190,8 @@ function buildBanks(el) {
     const prod  = (document.getElementById('bankProdFilter')  || {value:'all'}).value;
     const loan  = (document.getElementById('bankLoanFilter')  || {value:'all'}).value;
     const state = (document.getElementById('bankStateFilter') || {value:'all'}).value;
+
+    // Filter July txns
     let filtered = myTxns;
     if (prod  === 'uc')       filtered = filtered.filter(t => t.product === 'Used Car');
     if (prod  === 'cv')       filtered = filtered.filter(t => t.product !== 'Used Car');
@@ -2191,57 +2199,52 @@ function buildBanks(el) {
     if (loan  === 'purchase') filtered = filtered.filter(t => (t.loan_type||'').toLowerCase().includes('purchase') && !(t.loan_type||'').toLowerCase().startsWith('ucv') && !(t.loan_type||'').toLowerCase().startsWith('ncv'));
     if (loan  === 'others')   filtered = filtered.filter(t => !((t.loan_type||'').toLowerCase().includes('purchase') && !(t.loan_type||'').toLowerCase().startsWith('ucv') && !(t.loan_type||'').toLowerCase().startsWith('ncv')));
 
+    // July bank map
     const bankMap = {};
     filtered.forEach(t => {
-      if (!bankMap[t.bank]) bankMap[t.bank] = {name:t.bank, amt:0, cases:0};
-      bankMap[t.bank].amt += t.amt;
-      bankMap[t.bank].cases++;
+      const bk = t.bank || 'Unknown';
+      if (!bankMap[bk]) bankMap[bk] = {name:bk, amt:0, cases:0};
+      bankMap[bk].amt += t.amt;
+      bankMap[bk].cases++;
     });
     const banks = Object.values(bankMap).sort((a,b)=>b.amt-a.amt);
     const total = banks.reduce((s,b)=>s+b.amt,0)||1;
 
-    // May GMV: scope to same DCIDs as state-filtered June txns
-    // (May slim data has no state field — DCID is the state proxy)
-    const stateFilteredDcids = new Set(filtered.map(t => t.dcid).filter(Boolean));
-    const dcidToBank = {};
-    filtered.forEach(t => { if(t.dcid && t.bank) dcidToBank[t.dcid] = t.bank; });
-    const mayPool = toLMTD(getMayData()).filter(t => {
+    // Scope May data
+    const mayScope = getMayData().filter(t => {
       const d2=currentUser.designation, id2=currentUser.id;
       if(d2==='BM') return t.bm_id===id2;
       if(d2==='AM') return t.am_id===id2;
-      if(d2==='TH') return t.th_id===id2;
-      if(d2==='RH') return t.rh_id===id2;
-      return false;
-    }).filter(t => state === 'all' || !t.dcid || stateFilteredDcids.has(t.dcid));
-    const mayBankMap = {};
-    mayPool.forEach(m => {
-      const bank = m.dcid ? dcidToBank[m.dcid] : null;
-      if (bank) { if (!mayBankMap[bank]) mayBankMap[bank] = 0; mayBankMap[bank] += m.amt||0; }
-    });
-
-    // Get bank tiers from data.json
-    const bankTiers = (window._LIVE_BANK_TIERS) || {};
-
-    // June full month data (not LMTD) for final GMV
-    const juneFull = getMayData().filter(t => {
-      const d2=currentUser.designation, id2=currentUser.id;
-      if(d2==='BM') return t.bm_id===id2;
-      if(d2==='AM') return t.am_id===id2;
-      if(d2==='TH') return t.th_id===id2||t.bm_id; // use bm filter
+      if(d2==='TH') return t.th_id===id2||t.am_id===id2;
       return t.rh_id===id2;
     });
+
+    // June LMTD (same days as July)
+    const mayLMTD = toLMTD(mayScope);
+    const mayBankMap = {};
+    mayLMTD.forEach(t => {
+      const bk = t.bank || 'Unknown';
+      if (!mayBankMap[bk]) mayBankMap[bk] = 0;
+      mayBankMap[bk] += t.amt;
+    });
+
+    // June Full month (for June Final GMV)
     const juneFinalMap = {};
-    juneFull.forEach(m => {
-      const bank = m.dcid ? dcidToBank[m.dcid] : null;
-      if (bank) { if (!juneFinalMap[bank]) juneFinalMap[bank]=0; juneFinalMap[bank]+=m.amt||0; }
+    mayScope.forEach(t => {
+      const bk = t.bank || 'Unknown';
+      if (!juneFinalMap[bk]) juneFinalMap[bk] = 0;
+      juneFinalMap[bk] += t.amt;
     });
     const juneTotal = Object.values(juneFinalMap).reduce((s,v)=>s+v,0)||1;
+
+    // Bank tiers
+    const bankTiers = window._LIVE_BANK_TIERS || {};
 
     function tierBadge(bankName) {
       const t = bankTiers[(bankName||'').toLowerCase()] || '';
       if (!t) return '';
-      if (t.toLowerCase().includes('platinum')) return '<span style="display:inline-block;background:linear-gradient(135deg,#7b1fa2,#9c27b0);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;margin-left:4px">★ PLATINUM</span>';
-      if (t.toLowerCase().includes('gold'))     return '<span style="display:inline-block;background:linear-gradient(135deg,#f57f17,#ffa000);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;margin-left:4px">★ GOLD</span>';
+      if (t.toLowerCase().includes('platinum')) return '<span style="display:inline-block;background:linear-gradient(135deg,#7b1fa2,#9c27b0);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;margin-left:4px">&#9733; PLATINUM</span>';
+      if (t.toLowerCase().includes('gold'))     return '<span style="display:inline-block;background:linear-gradient(135deg,#f57f17,#ffa000);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;margin-left:4px">&#9733; GOLD</span>';
       return '';
     }
 
@@ -3510,13 +3513,16 @@ function buildMonthlySummary(el) {
   `;
 
   window._mthRender = function(showRole) {
+    // If BM filter active, always show BM view for that specific BM
+    if (window._activeBMFilter) {
+      return renderTable('BM');
+    }
     const base = renderTable(showRole);
-    if (_activeAMFilter) {
+    // If AM filter active and not already BM view, append BM span below
+    if (_activeAMFilter && showRole !== 'BM') {
       const am = getSelectedAM();
       const amLabel = am ? am.name : 'AM';
-      if (showRole !== 'BM') {
-        return base + '<div style="margin-top:20px;padding-top:16px;border-top:2px solid #e8eaf6"><div style="font-size:13px;font-weight:700;color:#1a237e;margin-bottom:10px">BM Span — ' + amLabel + '</div>' + renderTable('BM') + '</div>';
-      }
+      return base + '<div style="margin-top:20px;padding-top:16px;border-top:2px solid #e8eaf6"><div style="font-size:13px;font-weight:700;color:#1a237e;margin-bottom:10px">BM Span — ' + amLabel + '</div>' + renderTable('BM') + '</div>';
     }
     return base;
   };
