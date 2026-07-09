@@ -574,6 +574,14 @@ function getCurMonth() { return window.CURRENT_MONTH || '2026-07'; }
 // ── Shared AM filter for RH view ─────────────────────────
 let _activeAMFilter = '';  // '' = All AMs
 
+window._activeBMFilter = '';
+
+function setBMFilter(bmId, rebuildFn) {
+  window._activeBMFilter = bmId;
+  const el = document.querySelector('.page.active');
+  if (el && window[rebuildFn]) window[rebuildFn](el);
+}
+
 function getBMFilterBar(onChangeFn) {
   const role = currentUser.designation;
   if (role === 'BM') return '';
@@ -585,38 +593,22 @@ function getBMFilterBar(onChangeFn) {
   if (_activeAMFilter) bmList = bmList.filter(e=>e.am_id===_activeAMFilter);
   if (!bmList.length) return '';
 
-  const opts = bmList.map(bm => '<option value="' + bm.id + '">' + bm.name + (bm.tier ? ' (' + bm.tier + ')' : '') + '</option>').join('');
-  const div = document.createElement('div');
-  div.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.07);margin-bottom:12px';
-  div.innerHTML = '<span style="font-size:12px;font-weight:700;color:#1a237e">BM View:</span>'
-    + '<select id="bmFilterSelect" style="padding:5px 12px;border:1px solid #c5cae9;border-radius:8px;font-size:12px;color:#333;background:#f5f7ff;min-width:160px">'
-    + '<option value="">All BMs</option>' + opts + '</select>'
-    + '<button id="bmClearBtn" style="padding:4px 10px;border:1px solid #e0e0e0;border-radius:6px;font-size:11px;background:#fff;cursor:pointer;color:#666;display:none">Clear</button>';
+  const cur = window._activeBMFilter || '';
+  const opts = bmList.map(bm =>
+    '<option value="' + bm.id + '"' + (bm.id===cur?' selected':'') + '>'
+    + bm.name + (bm.tier?' ('+bm.tier+')':'') + '</option>'
+  ).join('');
 
-  setTimeout(function() {
-    const sel = document.getElementById('bmFilterSelect');
-    const clr = document.getElementById('bmClearBtn');
-    if (!sel) return;
-    if (window._activeBMFilter) { sel.value = window._activeBMFilter; if(clr) clr.style.display='inline-block'; }
-    sel.onchange = function() {
-      window._activeBMFilter = sel.value;
-      if (clr) clr.style.display = sel.value ? 'inline-block' : 'none';
-      const el = document.querySelector('.page.active');
-      if (el && window[onChangeFn]) window[onChangeFn](el);
-    };
-    if (clr) clr.onclick = function() {
-      window._activeBMFilter = '';
-      sel.value = '';
-      clr.style.display = 'none';
-      const el = document.querySelector('.page.active');
-      if (el && window[onChangeFn]) window[onChangeFn](el);
-    };
-  }, 50);
-
-  return div.outerHTML;
+  return '<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.07);margin-bottom:12px">'
+    + '<span style="font-size:12px;font-weight:700;color:#1a237e">BM View:</span>'
+    + '<select onchange="setBMFilter(this.value,'' + onChangeFn + '')" '
+    + 'style="padding:5px 12px;border:1px solid #c5cae9;border-radius:8px;font-size:12px;color:#333;background:#f5f7ff;min-width:180px">'
+    + '<option value="">All BMs</option>' + opts
+    + '</select>'
+    + (cur ? '<button onclick="setBMFilter('','' + onChangeFn + '')" '
+      + 'style="padding:4px 10px;border:1px solid #e0e0e0;border-radius:6px;font-size:11px;background:#fff;cursor:pointer;color:#666">Clear</button>' : '')
+    + '</div>';
 }
-
-window._activeBMFilter = '';
 
 function getAMFilterBar(onChangeFn) {
   const role = currentUser.designation;
