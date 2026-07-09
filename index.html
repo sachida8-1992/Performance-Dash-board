@@ -976,6 +976,31 @@ function buildOverview(el) {
   // Channel count: max ch_check per BM (for BM view, or across BMs for higher roles)
   const chActive = getActiveChannels();
 
+  // LMTD calculations (same days last month)
+  const lmtdTxns = toLMTD((window._LIVE_MAY||[]).filter(t => {
+    if (d==='BM') return t.bm_id===currentUser.id;
+    if (d==='AM') return t.am_id===currentUser.id;
+    if (d==='TH') return t.th_id===currentUser.id||t.am_id===currentUser.id;
+    return t.rh_id===currentUser.id;
+  }));
+  const lmtdAmt   = lmtdTxns.reduce((s,t)=>s+t.amt,0);
+  const lmtdUC    = lmtdTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+  const lmtdCV    = lmtdTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+  const lmtdCases = lmtdTxns.length;
+  const lmtdCh    = new Set(lmtdTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+  const todayDay  = new Date().getDate();
+
+  function growthTag(cur, prev) {
+    if (!prev) return '';
+    const diff = cur - prev;
+    const pctG = Math.round((diff/prev)*100);
+    const up   = diff >= 0;
+    const col  = up ? '#2e7d32' : '#c62828';
+    const bg   = up ? '#e8f5e9' : '#ffebee';
+    const sign = up ? '+' : '';
+    return '<span style="display:inline-block;background:'+bg+';color:'+col+';padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;margin-left:4px">'+(up?'&#9650;':'&#9660;')+' '+sign+pctG+'%</span>';
+  }
+
   // BM Productivity card (AM/TH/RH only)
   let bmProdCard = '';
   if (d !== 'BM') {
@@ -1011,28 +1036,43 @@ function buildOverview(el) {
         <div class="kpi-value">${fmtCr(totalAmt)}</div>
         <div class="kpi-sub">Target: ${fmtCr(totalTgt)} &nbsp;|&nbsp; <b>${pctAchv}% achieved</b></div>
         <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${Math.min(pctAchv,100)}%"></div></div>
+        <div class="kpi-sub" style="margin-top:6px;border-top:1px solid #f0f0f0;padding-top:5px">
+          LMTD (1-${todayDay}): <b>${fmtCr(lmtdAmt)}</b>${growthTag(totalAmt,lmtdAmt)}
+        </div>
       </div>
       <div class="kpi">
         <div class="kpi-label">Used Car Disbursal</div>
         <div class="kpi-value">${fmtCr(ucAmt)}</div>
         <div class="kpi-sub">Target: ${fmtCr(ucTgt)} &nbsp;|&nbsp; <b>${pct(ucAmt,ucTgt)}%</b></div>
         <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${Math.min(pct(ucAmt,ucTgt),100)}%"></div></div>
+        <div class="kpi-sub" style="margin-top:6px;border-top:1px solid #f0f0f0;padding-top:5px">
+          LMTD: <b>${fmtCr(lmtdUC)}</b>${growthTag(ucAmt,lmtdUC)}
+        </div>
       </div>
       <div class="kpi">
         <div class="kpi-label">CV Disbursal</div>
         <div class="kpi-value">${fmtCr(cvAmt+ncvAmt)}</div>
         <div class="kpi-sub">Used CV: ${fmtCr(cvAmt)} &nbsp;|&nbsp; New CV: ${fmtCr(ncvAmt)}</div>
+        <div class="kpi-sub" style="margin-top:6px;border-top:1px solid #f0f0f0;padding-top:5px">
+          LMTD: <b>${fmtCr(lmtdCV)}</b>${growthTag(cvAmt+ncvAmt,lmtdCV)}
+        </div>
       </div>
       <div class="kpi">
         <div class="kpi-label">Total Cases</div>
         <div class="kpi-value">${cases}</div>
         <div class="kpi-sub">Avg ticket: ${fmtCr(avgTicket)}</div>
+        <div class="kpi-sub" style="margin-top:6px;border-top:1px solid #f0f0f0;padding-top:5px">
+          LMTD: <b>${lmtdCases}</b>${growthTag(cases,lmtdCases)}
+        </div>
       </div>
       <div class="kpi">
         <div class="kpi-label">Active Channels</div>
         <div class="kpi-value">${chActive}</div>
         <div class="kpi-sub">Target: ${chTgt > 0 ? chTgt : '—'} &nbsp;|&nbsp; <b>${chTgt>0?pct(chActive,chTgt)+'%':'—'}</b></div>
         ${chTgt>0?`<div class="kpi-bar"><div class="kpi-bar-fill" style="width:${Math.min(pct(chActive,chTgt),100)}%"></div></div>`:''}
+        <div class="kpi-sub" style="margin-top:6px;border-top:1px solid #f0f0f0;padding-top:5px">
+          LMTD: <b>${lmtdCh}</b>${growthTag(chActive,lmtdCh)}
+        </div>
       </div>
       ${bmProdCard}
     </div>
@@ -1693,18 +1733,18 @@ function buildRHPerfTable() {
   let html = `
   <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:820px">
     <thead>
-      <tr style="background:#1a237e;color:#fff">
-        <th style="padding:8px 10px;text-align:left;border-radius:6px 0 0 0;white-space:nowrap">State</th>
-        <th style="padding:8px 10px;text-align:left;white-space:nowrap">Name</th>
-        <th style="padding:8px 10px;text-align:left;white-space:nowrap">Role</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap">TGT</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap">MTD ACH</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap">Short</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap">LMTD ACH</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap">MTD vs LMTD</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap">DRR</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap">YP</th>
-        <th style="padding:8px 10px;text-align:right;border-radius:0 6px 0 0;white-space:nowrap">FTD Ach</th>
+      <tr style="background:#1a237e">
+        <th style="padding:8px 10px;text-align:left;border-radius:6px 0 0 0;white-space:nowrap;color:#fff">State</th>
+        <th style="padding:8px 10px;text-align:left;white-space:nowrap;color:#fff">Name</th>
+        <th style="padding:8px 10px;text-align:left;white-space:nowrap;color:#fff">Role</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap;color:#fff">TGT</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap;color:#fff">MTD ACH</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap;color:#fff">Short</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap;color:#fff">LMTD ACH</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap;color:#fff">MTD vs LMTD</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap;color:#fff">DRR</th>
+        <th style="padding:8px 10px;text-align:right;white-space:nowrap;color:#fff">YP</th>
+        <th style="padding:8px 10px;text-align:right;border-radius:0 6px 0 0;white-space:nowrap;color:#fff">FTD Ach</th>
       </tr>
     </thead>
     <tbody>`;
@@ -7282,10 +7322,10 @@ function buildFlatHierarchy(el, scopeTxns, role) {
               ${role==='RH'?`<th style="${hdrL}" rowspan="2">TH Name</th>`:''}
               <th style="${hdrStyle}" rowspan="2">Total<br>TGT</th>
               <th style="${hdrStyle}" rowspan="2">Total<br>Disb</th>
-              <th style="padding:6px 8px;text-align:center;background:#1a237e;border-right:2px solid rgba(255,255,255,.2)" colspan="3">UC</th>
-              <th style="padding:6px 8px;text-align:center;background:#4a148c;border-right:2px solid rgba(255,255,255,.2)" colspan="3">CV</th>
-              <th style="padding:6px 8px;text-align:center;background:#006064;border-right:2px solid rgba(255,255,255,.2)" colspan="3">Channel</th>
-              <th style="padding:6px 8px;text-align:center;background:#b71c1c" colspan="3">FTD</th>
+              <th style="padding:6px 8px;text-align:center;color:#fff;font-weight:700;background:#1a237e;border-right:2px solid rgba(255,255,255,.2)" colspan="3">UC</th>
+              <th style="padding:6px 8px;text-align:center;color:#fff;font-weight:700;background:#4a148c;border-right:2px solid rgba(255,255,255,.2)" colspan="3">CV</th>
+              <th style="padding:6px 8px;text-align:center;color:#fff;font-weight:700;background:#006064;border-right:2px solid rgba(255,255,255,.2)" colspan="3">Channel</th>
+              <th style="padding:6px 8px;text-align:center;color:#fff;font-weight:700;background:#b71c1c" colspan="3">FTD</th>
             </tr>
             <tr style="background:#1a237e;color:#fff;font-size:10px">
               <th style="${hdrStyle}">TGT</th>
