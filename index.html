@@ -430,6 +430,7 @@ async function tryLoadLiveData() {
       }
     }
 
+    if (window._postLiveLoadHook) window._postLiveLoadHook();
     console.log(' Live data loaded:', data.updated_at,
       '| Emp:', window._LIVE_EMP.length,
       '| Jun txn:', window._LIVE_TXN.length,
@@ -3689,17 +3690,21 @@ function buildScorecard(el) {
   const lostChData = lostCh.map(dcid => {
     const txns = prevTxns.filter(t=>t.dcid===dcid);
     const gmv  = txns.reduce((s,t)=>s+t.amt,0);
+    const ucGmv= txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+    const cvGmv= txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
     const dealer = txns[0]?.dealer || dcid;
     const bmEmp  = resolveEmpById(txns[0]?.bm_id);
-    return { dcid, dealer, gmv, bm: bmEmp?.name||txns[0]?.bm||'—' };
+    return { dcid, dealer, gmv, ucGmv, cvGmv, bm: bmEmp?.name||txns[0]?.bm||'—' };
   }).sort((a,b)=>b.gmv-a.gmv);
 
   const inactiveChData = inactiveCh.filter(d=>!lostCh.includes(d)).map(dcid => {
     const txns  = l3Txns.filter(t=>t.dcid===dcid);
     const avg   = avgChGMV(dcid);
+    const ucAvg = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0) / 3;
+    const cvAvg = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0) / 3;
     const dealer= txns[0]?.dealer || dcid;
     const bmEmp = resolveEmpById(txns[0]?.bm_id);
-    return { dcid, dealer, avg, bm: bmEmp?.name||txns[0]?.bm||'—', lastActive: txns.sort((a,b)=>b.date.localeCompare(a.date))[0]?.date?.slice(0,7)||'—' };
+    return { dcid, dealer, avg, ucAvg, cvAvg, bm: bmEmp?.name||txns[0]?.bm||'—', lastActive: txns.sort((a,b)=>b.date.localeCompare(a.date))[0]?.date?.slice(0,7)||'—' };
   }).sort((a,b)=>b.avg-a.avg);
 
   const potentialGMV = lostChData.reduce((s,c)=>s+c.gmv,0) + inactiveChData.reduce((s,c)=>s+c.avg,0);
@@ -3760,13 +3765,19 @@ function buildScorecard(el) {
       </div>
       <div style="overflow-x:auto"><table>
         <thead><tr style="background:#f5f5f5">
-          <th>#</th><th>Dealer / Channel</th><th>BM</th><th style="text-align:right">${getPrevMonthLabel()} GMV</th><th>Action</th>
+          <th>#</th><th>Dealer / Channel</th><th>BM</th>
+          <th style="text-align:right">${getPrevMonthLabel()} GMV</th>
+          <th style="text-align:right;color:#1565c0">UC GMV</th>
+          <th style="text-align:right;color:#6a1b9a">CV GMV</th>
+          <th>Action</th>
         </tr></thead>
         <tbody>${lostChData.map((c,i)=>`<tr>
           <td style="color:#9e9e9e;font-size:11px">${i+1}</td>
           <td><b style="font-size:12px">${c.dealer}</b><div style="font-size:10px;color:#9e9e9e">${c.dcid}</div></td>
           <td style="font-size:11px">${c.bm}</td>
           <td style="text-align:right;color:#c62828;font-weight:700">${fmtCr(c.gmv)}</td>
+          <td style="text-align:right;color:#1565c0;font-size:11px">${c.ucGmv>0?fmtCr(c.ucGmv):'<span style="color:#ccc">—</span>'}</td>
+          <td style="text-align:right;color:#6a1b9a;font-size:11px">${c.cvGmv>0?fmtCr(c.cvGmv):'<span style="color:#ccc">—</span>'}</td>
           <td><span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:10px;font-size:10px">Re-engage</span></td>
         </tr>`).join('')}</tbody>
       </table></div>
@@ -3781,7 +3792,12 @@ function buildScorecard(el) {
       </div>
       <div style="overflow-x:auto"><table>
         <thead><tr style="background:#f5f5f5">
-          <th>#</th><th>Dealer / Channel</th><th>BM</th><th style="text-align:center">Last Active</th><th style="text-align:right">Avg Monthly GMV</th><th>Action</th>
+          <th>#</th><th>Dealer / Channel</th><th>BM</th>
+          <th style="text-align:center">Last Active</th>
+          <th style="text-align:right">Avg GMV/mo</th>
+          <th style="text-align:right;color:#1565c0">UC Avg</th>
+          <th style="text-align:right;color:#6a1b9a">CV Avg</th>
+          <th>Action</th>
         </tr></thead>
         <tbody>${inactiveChData.slice(0,20).map((c,i)=>`<tr>
           <td style="color:#9e9e9e;font-size:11px">${i+1}</td>
@@ -3789,6 +3805,8 @@ function buildScorecard(el) {
           <td style="font-size:11px">${c.bm}</td>
           <td style="text-align:center;font-size:11px;color:#f57f17">${c.lastActive}</td>
           <td style="text-align:right;color:#e65100;font-weight:700">${fmtCr(c.avg)}</td>
+          <td style="text-align:right;color:#1565c0;font-size:11px">${c.ucAvg>0?fmtCr(c.ucAvg):'<span style="color:#ccc">—</span>'}</td>
+          <td style="text-align:right;color:#6a1b9a;font-size:11px">${c.cvAvg>0?fmtCr(c.cvAvg):'<span style="color:#ccc">—</span>'}</td>
           <td><span style="background:#fff8e1;color:#f57f17;padding:2px 8px;border-radius:10px;font-size:10px">Reactivate</span></td>
         </tr>`).join('')}</tbody>
       </table></div>
@@ -6106,11 +6124,41 @@ function selectGroup(prefix, role) {
 <script>
 
 // ========== WEEKLY REVIEW ==========
-const MILESTONES = [
-  { day:10, label:'10th July', ucCol:'10Th July UC Target',  cvCol:'10Th July CV Target',  chCol:'10Th July Channel Target' },
-  { day:20, label:'20th July', ucCol:'20Th July UC Target',  cvCol:'20Th  July CV Target', chCol:'20Th  July Channel Target' },
-  { day:25, label:'25th July', ucCol:'25Th July UC Target',  cvCol:'25Th July CV Target',  chCol:'25Th July Channel Target' },
-];
+// Auto-generate milestones for current month from employee data columns
+// Looks for columns like "10Th August UC Target" etc. in the employee sheet
+function buildMilestones() {
+  const monthName = getCurMonthLabel().split(' ')[0]; // e.g. 'August'
+  const days = [10, 20, 25];
+  // Try to find columns matching current month in employee data
+  const empRaw = window._LIVE_EMP_RAW;
+  if (empRaw && empRaw.length) {
+    const cols = Object.keys(empRaw[0]);
+    const found = days.map(day => {
+      // Look for column containing day + monthName e.g. "10Th August"
+      const dayStr = day + 'Th';
+      const ucCol = cols.find(c => c.includes(dayStr) && c.toLowerCase().includes(monthName.toLowerCase()) && c.toLowerCase().includes('uc'));
+      const cvCol = cols.find(c => c.includes(dayStr) && c.toLowerCase().includes(monthName.toLowerCase()) && c.toLowerCase().includes('cv'));
+      const chCol = cols.find(c => c.includes(dayStr) && c.toLowerCase().includes(monthName.toLowerCase()) && c.toLowerCase().includes('channel'));
+      if (ucCol) return { day, label: day+'th '+monthName, ucCol, cvCol: cvCol||'', chCol: chCol||'' };
+      return null;
+    }).filter(Boolean);
+    if (found.length) return found;
+  }
+  // Fallback: use hardcoded July columns if current month cols not found
+  return [
+    { day:10, label:'10th '+monthName, ucCol:'10Th July UC Target',  cvCol:'10Th July CV Target',  chCol:'10Th July Channel Target' },
+    { day:20, label:'20th '+monthName, ucCol:'20Th July UC Target',  cvCol:'20Th  July CV Target', chCol:'20Th  July Channel Target' },
+    { day:25, label:'25th '+monthName, ucCol:'25Th July UC Target',  cvCol:'25Th July CV Target',  chCol:'25Th July Channel Target' },
+  ];
+}
+let MILESTONES = buildMilestones(); // rebuilt after live data loads
+
+// Rebuild milestones after live EMP data arrives
+const _origTryLoad = window._postLiveLoadHook;
+window._postLiveLoadHook = function() {
+  MILESTONES = buildMilestones();
+  if (_origTryLoad) _origTryLoad();
+};
 
 function getCurrentMilestone() {
   const today = new Date().getDate();
