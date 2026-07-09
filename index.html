@@ -2289,34 +2289,114 @@ function buildBanks(el) {
       return '';
     }
 
-    const tbody = document.getElementById('bankTableBody');
-    if (tbody) tbody.innerHTML = banks.map(b => {
-      const mayAmt   = mayBankMap[b.name] || 0;
-      const juneFinal= juneFinalMap[b.name] || 0;
-      const growth   = b.amt - mayAmt;
-      const gPct     = mayAmt > 0 ? Math.round((growth/mayAmt)*100) : null;
-      const gColor   = growth > 0 ? '#2e7d32' : growth < 0 ? '#c62828' : '#757575';
-      const julShare = Math.round((b.amt/total)*100);
-      const junShare = juneTotal>0 ? Math.round((juneFinal/juneTotal)*100) : 0;
-      const gCell    = mayAmt === 0
+    // Classify banks into tiers
+    function getTier(bankName) {
+      const t = bankTiers[(bankName||'').toLowerCase()] || '';
+      if (t.toLowerCase().includes('platinum')) return 'Platinum';
+      if (t.toLowerCase().includes('gold')) return 'Gold';
+      return 'Other';
+    }
+
+    function shortName(n) {
+      return (n||'Unknown')
+        .replace('HDB Financial Services Limited','HDB Fin.')
+        .replace('Cholamandalam Investment and Finance Company','Chola')
+        .replace('Cholamandalam Investment And Finance Company','Chola')
+        .replace('Mahindra & Mahindra Financial Services','Mahindra Fin.')
+        .replace('Sundaram Finance Limited','Sundaram Fin.')
+        .replace('Indostar Capital Finance Limited','Indostar Cap.')
+        .replace('Poonawalla Fincorp','Poonawalla');
+    }
+
+    function buildRow(b, rowBg) {
+      const mayAmt    = mayBankMap[b.name] || 0;
+      const juneFinal = juneFinalMap[b.name] || 0;
+      const growth    = b.amt - mayAmt;
+      const gPct      = mayAmt > 0 ? Math.round((growth/mayAmt)*100) : null;
+      const gColor    = growth > 0 ? '#2e7d32' : growth < 0 ? '#c62828' : '#757575';
+      const julShare  = total>0 ? Math.round((b.amt/total)*100) : 0;
+      const junShare  = juneTotal>0 ? Math.round((juneFinal/juneTotal)*100) : 0;
+      const gCell     = mayAmt === 0
         ? '<span style="color:#9e9e9e;font-size:11px">New</span>'
         : '<span style="color:'+gColor+';font-weight:700">'+(growth>=0?'+':'')+fmtCr(growth)+'</span>'
-          + (gPct!==null?'<div style="font-size:10px;color:'+gColor+'">'+(gPct>=0?'+':'')+gPct+'%</div>':'');
-      const bname = (b.name||'Unknown').replace('HDB Financial Services Limited','HDB Fin.').replace('Cholamandalam Investment and Finance Company','Chola').replace('Mahindra & Mahindra Financial Services','Mahindra Fin.').replace('Sundaram Finance Limited','Sundaram Fin.');
-      return '<tr>'
-        +'<td style="font-size:12px;max-width:160px">'+bname+tierBadge(b.name)+'</td>'
-        +'<td style="text-align:center">'+b.cases+'</td>'
-        +'<td style="text-align:right;font-weight:700">'+fmtCr(b.amt)+'</td>'
-        +'<td style="text-align:right;color:#546e7a">'+(mayAmt>0?fmtCr(mayAmt):'<span style="color:#9e9e9e">—</span>')+'</td>'
-        +'<td style="text-align:center">'+gCell+'</td>'
-        +'<td style="text-align:right;color:#546e7a">'+(juneFinal>0?fmtCr(juneFinal):'<span style="color:#9e9e9e">—</span>')+'</td>'
-        +'<td style="text-align:center"><span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">'+julShare+'%</span></td>'
-        +'<td style="text-align:center"><span style="background:#f3e5f5;color:#7b1fa2;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">'+(junShare>0?junShare+'%':'—')+'</span></td>'
+          +(gPct!==null?'<div style="font-size:10px;color:'+gColor+'">'+(gPct>=0?'+':'')+gPct+'%</div>':'');
+      return '<tr style="background:'+rowBg+'">'
+        +'<td style="padding:7px 10px;font-size:12px">'+shortName(b.name)+tierBadge(b.name)+'</td>'
+        +'<td style="padding:7px 8px;text-align:center">'+b.cases+'</td>'
+        +'<td style="padding:7px 8px;text-align:right;font-weight:700">'+fmtCr(b.amt)+'</td>'
+        +'<td style="padding:7px 8px;text-align:right;color:#546e7a;font-size:11px">'+(mayAmt>0?fmtCr(mayAmt):'<span style="color:#ccc">—</span>')+'</td>'
+        +'<td style="padding:7px 8px;text-align:center">'+gCell+'</td>'
+        +'<td style="padding:7px 8px;text-align:right;color:#546e7a;font-size:11px">'+(juneFinal>0?fmtCr(juneFinal):'<span style="color:#ccc">—</span>')+'</td>'
+        +'<td style="padding:7px 8px;text-align:center"><span style="background:#e3f2fd;color:#1565c0;padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">'+julShare+'%</span></td>'
+        +'<td style="padding:7px 8px;text-align:center"><span style="background:#f3e5f5;color:#7b1fa2;padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">'+(junShare>0?junShare+'%':'—')+'</span></td>'
         +'</tr>';
-    }).join('');
+    }
+
+    function subtotalRow(label, grpBanks, bgCol, textCol) {
+      const grpAmt  = grpBanks.reduce((s,b)=>s+b.amt,0);
+      const grpMay  = grpBanks.reduce((s,b)=>s+(mayBankMap[b.name]||0),0);
+      const grpJFin = grpBanks.reduce((s,b)=>s+(juneFinalMap[b.name]||0),0);
+      const grpCases= grpBanks.reduce((s,b)=>s+b.cases,0);
+      const grpG    = grpAmt - grpMay;
+      const grpGpct = grpMay>0?Math.round((grpG/grpMay)*100):null;
+      const grpGcol = grpG>=0?'#2e7d32':'#c62828';
+      const julShr  = total>0?Math.round((grpAmt/total)*100):0;
+      const junShr  = juneTotal>0?Math.round((grpJFin/juneTotal)*100):0;
+      return '<tr style="background:'+bgCol+';border-top:2px solid rgba(0,0,0,.08)">'
+        +'<td style="padding:8px 10px;font-weight:800;color:'+textCol+';font-size:12px">'+label+' Total</td>'
+        +'<td style="padding:8px 8px;text-align:center;font-weight:700;color:'+textCol+'">'+grpCases+'</td>'
+        +'<td style="padding:8px 8px;text-align:right;font-weight:800;color:'+textCol+'">'+fmtCr(grpAmt)+'</td>'
+        +'<td style="padding:8px 8px;text-align:right;font-size:11px">'+(grpMay>0?fmtCr(grpMay):'—')+'</td>'
+        +'<td style="padding:8px 8px;text-align:center">'+(grpGpct!==null?'<span style="color:'+grpGcol+';font-weight:700">'+(grpG>=0?'+':'')+fmtCr(grpG)+'<br><small>'+(grpG>=0?'+':'')+grpGpct+'%</small></span>':'—')+'</td>'
+        +'<td style="padding:8px 8px;text-align:right;font-size:11px">'+(grpJFin>0?fmtCr(grpJFin):'—')+'</td>'
+        +'<td style="padding:8px 8px;text-align:center"><span style="background:#e3f2fd;color:#1565c0;padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">'+julShr+'%</span></td>'
+        +'<td style="padding:8px 8px;text-align:center"><span style="background:#f3e5f5;color:#7b1fa2;padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">'+(junShr>0?junShr+'%':'—')+'</span></td>'
+        +'</tr>';
+    }
+
+    function groupHeader(label, bgCol, textCol) {
+      return '<tr style="background:'+bgCol+'">'
+        +'<td colspan="8" style="padding:7px 12px;font-weight:800;font-size:12px;color:'+textCol+';letter-spacing:.3px">'+label+'</td>'
+        +'</tr>';
+    }
+
+    // Split into groups
+    const platinum = banks.filter(b=>getTier(b.name)==='Platinum');
+    const gold     = banks.filter(b=>getTier(b.name)==='Gold');
+    const other    = banks.filter(b=>getTier(b.name)==='Other');
+
+    let html = '';
+    if (platinum.length) {
+      html += groupHeader('&#9733; PLATINUM BANKS', 'linear-gradient(90deg,#6a1b9a,#7b1fa2)', '#fff');
+      platinum.forEach((b,i) => { html += buildRow(b, i%2===0?'#fdf5ff':'#f8ecff'); });
+      html += subtotalRow('&#9733; Platinum', platinum, '#ede0f5', '#6a1b9a');
+    }
+    if (gold.length) {
+      html += groupHeader('&#9733; GOLD BANKS', 'linear-gradient(90deg,#e65100,#f57f17)', '#fff');
+      gold.forEach((b,i) => { html += buildRow(b, i%2===0?'#fff8f0':'#fff3e0'); });
+      html += subtotalRow('&#9733; Gold', gold, '#ffe0b2', '#e65100');
+    }
+    if (other.length) {
+      html += groupHeader('OTHER BANKS / NBFC', '#546e7a', '#fff');
+      other.forEach((b,i) => { html += buildRow(b, i%2===0?'#f8f9ff':'#fff'); });
+      html += subtotalRow('Other', other, '#eceff1', '#546e7a');
+    }
+    // Grand total row
+    html += '<tr style="background:#1a237e;border-top:2px solid #fff">'
+      +'<td style="padding:8px 10px;font-weight:800;color:#fff;font-size:12px">GRAND TOTAL'+(state!=='all'?' — '+state:'')+'</td>'
+      +'<td style="padding:8px 8px;text-align:center;font-weight:800;color:#fff">'+filtered.length+'</td>'
+      +'<td style="padding:8px 8px;text-align:right;font-weight:800;color:#fff">'+fmtCr(total)+'</td>'
+      +'<td colspan="2"></td>'
+      +'<td style="padding:8px 8px;text-align:right;font-size:11px;color:#c5cae9">'+fmtCr(juneTotal)+'</td>'
+      +'<td style="padding:8px 8px;text-align:center"><span style="color:#fff;font-weight:700">100%</span></td>'
+      +'<td style="padding:8px 8px;text-align:center"><span style="color:#fff;font-weight:700">100%</span></td>'
+      +'</tr>';
+
+    const tbody = document.getElementById('bankTableBody');
+    if (tbody) tbody.innerHTML = html;
 
     const totalEl = document.getElementById('bankTotal');
-    if (totalEl) totalEl.textContent = `${filtered.length} cases · ${fmtCr(total)}` + (state !== 'all' ? ` ·  ${state}` : '');
+    if (totalEl) totalEl.textContent = filtered.length + ' cases · ' + fmtCr(total) + (state !== 'all' ? ' · ' + state : '');
 
     if (charts.banks) { try { charts.banks.destroy(); } catch(e){} delete charts.banks; }
     setTimeout(() => {
