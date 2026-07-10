@@ -2775,7 +2775,7 @@ function buildIncentive(el) {
     el.innerHTML = `
       ${monthTabsHtml}
       <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg,#1a237e,#283593);color:#fff;text-align:center;padding:24px">
-        <div style="font-size:13px;opacity:.7;font-weight:600;letter-spacing:.5px;text-transform:uppercase">Final Incentive = Base + Bonus — ${monthLabel}</div>
+        <div style="font-size:13px;opacity:.7;font-weight:600;letter-spacing:.5px;text-transform:uppercase">Final Incentive = Base + Bonus — ${getCurMonthLabel()}</div>
         <div style="font-size:28px;font-weight:800;margin:6px 0">Capped at ₹50,000</div>
         <div style="font-size:12px;opacity:.7">Bonus over and above base · No conditions</div>
       </div>
