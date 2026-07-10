@@ -305,12 +305,27 @@ function resolveEmpById(bmId) {
 // Count unique active channels for a BM
 // CV BMs: use unique DCIDs (ch_check always 0 for CV)
 // UC BMs: use ch_check > 0 as before
+function isCVBM(emp, txns) {
+  // A BM is CV if: product field says CV, OR cv_tgt>0 with no uc_tgt
+  if (!emp || emp.designation !== 'BM') return false;
+  if (emp.product && emp.product.toUpperCase().includes('CV')) return true;
+  if (emp.product && emp.product.toUpperCase().includes('UC')) return false;
+  // Fallback: check if most transactions are CV
+  if (txns && txns.length > 0) {
+    const cvCount = txns.filter(t=>t.product!=='Used Car').length;
+    if (cvCount > txns.length * 0.7) return true;
+  }
+  // Final fallback: check targets
+  return (!emp.uc_tgt || emp.uc_tgt===0 || emp.uc_tgt==='') && (emp.cv_tgt>0);
+}
+
 function countChannels(txns, emp) {
   if (!emp) return new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
-  const isCVBM = emp.designation==='BM' && (!emp.uc_tgt || emp.uc_tgt===0 || emp.uc_tgt==='') && (emp.cv_tgt>0);
-  if (isCVBM) {
-    return new Set(txns.filter(t=>t.dcid).map(t=>t.dcid)).size;
+  if (isCVBM(emp, txns)) {
+    // CV BM: count unique DCIDs from CV transactions (ch_check is always 0 for CV)
+    return new Set(txns.filter(t=>t.product!=='Used Car'&&t.dcid).map(t=>t.dcid)).size;
   }
+  // UC BM: count unique DCIDs where ch_check > 0
   return new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
 }
 
@@ -694,7 +709,7 @@ function buildAMSummaryCard() {
   const prvAmt  = prvTxns.reduce((s,t)=>s+t.amt,0);
   const curUC   = curTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
   const curCV   = curTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-  const curCh   = new Set(curTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+  const curCh   = countChannels(curTxns, getEmpData().find(e=>e.id===_activeAMFilter));
   const diff    = curAmt - prvAmt;
   const gPct    = prvAmt>0 ? Math.round((diff/prvAmt)*100) : null;
   const up      = diff>=0;
@@ -987,7 +1002,7 @@ function buildOverview(el) {
   const lmtdUC    = lmtdTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
   const lmtdCV    = lmtdTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
   const lmtdCases = lmtdTxns.length;
-  const lmtdCh    = new Set(lmtdTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+  const lmtdCh    = countChannels(lmtdTxns, resolveEmpById(currentUser.id));
   const todayDay  = new Date().getDate();
 
   function growthTag(cur, prev) {
@@ -3038,7 +3053,7 @@ function buildIncentive(el) {
       if(gmvCr>=s.min&&(gmvCr<s.max||s.label==='3Cr+')){slab=s;rate=r;}
     }
     const base = slab ? Math.round(gmv*rate) : 0;
-    const ch   = new Set(txns.filter(t=>t.product==='Used Car'&&t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    const ch   = countChannels(txns, resolveEmpById(bm.id));
     const pct  = ch>=13?15:ch>=11?12:ch>=9?10:0;
     const db   = pct>0 ? Math.round(base/(1-pct/100)*(pct/100)) : 0;
     return {gmv,gmvCr,base,ch,pct,db,total:base+db,slab,rate,ucA,ucvA,ncvA};
@@ -3257,7 +3272,7 @@ function buildInsights(el) {
     const cvTgt   = (myEmp?.cv_tgt||0)*1e5;
     const totalTgt = ucTgt + cvTgt;
     const chTgt   = myEmp?.ch_tgt || 0;
-    const chActive = new Set(myTxns.filter(t=>t.ch_check>0).map(t=>t.dcid)).size;
+    const chActive = countChannels(myTxns, resolveEmpById(currentUser.id));
     const achPct  = totalTgt>0 ? pct(totalAmt,totalTgt) : 0;
 
     // Achievement status
@@ -3787,7 +3802,8 @@ function buildScorecard(el) {
 
   // Channel analysis
   const curCh    = new Set(curTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
-  const prevCh   = new Set(prevTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+  const _rhEmp   = resolveEmpById(currentUser.id);
+  const prevCh   = new Set(prevTxns.filter(t=>isCVBM(_rhEmp)?t.product!=='Used Car'&&t.dcid:t.ch_check>0&&t.dcid).map(t=>t.dcid));
 
   // Last 3 months channels
   const last3    = months.slice(-3);
@@ -3836,7 +3852,7 @@ function buildScorecard(el) {
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px">
         ${last3.map(m=>{
           const txns = scopeTxns(m.data());
-          const ch   = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+          const ch   = countChannels(txns, resolveEmpById(bm.id));
           const amt  = txns.reduce((s,t)=>s+t.amt,0);
           return '<div style="flex:1;min-width:130px;background:#f5f7ff;border-radius:10px;padding:14px;text-align:center">'
             +'<div style="font-size:12px;font-weight:700;color:#1a237e">'+m.label+'</div>'
@@ -3938,7 +3954,7 @@ function buildScorecard(el) {
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px">
         ${last3.map(m=>{
           const txns = scopeTxns(m.data());
-          const ch   = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+          const ch   = countChannels(txns, resolveEmpById(bm.id));
           const amt  = txns.reduce((s,t)=>s+t.amt,0);
           return `<div style="flex:1;min-width:140px;background:#f5f7ff;border-radius:10px;padding:14px;text-align:center">
             <div style="font-size:12px;font-weight:700;color:#1a237e">${m.label}</div>
@@ -4003,7 +4019,7 @@ function buildQuarterly(el) {
     const ucAmt  = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
     const cvAmt  = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
     const tot    = ucAmt+cvAmt;
-    const ch     = new Set(txns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+    const ch     = countChannels(txns, resolveEmpById(bm.id));
     const ucTgt  = (emp.uc_tgt||0)*1e5*3; // 3 months
     const cvTgt  = (emp.cv_tgt||0)*1e5*3;
     const tgt    = ucTgt+cvTgt;
@@ -4549,7 +4565,8 @@ function buildChannelEmailHTML(type, note) {
   const curTxns  = myTxns;
   const prevTxns = prevData.filter(t => t.rh_id === currentUser.id);
   const curCh    = new Set(curTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
-  const prevCh   = new Set(prevTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+  const _rhEmp   = resolveEmpById(currentUser.id);
+  const prevCh   = new Set(prevTxns.filter(t=>isCVBM(_rhEmp)?t.product!=='Used Car'&&t.dcid:t.ch_check>0&&t.dcid).map(t=>t.dcid));
   const l3Ch     = new Set(l3Data.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
 
   const lostDcids     = [...prevCh].filter(d=>!curCh.has(d));
@@ -5107,7 +5124,8 @@ function buildChannelEmailHTML(type, note) {
   const curTxns  = myTxns;
   const prevTxns = prevData.filter(t => t.rh_id === currentUser.id);
   const curCh    = new Set(curTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
-  const prevCh   = new Set(prevTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+  const _rhEmp   = resolveEmpById(currentUser.id);
+  const prevCh   = new Set(prevTxns.filter(t=>isCVBM(_rhEmp)?t.product!=='Used Car'&&t.dcid:t.ch_check>0&&t.dcid).map(t=>t.dcid));
   const l3Ch     = new Set(l3Data.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
 
   const lostDcids     = [...prevCh].filter(d=>!curCh.has(d));
