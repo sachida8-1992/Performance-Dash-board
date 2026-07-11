@@ -4464,6 +4464,41 @@ function buildMailroom(el) {
         </div>
       </div>
 
+      <!-- ══ EXIT GOAL EMAILS ════════════════════════════════════ -->
+      <div style="background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08);overflow:hidden;margin-bottom:0" id="exitMailSection">
+        <div style="background:linear-gradient(135deg,#1b5e20,#2e7d32);padding:14px 20px">
+          <div style="color:#fff;font-weight:800;font-size:16px">Exit Goal Mails</div>
+          <div style="color:rgba(255,255,255,.7);font-size:11px">Milestone achievement alerts — 10th / 20th / 25th</div>
+        </div>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:12px;color:#555;background:#f5f5f5;border-radius:8px;padding:10px 12px">
+            Sends individual exit goal report to each BM and AM showing GMV vs exit target, UC/CV split, channel achievement, and a congratulation or action message.
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <div>
+              <div style="font-size:11px;color:#666;margin-bottom:4px">Select Milestone:</div>
+              <select id="exitMsSelect" style="padding:6px 12px;border:1px solid #c5cae9;border-radius:8px;font-size:13px;background:#f5f7ff">
+                <option value="0">10th Exit Goal</option>
+                <option value="1">20th Exit Goal</option>
+                <option value="2">25th Exit Goal</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:16px">
+              <button onclick="previewExitGoalEmail()" style="padding:6px 14px;background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Preview</button>
+              <button onclick="sendExitGoalToBMs()" style="padding:6px 14px;background:#2e7d32;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Send to BMs</button>
+              <button onclick="sendExitGoalToAMs()" style="padding:6px 14px;background:#1b5e20;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Send to AMs</button>
+            </div>
+          </div>
+          <div id="exit-status" style="font-size:11px;min-height:20px"></div>
+          <div style="border:1px solid #c8e6c9;border-radius:8px;overflow:hidden">
+            <div style="padding:8px 12px;background:#e8f5e9;font-size:11px;font-weight:700;color:#2e7d32">Email Preview</div>
+            <div id="exit-preview-panel" style="max-height:320px;overflow-y:auto;padding:8px;background:#fafafa;font-size:11px">
+              <div style="color:#9e9e9e;text-align:center;padding:20px 0">Click Preview to see email</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ══ CHANNEL DRIVE EMAILS ═══════════════════════════════ -->
       <div style="background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08);overflow:hidden">
         <div style="background:linear-gradient(135deg,#b71c1c,#c62828);padding:14px 20px">
@@ -5941,6 +5976,231 @@ async function sendScorecardToBMsForTH() {
   } catch(e) {
     statusEl.innerHTML = '<span style="color:#c62828">Error: ' + e.message + '</span>';
   }
+}
+
+// ── Exit Goal Email Builder ─────────────────────────────
+function buildExitGoalEmailHTML(bm, msIdx) {
+  const ms      = MILESTONES[msIdx] || MILESTONES[0];
+  const empRaw  = window._LIVE_EMP_RAW || [];
+  const empRow  = empRaw.find(r => String(r['Employee Code']||'').split('.')[0].trim() === bm.id) || {};
+
+  // Get targets from employee sheet columns
+  const ucTgt   = parseFloat(empRow[ms.ucCol] || 0) * 1e5 || (bm.uc_tgt||0)*1e5 * (ms.day/30);
+  const cvTgt   = parseFloat(empRow[ms.cvCol] || 0) * 1e5 || (bm.cv_tgt||0)*1e5 * (ms.day/30);
+  const chTgt   = parseFloat(empRow[ms.chCol] || 0) || Math.round((bm.ch_tgt||0) * (ms.day/30));
+  const totTgt  = ucTgt + cvTgt;
+
+  // Current achievement (day 1 to exit day)
+  const txns   = myTxns.filter(t => t.bm_id===bm.id && (t.day||0) <= ms.day);
+  const ucAmt  = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+  const cvAmt  = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+  const totAmt = ucAmt + cvAmt;
+  const ch     = countChannels(txns, bm);
+
+  const ucAch  = ucTgt>0 ? Math.round((ucAmt/ucTgt)*100) : null;
+  const cvAch  = cvTgt>0 ? Math.round((cvAmt/cvTgt)*100) : null;
+  const totAch = totTgt>0 ? Math.round((totAmt/totTgt)*100) : null;
+  const chAch  = chTgt>0 ? Math.round((ch/chTgt)*100) : null;
+
+  const achieved = totAch !== null && totAch >= 100;
+  const onTrack  = totAch !== null && totAch >= 70;
+
+  // Next milestone label
+  const nextMs  = MILESTONES[msIdx+1];
+  const nextLabel = nextMs ? nextMs.label : 'Month End';
+
+  const date    = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const hdrCol  = achieved ? 'linear-gradient(135deg,#1b5e20,#2e7d32)' : onTrack ? 'linear-gradient(135deg,#0d47a1,#1565c0)' : 'linear-gradient(135deg,#4a0000,#b71c1c)';
+  const statusLabel = achieved ? 'EXIT GOAL ACHIEVED!' : onTrack ? 'ON TRACK' : 'BEHIND EXIT GOAL';
+
+  // Progress bar helper (table-based, Gmail safe)
+  function pBar(val, tgt, color) {
+    if (!tgt) return '';
+    const w = Math.min(Math.round((val/tgt)*100), 100);
+    return '<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:6px"><tr>'
+      +'<td style="background:#e0e0e0;border-radius:4px;height:10px;padding:0">'
+      +'<table width="'+w+'%" cellpadding="0" cellspacing="0"><tr>'
+      +'<td style="background:'+color+';border-radius:4px;height:10px;padding:0"></td>'
+      +'</tr></table></td></tr></table>';
+  }
+
+  // Circular goal graphic (CSS conic-gradient)
+  function ring(pct, size, col) {
+    const p = Math.min(pct||0, 100);
+    return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;background:conic-gradient('+col+' '+p+'%,#e0e0e0 0%);display:inline-flex;align-items:center;justify-content:center">'
+      +'<div style="width:'+(size-12)+'px;height:'+(size-12)+'px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:'+(size>60?15:11)+'px;font-weight:800;color:'+col+'">'+(pct!==null?p+'%':'—')+'</div>'
+      +'</div>';
+  }
+
+  const ringCol = achieved?'#2e7d32':onTrack?'#1565c0':'#c62828';
+
+  return '<!DOCTYPE html><html><body style="margin:0;padding:16px;background:#f0f2f5;font-family:Arial,Helvetica,sans-serif">'
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center" style="background:'+hdrCol+';border-radius:14px 14px 0 0"><tr><td style="padding:24px 28px">'
+    +'<div style="color:rgba(255,255,255,.7);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">EXIT GOAL REPORT — '+ms.label.toUpperCase()+' 2026</div>'
+    +'<div style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">'+getCurMonthLabel()+' Exit Performance</div>'
+    +'<div style="color:rgba(255,255,255,.8);font-size:13px">Hi <b>'+bm.name+'</b> | '+date+'</div>'
+    +'<div style="margin-top:12px;display:inline-block;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);border-radius:20px;padding:4px 16px;color:#fff;font-size:12px;font-weight:700">'+statusLabel+'</div>'
+    +'</td></tr></table>'
+
+    // ── Goal Rings ──
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center" style="background:#fff;border:1px solid #e8eaf6;border-top:none"><tr>'
+    +'<td style="padding:20px 16px;text-align:center;border-right:1px solid #f0f0f0" width="33%">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:8px">Total GMV</div>'
+    +ring(totAch, 80, ringCol)
+    +'<div style="font-size:16px;font-weight:800;color:#1a237e;margin-top:8px">'+fmtCr(totAmt)+'</div>'
+    +'<div style="font-size:11px;color:#9e9e9e">Target: '+fmtCr(totTgt)+'</div>'
+    +'</td>'
+    +'<td style="padding:20px 16px;text-align:center;border-right:1px solid #f0f0f0" width="33%">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:8px">UC</div>'
+    +ring(ucAch, 80, '#1565c0')
+    +'<div style="font-size:16px;font-weight:800;color:#1565c0;margin-top:8px">'+fmtCr(ucAmt)+'</div>'
+    +'<div style="font-size:11px;color:#9e9e9e">Target: '+(ucTgt>0?fmtCr(ucTgt):'—')+'</div>'
+    +'</td>'
+    +'<td style="padding:20px 16px;text-align:center" width="34%">'
+    +'<div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:8px">CV</div>'
+    +ring(cvAch, 80, '#6a1b9a')
+    +'<div style="font-size:16px;font-weight:800;color:#6a1b9a;margin-top:8px">'+fmtCr(cvAmt)+'</div>'
+    +'<div style="font-size:11px;color:#9e9e9e">Target: '+(cvTgt>0?fmtCr(cvTgt):'—')+'</div>'
+    +'</td>'
+    +'</tr></table>'
+
+    // ── Detail table ──
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center" style="background:#fff;border:1px solid #e8eaf6;border-top:none">'
+    +'<tr style="background:#f5f7ff"><th style="padding:8px 12px;text-align:left;color:#555;font-size:11px;font-weight:600">Metric</th><th style="padding:8px 12px;text-align:right;color:#1a237e;font-size:11px;font-weight:700">Achieved (1-'+ms.day+')</th><th style="padding:8px 12px;text-align:right;color:#555;font-size:11px;font-weight:600">Exit Target</th><th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700">Goal%</th></tr>'
+    +'<tr style="background:#fff"><td style="padding:9px 12px;color:#555;border-bottom:1px solid #f5f5f5">Total GMV</td><td style="padding:9px 12px;text-align:right;font-weight:700">'+fmtCr(totAmt)+'</td><td style="padding:9px 12px;text-align:right;color:#9e9e9e">'+fmtCr(totTgt)+'</td><td style="padding:9px 12px;text-align:center">'+(totAch!==null?'<span style="background:'+(achieved?'#e8f5e9':onTrack?'#e3f2fd':'#ffebee')+';color:'+ringCol+';padding:2px 8px;border-radius:8px;font-weight:700">'+totAch+'%</span>':'—')+'</td></tr>'
+    +'<tr style="background:#fafafa"><td style="padding:9px 12px;color:#555;border-bottom:1px solid #f5f5f5">Used Car (UC)</td><td style="padding:9px 12px;text-align:right;font-weight:700;color:#1565c0">'+fmtCr(ucAmt)+'</td><td style="padding:9px 12px;text-align:right;color:#9e9e9e">'+(ucTgt>0?fmtCr(ucTgt):'—')+'</td><td style="padding:9px 12px;text-align:center">'+(ucAch!==null?'<span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:8px;font-weight:700">'+ucAch+'%</span>':'—')+'</td></tr>'
+    +'<tr style="background:#fff"><td style="padding:9px 12px;color:#555;border-bottom:1px solid #f5f5f5">Commercial Vehicle (CV)</td><td style="padding:9px 12px;text-align:right;font-weight:700;color:#6a1b9a">'+fmtCr(cvAmt)+'</td><td style="padding:9px 12px;text-align:right;color:#9e9e9e">'+(cvTgt>0?fmtCr(cvTgt):'—')+'</td><td style="padding:9px 12px;text-align:center">'+(cvAch!==null?'<span style="background:#f3e5f5;color:#6a1b9a;padding:2px 8px;border-radius:8px;font-weight:700">'+cvAch+'%</span>':'—')+'</td></tr>'
+    +'<tr style="background:#fafafa"><td style="padding:9px 12px;color:#555">Active Channels</td><td style="padding:9px 12px;text-align:right;font-weight:700;color:#00838f">'+ch+'</td><td style="padding:9px 12px;text-align:right;color:#9e9e9e">'+(chTgt||'—')+'</td><td style="padding:9px 12px;text-align:center">'+(chAch!==null?'<span style="background:#e0f7fa;color:#00838f;padding:2px 8px;border-radius:8px;font-weight:700">'+chAch+'%</span>':'—')+'</td></tr>'
+    +'</table>'
+
+    // ── Progress bars ──
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center" style="background:#f8f9ff;border:1px solid #e8eaf6;border-top:none"><tr><td style="padding:14px 20px">'
+    +'<div style="font-size:11px;font-weight:700;color:#1a237e;margin-bottom:10px;text-transform:uppercase">Goal Progress</div>'
+    +'<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:11px;color:#555">Total GMV</span><span style="font-size:11px;font-weight:700;color:'+ringCol+'">'+(totAch!==null?totAch+'%':'—')+'</span></div>'+pBar(totAmt,totTgt,ringCol)+'</div>'
+    +(ucTgt>0?'<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:11px;color:#555">Used Car</span><span style="font-size:11px;font-weight:700;color:#1565c0">'+(ucAch!==null?ucAch+'%':'—')+'</span></div>'+pBar(ucAmt,ucTgt,'#1565c0')+'</div>':'')
+    +(cvTgt>0?'<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:11px;color:#555">CV</span><span style="font-size:11px;font-weight:700;color:#6a1b9a">'+(cvAch!==null?cvAch+'%':'—')+'</span></div>'+pBar(cvAmt,cvTgt,'#6a1b9a')+'</div>':'')
+    +(chTgt>0?'<div><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:11px;color:#555">Channels</span><span style="font-size:11px;font-weight:700;color:#00838f">'+(chAch!==null?chAch+'%':'—')+'</span></div>'+pBar(ch,chTgt,'#00838f')+'</div>':'')
+    +'</td></tr></table>'
+
+    // ── Message banner ──
+    +'<table width="600" cellpadding="0" cellspacing="0" align="center" style="background:'+(achieved?'#1b5e20':onTrack?'#0d47a1':'#b71c1c')+';border-radius:0 0 14px 14px"><tr><td style="padding:18px 24px">'
+    +(achieved
+      ? '<div style="color:#fff;font-size:16px;font-weight:800;margin-bottom:6px">Congratulations, '+bm.name+'!</div>'
+        +'<div style="color:rgba(255,255,255,.9);font-size:13px;line-height:1.6">You have achieved your <b>'+ms.label+' Exit Goal</b>. Looking forward to achieving your <b>'+nextLabel+' Exit</b>. Keep it up — All the best!</div>'
+      : onTrack
+      ? '<div style="color:#fff;font-size:16px;font-weight:800;margin-bottom:6px">Good Progress, '+bm.name+'!</div>'
+        +'<div style="color:rgba(255,255,255,.9);font-size:13px;line-height:1.6">You are on track but have not reached the '+ms.label+' Exit Goal yet. Push hard to close before '+nextLabel+'. Focus on channel visits and case conversions.</div>'
+      : '<div style="color:#fff;font-size:16px;font-weight:800;margin-bottom:6px">Action Needed, '+bm.name+'!</div>'
+        +'<div style="color:rgba(255,255,255,.9);font-size:13px;line-height:1.6">Your plan and execution did not meet the <b>'+ms.label+' Exit Goal</b>. Looking forward to your achievement on <b>'+nextLabel+' Exit</b>. Activate more channels, onboard NDA dealers and visit existing channels regularly.</div>'
+    )
+    +'</td></tr></table>'
+
+    +'</body></html>';
+}
+
+function previewExitGoalEmail() {
+  const msIdx  = parseInt(document.getElementById('exitMsSelect')?.value || '0');
+  const emps   = getEmpData();
+  const bm     = emps.find(e=>e.designation==='BM'&&e.rh_id===currentUser.id);
+  const panel  = document.getElementById('exit-preview-panel');
+  if (panel && bm) panel.innerHTML = buildExitGoalEmailHTML(bm, msIdx);
+}
+
+async function sendExitGoalToBMs() {
+  const emps    = getEmpData();
+  const msIdx   = parseInt(document.getElementById('exitMsSelect')?.value || '0');
+  const ms      = MILESTONES[msIdx] || MILESTONES[0];
+  const statusEl= document.getElementById('exit-status');
+  if (!getASUrl()) { promptASUrl(); return; }
+
+  const bmList = emps.filter(e=>e.designation==='BM'&&e.rh_id===currentUser.id&&e.email);
+  statusEl.innerHTML = '<span style="color:#2e7d32">Sending '+ms.label+' Exit Goal mail to '+bmList.length+' BMs...</span>';
+  let sent=0;
+
+  for (const bm of bmList) {
+    const amEmp = emps.find(e=>e.id===bm.am_id);
+    const thEmp = emps.find(e=>e.id===bm.th_id);
+    const cc    = [amEmp?.email, thEmp?.email].filter(Boolean);
+    try {
+      await fetch(getASUrl(), {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          to: [bm.email], cc,
+          subject: ms.label+' Exit Goal Report — '+bm.name+' — '+getCurMonthLabel(),
+          htmlBody: buildExitGoalEmailHTML(bm, msIdx)
+        }),
+        mode:'no-cors'
+      });
+      sent++;
+    } catch(e) {}
+    statusEl.innerHTML = '<span style="color:#2e7d32">Sent '+sent+'/'+bmList.length+'...</span>';
+    await new Promise(r=>setTimeout(r,350));
+  }
+  statusEl.innerHTML = '<span style="color:#2e7d32;font-weight:700">Exit Goal mail sent to '+sent+' BMs | CC: AM & TH</span>';
+}
+
+async function sendExitGoalToAMs() {
+  const emps    = getEmpData();
+  const msIdx   = parseInt(document.getElementById('exitMsSelect')?.value || '0');
+  const ms      = MILESTONES[msIdx] || MILESTONES[0];
+  const statusEl= document.getElementById('exit-status');
+  if (!getASUrl()) { promptASUrl(); return; }
+
+  // Build AM-level summary email
+  const amList = emps.filter(e=>e.designation==='AM'&&e.rh_id===currentUser.id&&e.email);
+  statusEl.innerHTML = '<span style="color:#2e7d32">Sending to '+amList.length+' AMs...</span>';
+  let sent=0;
+
+  for (const am of amList) {
+    const thEmp = emps.find(e=>e.id===am.th_id);
+    const cc    = [thEmp?.email].filter(Boolean);
+    const amBMs = emps.filter(e=>e.designation==='BM'&&e.am_id===am.id);
+
+    // Build AM summary table showing each BM exit status
+    const bmRows = amBMs.map(bm => {
+      const txns   = myTxns.filter(t=>t.bm_id===bm.id&&(t.day||0)<=ms.day);
+      const tot    = txns.reduce((s,t)=>s+t.amt,0);
+      const empRow = (window._LIVE_EMP_RAW||[]).find(r=>String(r['Employee Code']||'').split('.')[0].trim()===bm.id)||{};
+      const ucTgt  = parseFloat(empRow[ms.ucCol]||0)*1e5||(bm.uc_tgt||0)*1e5*(ms.day/30);
+      const cvTgt  = parseFloat(empRow[ms.cvCol]||0)*1e5||(bm.cv_tgt||0)*1e5*(ms.day/30);
+      const tgt    = ucTgt+cvTgt;
+      const ach    = tgt>0?Math.round((tot/tgt)*100):null;
+      const col    = ach===null?'#555':ach>=100?'#2e7d32':ach>=70?'#1565c0':'#c62828';
+      const bg     = ach===null?'#f5f5f5':ach>=100?'#e8f5e9':ach>=70?'#e3f2fd':'#ffebee';
+      return '<tr><td style="padding:8px 10px;font-weight:700">'+bm.name+'</td>'
+        +'<td style="padding:8px 10px;text-align:right">'+fmtCr(tot)+'</td>'
+        +'<td style="padding:8px 10px;text-align:right;color:#9e9e9e">'+fmtCr(tgt)+'</td>'
+        +'<td style="padding:8px 10px;text-align:center"><span style="background:'+bg+';color:'+col+';padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700">'+(ach!==null?ach+'%':'—')+'</span></td></tr>';
+    }).join('');
+
+    const amHtml = '<!DOCTYPE html><html><body style="margin:0;padding:16px;background:#f0f2f5;font-family:Arial,Helvetica,sans-serif">'
+      +'<table width="600" align="center" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#1b5e20,#2e7d32);border-radius:12px 12px 0 0"><tr><td style="padding:22px 28px">'
+      +'<div style="color:rgba(255,255,255,.7);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">TEAM EXIT GOAL REPORT</div>'
+      +'<div style="color:#fff;font-size:20px;font-weight:800;margin-top:4px">'+ms.label+' Exit — Team Status</div>'
+      +'<div style="color:rgba(255,255,255,.8);font-size:12px;margin-top:4px">Hi '+am.name+' | '+new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})+'</div>'
+      +'</td></tr></table>'
+      +'<table width="600" align="center" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e8eaf6;border-top:none">'
+      +'<thead><tr style="background:#1b5e20;color:#fff"><th style="padding:9px 10px;text-align:left">BM Name</th><th style="padding:9px 10px;text-align:right">Achievement</th><th style="padding:9px 10px;text-align:right">Exit Target</th><th style="padding:9px 10px;text-align:center">Goal%</th></tr></thead>'
+      +'<tbody>'+bmRows+'</tbody></table>'
+      +'<table width="600" align="center" cellpadding="0" cellspacing="0" style="background:#1b5e20;border-radius:0 0 12px 12px"><tr><td style="padding:12px 24px;text-align:center;color:rgba(255,255,255,.6);font-size:11px">Rupyy Performance Dashboard | '+getCurMonthLabel()+'</td></tr></table>'
+      +'</body></html>';
+
+    try {
+      await fetch(getASUrl(), {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          to:[am.email], cc,
+          subject: ms.label+' Exit — Team Status | '+am.name,
+          htmlBody: amHtml
+        }),
+        mode:'no-cors'
+      });
+      sent++;
+    } catch(e) {}
+    statusEl.innerHTML = '<span style="color:#2e7d32">Sent '+sent+'/'+amList.length+'...</span>';
+    await new Promise(r=>setTimeout(r,350));
+  }
+  statusEl.innerHTML = '<span style="color:#2e7d32;font-weight:700">Exit Goal mail sent to '+sent+' AMs | CC: TH</span>';
 }
 
 async function sendQ1ScoreCard() {
