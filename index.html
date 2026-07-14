@@ -772,8 +772,8 @@ async function doLogin() {
   const errEl = document.getElementById('loginErr');
   errEl.textContent = '';
 
-  // Authenticate against hardcoded EMP_DATA
-  const emp = getEmpData().find(e => e.email === name && String(e.password) === String(pass));
+  // Always authenticate against hardcoded EMP_DATA (live data has no passwords)
+  const emp = EMP_DATA.find(e => e.email === name && String(e.password) === String(pass));
   if (!emp) {
     errEl.textContent = 'Invalid email or password';
     return;
