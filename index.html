@@ -7393,10 +7393,10 @@ function buildPayout(el) {
                     <div style="font-size:11px;font-weight:700;color:#fff;margin-bottom:6px;padding:4px 10px;background:#1565c0;border-radius:6px;display:inline-block">Disbursed Cases (${chCases.length})</div>
                     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
                       <thead style="position:sticky;top:0;z-index:5"><tr style="background:#1565c0;color:#fff">
-                        <th style="padding:6px 8px;background:#1565c0">Loan ID</th><th style="padding:6px 8px;background:#1565c0">Reg No</th><th style="padding:6px 8px;background:#1565c0">Customer</th>
-                        <th style="padding:6px 8px;background:#1565c0">Product</th><th style="padding:6px 8px;background:#1565c0">Activation</th><th style="padding:6px 8px;background:#1565c0">Loan Type</th><th style="padding:6px 8px;background:#1565c0">Bank</th>
-                        <th style="padding:6px 8px;text-align:right;background:#1565c0">Gross Disb</th><th style="padding:6px 8px;text-align:right;background:#1565c0">Subv%</th><th style="padding:6px 8px;text-align:right;background:#1565c0">Payout%</th>
-                        <th style="padding:6px 8px;text-align:right;background:#1565c0">Payout Amt</th>
+                        <th style="padding:6px 8px;background:#1565c0;color:#fff">Loan ID</th><th style="padding:6px 8px;background:#1565c0;color:#fff">Reg No</th><th style="padding:6px 8px;background:#1565c0;color:#fff">Customer</th>
+                        <th style="padding:6px 8px;background:#1565c0;color:#fff">Product</th><th style="padding:6px 8px;background:#1565c0;color:#fff">Activation</th><th style="padding:6px 8px;background:#1565c0;color:#fff">Loan Type</th><th style="padding:6px 8px;background:#1565c0;color:#fff">Bank</th>
+                        <th style="padding:6px 8px;text-align:right;background:#1565c0;color:#fff">Gross Disb</th><th style="padding:6px 8px;text-align:right;background:#1565c0;color:#fff">Subv%</th><th style="padding:6px 8px;text-align:right;background:#1565c0;color:#fff">Payout%</th>
+                        <th style="padding:6px 8px;text-align:right;background:#1565c0;color:#fff">Payout Amt</th>
                       </tr></thead><tbody>
                       ${chCases.map((x,j)=>`<tr style="background:${j%2===0?'#fff':'#f0f7ff'}">
                         <td style="padding:5px 8px;font-family:monospace;font-size:10px">${x.loan_id}</td>
@@ -7423,10 +7423,10 @@ function buildPayout(el) {
                     <div style="font-size:11px;font-weight:700;color:#fff;margin-bottom:6px;padding:4px 10px;background:#c62828;border-radius:6px;display:inline-block">Cancellation Cases (${chCancel.length})</div>
                     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
                       <thead style="position:sticky;top:0;z-index:5"><tr style="background:#c62828;color:#fff">
-                        <th style="padding:6px 8px;background:#c62828">Loan ID</th><th style="padding:6px 8px;background:#c62828">Reg No</th><th style="padding:6px 8px;background:#c62828">Customer</th>
-                        <th style="padding:6px 8px;text-align:right;background:#c62828">Gross Amt</th><th style="padding:6px 8px;text-align:right;background:#c62828">Net Amt</th>
-                        <th style="padding:6px 8px;background:#c62828">Status</th><th style="padding:6px 8px;background:#c62828">Remarks</th>
-                        <th style="padding:6px 8px;text-align:right;background:#c62828">Recovery</th>
+                        <th style="padding:6px 8px;background:#c62828;color:#fff">Loan ID</th><th style="padding:6px 8px;background:#c62828;color:#fff">Reg No</th><th style="padding:6px 8px;background:#c62828;color:#fff">Customer</th>
+                        <th style="padding:6px 8px;text-align:right;background:#c62828;color:#fff">Gross Amt</th><th style="padding:6px 8px;text-align:right;background:#c62828;color:#fff">Net Amt</th>
+                        <th style="padding:6px 8px;background:#c62828;color:#fff">Status</th><th style="padding:6px 8px;background:#c62828;color:#fff">Remarks</th>
+                        <th style="padding:6px 8px;text-align:right;background:#c62828;color:#fff">Recovery</th>
                       </tr></thead><tbody>
                       ${chCancel.map((x,j)=>`<tr style="background:${j%2===0?'#fff8f8':'#fff0f0'}">
                         <td style="padding:5px 8px;font-family:monospace;font-size:10px">${x.loan_id}</td>
@@ -7445,9 +7445,9 @@ function buildPayout(el) {
                     <div style="font-size:11px;font-weight:700;color:#fff;margin-bottom:6px;padding:4px 10px;background:#e65100;border-radius:6px;display:inline-block">Adjustments (${chAdj.length})</div>
                     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
                       <thead style="position:sticky;top:0;z-index:5"><tr style="background:#e65100;color:#fff">
-                        <th style="padding:6px 8px;background:#e65100">Loan ID</th><th style="padding:6px 8px;background:#e65100">Product</th>
-                        <th style="padding:6px 8px;background:#e65100">Month</th><th style="padding:6px 8px;background:#e65100">Remarks</th>
-                        <th style="padding:6px 8px;text-align:right;background:#e65100">Payout Adj</th>
+                        <th style="padding:6px 8px;background:#e65100;color:#fff">Loan ID</th><th style="padding:6px 8px;background:#e65100;color:#fff">Product</th>
+                        <th style="padding:6px 8px;background:#e65100;color:#fff">Month</th><th style="padding:6px 8px;background:#e65100;color:#fff">Remarks</th>
+                        <th style="padding:6px 8px;text-align:right;background:#e65100;color:#fff">Payout Adj</th>
                       </tr></thead><tbody>
                       ${chAdj.map((x,j)=>`<tr style="background:${j%2===0?'#fff8f0':'#fff3e0'}">
                         <td style="padding:5px 8px;font-family:monospace;font-size:10px">${x.loan_id||'—'}</td>
