@@ -2287,8 +2287,16 @@ function buildBanks(el) {
       return t.rh_id===id2;
     });
 
+    // Apply same state/product/loan filters to May data
+    let mayScopeFiltered = mayScope;
+    if (prod  === 'uc')       mayScopeFiltered = mayScopeFiltered.filter(t => t.product === 'Used Car');
+    if (prod  === 'cv')       mayScopeFiltered = mayScopeFiltered.filter(t => t.product !== 'Used Car');
+    if (state !== 'all')      mayScopeFiltered = mayScopeFiltered.filter(t => t.state === state);
+    if (loan  === 'purchase') mayScopeFiltered = mayScopeFiltered.filter(t => (t.loan_type||'').toLowerCase().includes('purchase') && !(t.loan_type||'').toLowerCase().startsWith('ucv') && !(t.loan_type||'').toLowerCase().startsWith('ncv'));
+    if (loan  === 'others')   mayScopeFiltered = mayScopeFiltered.filter(t => !((t.loan_type||'').toLowerCase().includes('purchase') && !(t.loan_type||'').toLowerCase().startsWith('ucv') && !(t.loan_type||'').toLowerCase().startsWith('ncv')));
+
     // June LMTD (same days as July)
-    const mayLMTD = toLMTD(mayScope);
+    const mayLMTD = toLMTD(mayScopeFiltered);
     const mayBankMap = {};
     mayLMTD.forEach(t => {
       const bk = t.bank || 'Unknown';
@@ -2298,7 +2306,7 @@ function buildBanks(el) {
 
     // June Full month (for June Final GMV)
     const juneFinalMap = {};
-    mayScope.forEach(t => {
+    mayScopeFiltered.forEach(t => {
       const bk = t.bank || 'Unknown';
       if (!juneFinalMap[bk]) juneFinalMap[bk] = 0;
       juneFinalMap[bk] += t.amt;
@@ -2338,24 +2346,28 @@ function buildBanks(el) {
     function buildRow(b, rowBg) {
       const mayAmt    = mayBankMap[b.name] || 0;
       const juneFinal = juneFinalMap[b.name] || 0;
+      const isZero    = b.amt === 0 && b.cases === 0;
       const growth    = b.amt - mayAmt;
       const gPct      = mayAmt > 0 ? Math.round((growth/mayAmt)*100) : null;
       const gColor    = growth > 0 ? '#2e7d32' : growth < 0 ? '#c62828' : '#757575';
       const julShare  = total>0 ? Math.round((b.amt/total)*100) : 0;
       const junShare  = juneTotal>0 ? Math.round((juneFinal/juneTotal)*100) : 0;
-      const gCell     = mayAmt === 0
-        ? '<span style="color:#9e9e9e;font-size:11px">New</span>'
-        : '<span style="color:'+gColor+';font-weight:700">'+(growth>=0?'+':'')+fmtCr(growth)+'</span>'
-          +(gPct!==null?'<div style="font-size:10px;color:'+gColor+'">'+(gPct>=0?'+':'')+gPct+'%</div>':'');
-      return '<tr style="background:'+rowBg+'">'
+      const gCell     = isZero
+        ? '<span style="color:#bbb;font-size:11px">—</span>'
+        : mayAmt === 0
+          ? '<span style="color:#9e9e9e;font-size:11px">New</span>'
+          : '<span style="color:'+gColor+';font-weight:700">'+(growth>=0?'+':'')+fmtCr(growth)+'</span>'
+            +(gPct!==null?'<div style="font-size:10px;color:'+gColor+'">'+(gPct>=0?'+':'')+gPct+'%</div>':'');
+      const dimStyle  = isZero ? 'opacity:0.5;' : '';
+      return '<tr style="background:'+rowBg+';'+dimStyle+'">'
         +'<td style="padding:7px 10px;font-size:12px">'+shortName(b.name)+tierBadge(b.name)+'</td>'
-        +'<td style="padding:7px 8px;text-align:center">'+b.cases+'</td>'
-        +'<td style="padding:7px 8px;text-align:right;font-weight:700">'+fmtCr(b.amt)+'</td>'
+        +'<td style="padding:7px 8px;text-align:center">'+(isZero?'<span style="color:#bbb">0</span>':b.cases)+'</td>'
+        +'<td style="padding:7px 8px;text-align:right;font-weight:700;color:'+(isZero?'#bbb':'inherit')+'">'+(isZero?'₹0':fmtCr(b.amt))+'</td>'
         +'<td style="padding:7px 8px;text-align:right;color:#546e7a;font-size:11px">'+(mayAmt>0?fmtCr(mayAmt):'<span style="color:#ccc">—</span>')+'</td>'
         +'<td style="padding:7px 8px;text-align:center">'+gCell+'</td>'
         +'<td style="padding:7px 8px;text-align:right;color:#546e7a;font-size:11px">'+(juneFinal>0?fmtCr(juneFinal):'<span style="color:#ccc">—</span>')+'</td>'
-        +'<td style="padding:7px 8px;text-align:center"><span style="background:#e3f2fd;color:#1565c0;padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">'+julShare+'%</span></td>'
-        +'<td style="padding:7px 8px;text-align:center"><span style="background:#f3e5f5;color:#7b1fa2;padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">'+(junShare>0?junShare+'%':'—')+'</span></td>'
+        +'<td style="padding:7px 8px;text-align:center">'+(isZero?'<span style="color:#bbb">0%</span>':'<span style="background:#e3f2fd;color:#1565c0;padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">'+julShare+'%</span>')+'</td>'
+        +'<td style="padding:7px 8px;text-align:center">'+(junShare>0?'<span style="background:#f3e5f5;color:#7b1fa2;padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">'+junShare+'%</span>':'<span style="color:#bbb">—</span>')+'</td>'
         +'</tr>';
     }
 
@@ -2387,10 +2399,24 @@ function buildBanks(el) {
         +'</tr>';
     }
 
+    // Ensure all Platinum & Gold banks always appear (even with zero disbursement)
+    const allKnownBanks = Object.keys(bankTiers);
+    allKnownBanks.forEach(bkLower => {
+      const tier = bankTiers[bkLower] || '';
+      if (!tier.toLowerCase().includes('platinum') && !tier.toLowerCase().includes('gold')) return;
+      // Find canonical name from actual txns or use title-cased version
+      const existingBank = banks.find(b => b.name.toLowerCase() === bkLower);
+      if (!existingBank) {
+        // Add zero-disbursement entry with proper display name
+        const displayName = bkLower.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
+        banks.push({name: displayName, amt: 0, cases: 0, _zeroBank: true});
+      }
+    });
+
     // Split into groups
-    const platinum = banks.filter(b=>getTier(b.name)==='Platinum');
-    const gold     = banks.filter(b=>getTier(b.name)==='Gold');
-    const other    = banks.filter(b=>getTier(b.name)==='Other');
+    const platinum = banks.filter(b=>getTier(b.name)==='Platinum').sort((a,b)=>b.amt-a.amt);
+    const gold     = banks.filter(b=>getTier(b.name)==='Gold').sort((a,b)=>b.amt-a.amt);
+    const other    = banks.filter(b=>getTier(b.name)==='Other' && b.amt>0).sort((a,b)=>b.amt-a.amt);
 
     let html = '';
     if (platinum.length) {
