@@ -2118,14 +2118,13 @@ function buildRHPerfTable() {
       // Load commitment from live data (sheet-based, loaded via data.json)
       const _today = new Date().toISOString().slice(0,10);
       if (!window._rhCommit) window._rhCommit = {};
-      // Pre-populate from live data on first render
-      if (!window._rhCommitLoaded) {
-        window._rhCommitLoaded = true;
-        const commits = window._LIVE_DATA && window._LIVE_DATA.commitments ? window._LIVE_DATA.commitments : [];
-        commits.filter(c=>c.date===_today).forEach(c=>{
-          const ucKey = 'uc_'+c.id; const cvKey = 'cv_'+c.id;
-          if (c.uc_commit) window._rhCommit[ucKey] = c.uc_commit+'L';
-          if (c.cv_commit) window._rhCommit[cvKey] = c.cv_commit+'L';
+      if (!window._rhCommitDate || window._rhCommitDate !== _today) {
+        window._rhCommitDate = _today;
+        window._rhCommit = {};
+        const commits = (window._LIVE_DATA && window._LIVE_DATA.commitments) ? window._LIVE_DATA.commitments : [];
+        commits.filter(c => c.date === _today).forEach(c => {
+          if (c.uc_commit && parseFloat(c.uc_commit) > 0) window._rhCommit['uc_'+c.id] = parseFloat(c.uc_commit)+'L';
+          if (c.cv_commit && parseFloat(c.cv_commit) > 0) window._rhCommit['cv_'+c.id] = parseFloat(c.cv_commit)+'L';
         });
       }
       const savedCommit = window._rhCommit[prefix+'_'+r.id] || '';
@@ -2158,8 +2157,8 @@ function buildRHPerfTable() {
     h += '<td style="padding:8px 10px;text-align:right">'+diffCell(totMTD-totLMTD)+'</td>';
     h += '<td></td>';
     h += '<td style="padding:8px 10px;text-align:right;color:#6a1b9a;font-weight:700">'+(totYP>0?fmtL(totYP):'—')+'</td>';
-    h += '<td></td>';
-    h += '<td style="padding:8px 10px;text-align:right;color:#2e7d32">'+(totFTD>0?fmtL(totFTD):'—')+'</td>';
+    h += '<td style="padding:8px 10px;text-align:center"><span style="color:#9e9e9e;font-size:11px">—</span></td>';
+    h += '<td style="padding:8px 10px;text-align:right;font-weight:800;color:#2e7d32">'+(totFTD>0?fmtL(totFTD):'—')+'</td>';
     h += '</tr></tbody></table></div>';
     return h;
   }
@@ -7697,7 +7696,7 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
   const behind  = bmRows.filter(r=>r.tgts.uc+r.tgts.cv>0&&r.totAch<70).length;
 
   function bmTableRows(rows) {
-    return rows.map((r,i)=>{
+    const dataRows = rows.map((r,i)=>{
       const name=r.emp?r.emp.name:(r.txns[0]?.bm||r.key||'Unknown');
       const hasTgt = r.tgts.uc+r.tgts.cv > 0;
       const statusBadge = !hasTgt
@@ -7723,6 +7722,36 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
         +'<td>'+(hasTgt?weeklyBadge(r.totAch):'<span class="badge badge-grey">No Tgt</span>')+'</td>'
         +'</tr>';
     }).join('');
+    // Total row for RH/AM view (more than 1 BM)
+    if (rows.length > 1) {
+      const totUCTgt = rows.reduce((s,r)=>s+r.tgts.uc,0);
+      const totCVTgt = rows.reduce((s,r)=>s+r.tgts.cv,0);
+      const totChTgt = rows.reduce((s,r)=>s+(r.tgts.ch||0),0);
+      const totUCAmt = rows.reduce((s,r)=>s+r.ucAmt,0);
+      const totCVAmt = rows.reduce((s,r)=>s+r.cvAmt,0);
+      const totChAct = rows.reduce((s,r)=>s+r.chAct,0);
+      const totAmt   = rows.reduce((s,r)=>s+r.totAmt,0);
+      const totUCAch = totUCTgt>0?Math.round((totUCAmt/totUCTgt)*100):0;
+      const totCVAch = totCVTgt>0?Math.round((totCVAmt/totCVTgt)*100):0;
+      const totChAch = totChTgt>0?Math.round((totChAct/totChTgt)*100):0;
+      const totOvAch = (totUCTgt+totCVTgt)>0?Math.round((totAmt/(totUCTgt+totCVTgt))*100):0;
+      return dataRows + '<tr style="background:#e8eaf6;font-weight:700;border-top:2px solid #1a237e">'
+        +'<td colspan="2" style="padding:7px 10px;color:#1a237e;font-size:12px">TOTAL ('+rows.length+' BMs)</td>'
+        +'<td colspan="2"></td>'
+        +'<td style="font-size:11px;color:#546e7a">'+fmtCr(totUCTgt)+'</td>'
+        +'<td style="font-size:11px"><b>'+fmtCr(totUCAmt)+'</b></td>'
+        +'<td>'+weeklyBadge(totUCAch)+'</td>'
+        +'<td style="font-size:11px;color:#546e7a">'+fmtCr(totCVTgt)+'</td>'
+        +'<td style="font-size:11px"><b>'+fmtCr(totCVAmt)+'</b></td>'
+        +'<td>'+weeklyBadge(totCVAch)+'</td>'
+        +'<td style="font-size:11px;color:#546e7a">'+totChTgt+'</td>'
+        +'<td style="font-size:11px"><b>'+totChAct+'</b></td>'
+        +'<td>'+weeklyBadge(totChAch)+'</td>'
+        +'<td><b>'+fmtCr(totAmt)+'</b></td>'
+        +'<td>'+weeklyBadge(totOvAch)+'</td>'
+        +'</tr>';
+    }
+    return dataRows;
   }
 
   const bmTableHead = '<thead><tr><th>#</th><th>BM Name</th><th>Status</th><th>Tier</th><th>UC Tgt</th><th>UC Ach</th><th>UC%</th><th>CV Tgt</th><th>CV Ach</th><th>CV%</th><th>Ch Tgt</th><th>Ch</th><th>Ch%</th><th>Total</th><th>Overall%</th></tr></thead>';
