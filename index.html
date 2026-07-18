@@ -5191,18 +5191,18 @@ function buildScorecardEmailHTML(type, note) {
 }
 
 // ── Channel Drive Email HTML ────────────────────────────────
-function buildChannelEmailHTML(type, note) {
+function buildChannelEmailHTML(type, note, scopedCurTxns, scopedPrevTxns, scopedL3Txns, scopedName) {
   const prevData = window._LIVE_MAY || [];
-  const l3Data   = getLast6Months().slice(-3).flatMap(m => m.data().filter(t => t.rh_id === currentUser.id));
+  const l3Data   = scopedL3Txns || getLast6Months().slice(-3).flatMap(m => m.data().filter(t => t.rh_id === currentUser.id));
   const dateStr  = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
   const month    = getCurMonthLabel();
   const prevMonth= getPrevMonthLabel();
 
-  const curTxns  = myTxns;
-  const prevTxns = prevData.filter(t => t.rh_id === currentUser.id);
+  const curTxns  = scopedCurTxns  || myTxns;
+  const prevTxns = scopedPrevTxns || prevData.filter(t => t.rh_id === currentUser.id);
   const curCh    = new Set(curTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
   const _rhEmp   = resolveEmpById(currentUser.id);
-  const prevCh   = new Set(prevTxns.filter(t=>isCVBM(_rhEmp)?t.product!=='Used Car'&&t.dcid:t.ch_check>0&&t.dcid).map(t=>t.dcid));
+  const prevCh   = new Set(prevTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
   const l3Ch     = new Set(l3Data.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
 
   const lostDcids     = [...prevCh].filter(d=>!curCh.has(d));
@@ -5227,7 +5227,7 @@ function buildChannelEmailHTML(type, note) {
   return '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif">'
     + '<div style="max-width:680px;margin:0 auto;padding:16px">'
     + '<div style="background:linear-gradient(135deg,#b71c1c,#c62828);border-radius:12px 12px 0 0;padding:24px 28px">'
-    + '<div style="color:#fff;font-size:20px;font-weight:800">Channel Drive Alert</div>'
+    + '<div style="color:#fff;font-size:20px;font-weight:800">Channel Drive Alert' + (scopedName ? ' — ' + scopedName + ' Team' : '') + '</div>'
     + '<div style="color:rgba(255,255,255,.75);font-size:12px;margin-top:4px">' + dateStr + ' | Action Required | From: ' + currentUser.name + '</div>'
     + '</div>'
     + '<div style="background:#fff;padding:16px 28px;display:flex;gap:0;border-bottom:2px solid #ffcdd2">'
@@ -6504,6 +6504,353 @@ async function sendChannelToBMs() {
   statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} BMs | CC: AM & TH</span>`;
 }
 
+// ══════════════════════════════════════════════════════════
+// AM CHANNEL DRIVE EMAIL — BM-wise summary, no raw channel list
+// ══════════════════════════════════════════════════════════
+function buildAMChannelEmailHTML(amEmp, curTxns, prevTxns, l3Txns) {
+  const emps      = getEmpData();
+  const dateStr   = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const month     = getCurMonthLabel();
+  const prevMonth = getPrevMonthLabel();
+  const todayDay  = getTodayDay();
+
+  const amBMs = emps.filter(e => e.designation==='BM' && e.am_id===amEmp.id);
+
+  function fmtL(n) {
+    if (!n) return '0';
+    if (n>=1e7) return '₹'+(n/1e7).toFixed(2)+' Cr';
+    if (n>=1e5) return '₹'+(n/1e5).toFixed(2)+' L';
+    return '₹'+Math.round(n).toLocaleString('en-IN');
+  }
+  function pct(a,b) { return b>0 ? Math.round((a/b)*100)+'%' : '—'; }
+  function gClr(v) { return v>0?'#2e7d32':v<0?'#c62828':'#757575'; }
+
+  // AM-level summary
+  const amCur    = curTxns.filter(t=>t.am_id===amEmp.id);
+  const amPrev   = prevTxns.filter(t=>t.am_id===amEmp.id);
+  const amCurAmt = amCur.reduce((s,t)=>s+t.amt,0);
+  const amPrvAmt = amPrev.reduce((s,t)=>s+t.amt,0);
+  const amCurCh  = new Set(amCur.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+  const amPrvCh  = new Set(amPrev.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+  const amTgt    = amBMs.reduce((s,b)=>s+((b.uc_tgt||0)+(b.cv_tgt||0)),0)*1e5;
+  const amChTgt  = amBMs.reduce((s,b)=>s+(b.ch_tgt||0),0);
+  const amGrowth = amCurAmt - amPrvAmt;
+
+  // BM-wise channel analysis
+  const bmRows = amBMs.map(bm => {
+    const cur    = curTxns.filter(t=>t.bm_id===bm.id);
+    const prev   = prevTxns.filter(t=>t.bm_id===bm.id);
+    const l3     = l3Txns.filter(t=>t.bm_id===bm.id);
+    const curCh  = new Set(cur.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+    const prevCh = new Set(prev.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+    const l3Ch   = new Set(l3.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+    const lost   = [...prevCh].filter(d=>!curCh.has(d));
+    const inact  = [...l3Ch].filter(d=>!curCh.has(d)&&!lost.includes(d));
+    const lostGMV = lost.reduce((s,d)=>s+prev.filter(t=>t.dcid===d).reduce((ss,t)=>ss+t.amt,0),0);
+    const inactGMV= inact.reduce((s,d)=>s+l3.filter(t=>t.dcid===d).reduce((ss,t)=>ss+t.amt,0),0);
+    const curAmt = cur.reduce((s,t)=>s+t.amt,0);
+    const tgt    = ((bm.uc_tgt||0)+(bm.cv_tgt||0))*1e5;
+    const achPct = tgt>0?Math.round((curAmt/tgt)*100):null;
+    return {bm, curCh:curCh.size, prevCh:prevCh.size, lost:lost.length, inact:inact.length,
+            lostGMV, inactGMV, curAmt, tgt, achPct, chTgt:bm.ch_tgt||0};
+  }).sort((a,b)=>b.lost-a.lost||b.inact-a.inact);
+
+  const totLost  = bmRows.reduce((s,r)=>s+r.lost,0);
+  const totInact = bmRows.reduce((s,r)=>s+r.inact,0);
+  const totLostGMV  = bmRows.reduce((s,r)=>s+r.lostGMV,0);
+  const totInactGMV = bmRows.reduce((s,r)=>s+r.inactGMV,0);
+  const potentialGMV = totLostGMV + totInactGMV;
+
+  const urgentBMs  = bmRows.filter(r=>r.lost>0).length;
+  const watchBMs   = bmRows.filter(r=>r.inact>0).length;
+  const onTrackBMs = bmRows.filter(r=>r.lost===0&&r.inact===0).length;
+
+  const rows = bmRows.map((r,i) => {
+    const status = r.lost>0 ? 'URGENT' : r.inact>0 ? 'WATCH' : 'ON TRACK';
+    const sBg    = r.lost>0 ? '#ffebee' : r.inact>0 ? '#fff8e1' : '#e8f5e9';
+    const sClr   = r.lost>0 ? '#c62828' : r.inact>0 ? '#f57f17' : '#2e7d32';
+    const chGap  = r.chTgt - r.curCh;
+    return '<tr style="background:'+(i%2===0?'#fff':'#f9f9fb')+'">'+
+      '<td style="padding:9px 12px;font-weight:700;color:#1a237e;font-size:13px">'+r.bm.name+'</td>'+
+      '<td style="padding:9px 8px;text-align:center;font-weight:700">'+r.curCh+'<span style="font-size:10px;color:#9e9e9e">/'+r.chTgt+'</span></td>'+
+      '<td style="padding:9px 8px;text-align:center;color:'+(chGap>0?'#c62828':'#2e7d32')+';font-weight:700">'+(chGap>0?'-'+chGap:'+'+Math.abs(chGap))+'</td>'+
+      '<td style="padding:9px 8px;text-align:center;color:#c62828;font-weight:700">'+(r.lost>0?r.lost:'-')+'</td>'+
+      '<td style="padding:9px 8px;text-align:right;color:#c62828;font-size:11px">'+(r.lostGMV>0?fmtL(r.lostGMV):'-')+'</td>'+
+      '<td style="padding:9px 8px;text-align:center;color:#f57f17;font-weight:700">'+(r.inact>0?r.inact:'-')+'</td>'+
+      '<td style="padding:9px 8px;text-align:right;color:#f57f17;font-size:11px">'+(r.inactGMV>0?fmtL(r.inactGMV):'-')+'</td>'+
+      '<td style="padding:9px 8px;text-align:center"><span style="background:'+sBg+';color:'+sClr+';padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700">'+status+'</span></td>'+
+    '</tr>';
+  }).join('');
+
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8"></head>'+
+  '<body style="margin:0;padding:0;background:#f0f2f5;font-family:Arial,sans-serif">'+
+  '<div style="max-width:700px;margin:0 auto;padding:16px">'+
+
+  // Header
+  '<div style="background:linear-gradient(135deg,#1a237e,#283593);border-radius:14px 14px 0 0;padding:28px 32px">'+
+    '<div style="font-size:11px;color:rgba(255,255,255,.6);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">CHANNEL DRIVE ALERT — ACTION REQUIRED</div>'+
+    '<div style="color:#fff;font-size:22px;font-weight:800;margin-bottom:4px">'+month+' Channel Status</div>'+
+    '<div style="color:rgba(255,255,255,.7);font-size:13px">'+dateStr+' &nbsp;|&nbsp; Area: '+amEmp.name+' &nbsp;|&nbsp; From: '+currentUser.name+'</div>'+
+    '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">'+
+      '<span style="background:rgba(255,255,255,.15);color:#fff;padding:3px 10px;border-radius:12px;font-size:11px">'+amBMs.length+' BMs</span>'+
+      (urgentBMs?'<span style="background:#ffebee;color:#c62828;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700">'+urgentBMs+' BMs Need Action</span>':'')+
+      (watchBMs?'<span style="background:#fff8e1;color:#f57f17;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700">'+watchBMs+' BMs Watch</span>':'')+
+      (onTrackBMs?'<span style="background:#e8f5e9;color:#2e7d32;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700">'+onTrackBMs+' BMs On Track</span>':'')+
+    '</div>'+
+  '</div>'+
+
+  // Summary KPIs
+  '<div style="background:#fff;padding:20px 24px;border-bottom:2px solid #e8eaf6;display:grid;grid-template-columns:repeat(4,1fr);gap:0">'+
+    '<div style="text-align:center;padding:12px;border-right:1px solid #f0f0f0">'+
+      '<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase;margin-bottom:4px">Active Channels</div>'+
+      '<div style="font-size:22px;font-weight:800;color:#1a237e">'+amCurCh+'</div>'+
+      '<div style="font-size:10px;color:#9e9e9e">Target: '+amChTgt+'</div>'+
+    '</div>'+
+    '<div style="text-align:center;padding:12px;border-right:1px solid #f0f0f0">'+
+      '<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase;margin-bottom:4px">Lost Channels</div>'+
+      '<div style="font-size:22px;font-weight:800;color:#c62828">'+totLost+'</div>'+
+      '<div style="font-size:10px;color:#c62828">'+fmtL(totLostGMV)+' GMV at risk</div>'+
+    '</div>'+
+    '<div style="text-align:center;padding:12px;border-right:1px solid #f0f0f0">'+
+      '<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase;margin-bottom:4px">Inactive (L3M)</div>'+
+      '<div style="font-size:22px;font-weight:800;color:#f57f17">'+totInact+'</div>'+
+      '<div style="font-size:10px;color:#f57f17">'+fmtL(totInactGMV)+' potential</div>'+
+    '</div>'+
+    '<div style="text-align:center;padding:12px">'+
+      '<div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase;margin-bottom:4px">Recovery Potential</div>'+
+      '<div style="font-size:22px;font-weight:800;color:#2e7d32">'+fmtL(potentialGMV)+'</div>'+
+      '<div style="font-size:10px;color:#9e9e9e">if channels reactivated</div>'+
+    '</div>'+
+  '</div>'+
+
+  // MTD Progress
+  '<div style="background:#f8f9ff;padding:16px 24px;border-bottom:1px solid #e8eaf6">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+      '<div style="font-size:12px;font-weight:700;color:#1a237e;text-transform:uppercase;letter-spacing:.5px">MTD Progress (Day '+todayDay+')</div>'+
+      '<div style="font-size:13px;font-weight:800;color:#1a237e">'+fmtL(amCurAmt)+' <span style="font-size:11px;font-weight:400;color:#9e9e9e">/ '+fmtL(amTgt)+'</span></div>'+
+    '</div>'+
+    '<div style="background:#e8eaf6;border-radius:6px;height:8px;overflow:hidden">'+
+      '<div style="background:linear-gradient(90deg,#1a237e,#3949ab);height:100%;width:'+Math.min(amTgt>0?Math.round((amCurAmt/amTgt)*100):0,100)+'%;border-radius:6px"></div>'+
+    '</div>'+
+    '<div style="display:flex;justify-content:space-between;margin-top:6px">'+
+      '<div style="font-size:11px;color:#9e9e9e">vs '+prevMonth.split(' ')[0]+' LMTD: '+fmtL(amPrvAmt)+'</div>'+
+      '<div style="font-size:11px;font-weight:700;color:'+gClr(amGrowth)+'">'+
+        (amGrowth>=0?'+':'')+fmtL(amGrowth)+' ('+pct(amCurAmt,amPrvAmt)+' vs LM)'+
+      '</div>'+
+    '</div>'+
+  '</div>'+
+
+  // BM-wise Channel Table
+  '<div style="background:#fff;padding:0">'+
+    '<div style="padding:14px 24px 10px;font-size:13px;font-weight:700;color:#1a237e;border-bottom:1px solid #f0f0f0">'+
+      'BM-wise Channel Status &amp; Priority Actions'+
+    '</div>'+
+    '<div style="overflow-x:auto">'+
+    '<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+      '<thead><tr style="background:#1a237e">'+
+        '<th style="padding:9px 12px;text-align:left;color:#fff;font-weight:700">BM Name</th>'+
+        '<th style="padding:9px 8px;text-align:center;color:#90caf9;font-size:11px">Active Ch<br><span style="font-weight:400">/Target</span></th>'+
+        '<th style="padding:9px 8px;text-align:center;color:#90caf9;font-size:11px">Ch Gap</th>'+
+        '<th style="padding:9px 8px;text-align:center;color:#ef9a9a;font-size:11px">Lost</th>'+
+        '<th style="padding:9px 8px;text-align:right;color:#ef9a9a;font-size:11px">Lost GMV</th>'+
+        '<th style="padding:9px 8px;text-align:center;color:#ffe082;font-size:11px">Inactive</th>'+
+        '<th style="padding:9px 8px;text-align:right;color:#ffe082;font-size:11px">Potential GMV</th>'+
+        '<th style="padding:9px 8px;text-align:center;color:#fff;font-size:11px">Status</th>'+
+      '</tr></thead>'+
+      '<tbody>'+rows+'</tbody>'+
+    '</table>'+
+    '</div>'+
+  '</div>'+
+
+  // Action call-out
+  '<div style="background:#1a237e;padding:16px 24px;border-radius:0 0 14px 14px">'+
+    '<div style="color:#fff;font-size:12px;font-weight:700;margin-bottom:8px">ACTION REQUIRED</div>'+
+    '<div style="color:rgba(255,255,255,.8);font-size:11px;line-height:1.7">'+
+      (totLost>0?'<div>&#9888; <b>'+totLost+' lost channels</b> — were active last month. Priority: visit and reactivate by end of week.</div>':'')+
+      (totInact>0?'<div>&#9679; <b>'+totInact+' dormant channels</b> — inactive for 3+ months. Estimated GMV potential: '+fmtL(totInactGMV)+'</div>':'')+
+      '<div>&#9679; Ensure all BMs meet their channel targets before 25th '+month+'</div>'+
+    '</div>'+
+    '<div style="margin-top:10px;color:rgba(255,255,255,.5);font-size:10px">Sent from Rupyy Performance Dashboard &nbsp;|&nbsp; '+currentUser.name+'</div>'+
+  '</div>'+
+
+  '</div></body></html>';
+}
+
+// ══════════════════════════════════════════════════════════
+// TH CHANNEL DRIVE EMAIL — AM-wise + BM summary, no raw channel list
+// ══════════════════════════════════════════════════════════
+function buildTHChannelEmailHTML(thEmp, curTxns, prevTxns, l3Txns) {
+  const emps      = getEmpData();
+  const dateStr   = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const month     = getCurMonthLabel();
+  const prevMonth = getPrevMonthLabel();
+  const todayDay  = getTodayDay();
+
+  const thBmIds = new Set(emps.filter(e=>e.designation==='BM'&&(e.th_id===thEmp.id||e.am_id===thEmp.id)).map(e=>e.id));
+  const thAMs   = emps.filter(e=>e.designation==='AM'&&(e.th_id===thEmp.id||e.rh_id===currentUser.id&&thBmIds.size>0));
+  const thBMs   = emps.filter(e=>e.designation==='BM'&&thBmIds.has(e.id));
+
+  function fmtL(n) {
+    if (!n) return '0';
+    if (n>=1e7) return '₹'+(n/1e7).toFixed(2)+' Cr';
+    if (n>=1e5) return '₹'+(n/1e5).toFixed(2)+' L';
+    return '₹'+Math.round(n).toLocaleString('en-IN');
+  }
+  function gClr(v) { return v>0?'#2e7d32':v<0?'#c62828':'#757575'; }
+
+  // TH-level summary
+  const thCurAmt = curTxns.reduce((s,t)=>s+t.amt,0);
+  const thPrvAmt = prevTxns.reduce((s,t)=>s+t.amt,0);
+  const thCurCh  = new Set(curTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+  const thPrvCh  = new Set(prevTxns.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
+  const thTgt    = thBMs.reduce((s,b)=>s+((b.uc_tgt||0)+(b.cv_tgt||0)),0)*1e5;
+  const thChTgt  = thBMs.reduce((s,b)=>s+(b.ch_tgt||0),0);
+  const thGrowth = thCurAmt - thPrvAmt;
+
+  // BM-wise analysis (grouped to show by BM with AM context)
+  const bmRows = thBMs.map(bm => {
+    const amEmp  = emps.find(e=>e.id===bm.am_id);
+    const cur    = curTxns.filter(t=>t.bm_id===bm.id);
+    const prev   = prevTxns.filter(t=>t.bm_id===bm.id);
+    const l3     = l3Txns.filter(t=>t.bm_id===bm.id);
+    const curCh  = new Set(cur.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+    const prevCh = new Set(prev.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+    const l3Ch   = new Set(l3.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid));
+    const lost   = [...prevCh].filter(d=>!curCh.has(d));
+    const inact  = [...l3Ch].filter(d=>!curCh.has(d)&&!lost.includes(d));
+    const lostGMV = lost.reduce((s,d)=>s+prev.filter(t=>t.dcid===d).reduce((ss,t)=>ss+t.amt,0),0);
+    const inactGMV= inact.reduce((s,d)=>s+l3.filter(t=>t.dcid===d).reduce((ss,t)=>ss+t.amt,0),0);
+    const curAmt = cur.reduce((s,t)=>s+t.amt,0);
+    const tgt    = ((bm.uc_tgt||0)+(bm.cv_tgt||0))*1e5;
+    const achPct = tgt>0?Math.round((curAmt/tgt)*100):null;
+    return {bm, amName:amEmp?.name||'—', curCh:curCh.size, prevCh:prevCh.size,
+            lost:lost.length, inact:inact.length, lostGMV, inactGMV,
+            curAmt, tgt, achPct, chTgt:bm.ch_tgt||0};
+  }).sort((a,b)=>b.lost-a.lost||b.inact-a.inact);
+
+  const totLost     = bmRows.reduce((s,r)=>s+r.lost,0);
+  const totInact    = bmRows.reduce((s,r)=>s+r.inact,0);
+  const totLostGMV  = bmRows.reduce((s,r)=>s+r.lostGMV,0);
+  const totInactGMV = bmRows.reduce((s,r)=>s+r.inactGMV,0);
+  const potentialGMV= totLostGMV + totInactGMV;
+  const urgentBMs   = bmRows.filter(r=>r.lost>0).length;
+  const watchBMs    = bmRows.filter(r=>r.inact>0&&r.lost===0).length;
+  const onTrackBMs  = bmRows.filter(r=>r.lost===0&&r.inact===0).length;
+
+  const rows = bmRows.map((r,i) => {
+    const status = r.lost>0 ? 'URGENT' : r.inact>0 ? 'WATCH' : 'ON TRACK';
+    const sBg    = r.lost>0 ? '#ffebee' : r.inact>0 ? '#fff8e1' : '#e8f5e9';
+    const sClr   = r.lost>0 ? '#c62828' : r.inact>0 ? '#f57f17' : '#2e7d32';
+    const chGap  = r.chTgt - r.curCh;
+    const achClr = r.achPct!=null ? (r.achPct>=70?'#2e7d32':r.achPct>=50?'#f57f17':'#c62828') : '#9e9e9e';
+    return '<tr style="background:'+(i%2===0?'#fff':'#f9f9fb')+'">'+
+      '<td style="padding:8px 12px;font-weight:700;color:#1a237e;font-size:12px">'+r.bm.name+'</td>'+
+      '<td style="padding:8px 8px;font-size:10px;color:#666">'+r.amName+'</td>'+
+      '<td style="padding:8px 8px;text-align:center;font-weight:700">'+r.curCh+'<span style="font-size:10px;color:#9e9e9e">/'+r.chTgt+'</span></td>'+
+      '<td style="padding:8px 8px;text-align:center;color:'+(chGap>0?'#c62828':'#2e7d32')+';font-weight:700">'+(chGap>0?'-'+chGap:'+'+Math.abs(chGap))+'</td>'+
+      '<td style="padding:8px 8px;text-align:center;color:#c62828;font-weight:700">'+(r.lost>0?r.lost:'-')+'</td>'+
+      '<td style="padding:8px 8px;text-align:right;color:#c62828;font-size:11px">'+(r.lostGMV>0?fmtL(r.lostGMV):'-')+'</td>'+
+      '<td style="padding:8px 8px;text-align:center;color:#f57f17;font-weight:700">'+(r.inact>0?r.inact:'-')+'</td>'+
+      '<td style="padding:8px 8px;text-align:right;color:#f57f17;font-size:11px">'+(r.inactGMV>0?fmtL(r.inactGMV):'-')+'</td>'+
+      '<td style="padding:8px 8px;text-align:center;font-weight:700;color:'+achClr+'">'+(r.achPct!=null?r.achPct+'%':'—')+'</td>'+
+      '<td style="padding:8px 8px;text-align:center"><span style="background:'+sBg+';color:'+sClr+';padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700">'+status+'</span></td>'+
+    '</tr>';
+  }).join('');
+
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8"></head>'+
+  '<body style="margin:0;padding:0;background:#f0f2f5;font-family:Arial,sans-serif">'+
+  '<div style="max-width:750px;margin:0 auto;padding:16px">'+
+
+  // Header
+  '<div style="background:linear-gradient(135deg,#4a148c,#6a1b9a);border-radius:14px 14px 0 0;padding:28px 32px">'+
+    '<div style="font-size:11px;color:rgba(255,255,255,.6);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">CHANNEL DRIVE REVIEW — TERRITORY</div>'+
+    '<div style="color:#fff;font-size:22px;font-weight:800;margin-bottom:4px">'+month+' Channel Drive Status</div>'+
+    '<div style="color:rgba(255,255,255,.7);font-size:13px">'+dateStr+' &nbsp;|&nbsp; Territory: '+thEmp.name+' &nbsp;|&nbsp; From: '+currentUser.name+'</div>'+
+    '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">'+
+      '<span style="background:rgba(255,255,255,.15);color:#fff;padding:3px 10px;border-radius:12px;font-size:11px">'+thBMs.length+' BMs</span>'+
+      (urgentBMs?'<span style="background:#ffebee;color:#c62828;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700">'+urgentBMs+' BMs Need Action</span>':'')+
+      (watchBMs?'<span style="background:#fff8e1;color:#f57f17;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700">'+watchBMs+' BMs Watch</span>':'')+
+      (onTrackBMs?'<span style="background:#e8f5e9;color:#2e7d32;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700">'+onTrackBMs+' BMs On Track</span>':'')+
+    '</div>'+
+  '</div>'+
+
+  // Summary KPIs
+  '<div style="background:#fff;padding:20px 24px;border-bottom:2px solid #ede7f6;display:grid;grid-template-columns:repeat(5,1fr);gap:0">'+
+    '<div style="text-align:center;padding:10px;border-right:1px solid #f0f0f0">'+
+      '<div style="font-size:9px;color:#9e9e9e;font-weight:600;text-transform:uppercase;margin-bottom:4px">MTD GMV</div>'+
+      '<div style="font-size:18px;font-weight:800;color:#4a148c">'+fmtL(thCurAmt)+'</div>'+
+      '<div style="font-size:10px;color:'+gClr(thGrowth)+'">'+fmtL(thPrvAmt)+' LM</div>'+
+    '</div>'+
+    '<div style="text-align:center;padding:10px;border-right:1px solid #f0f0f0">'+
+      '<div style="font-size:9px;color:#9e9e9e;font-weight:600;text-transform:uppercase;margin-bottom:4px">Active Ch</div>'+
+      '<div style="font-size:18px;font-weight:800;color:#1a237e">'+thCurCh+'</div>'+
+      '<div style="font-size:10px;color:#9e9e9e">Target: '+thChTgt+'</div>'+
+    '</div>'+
+    '<div style="text-align:center;padding:10px;border-right:1px solid #f0f0f0">'+
+      '<div style="font-size:9px;color:#9e9e9e;font-weight:600;text-transform:uppercase;margin-bottom:4px">Lost</div>'+
+      '<div style="font-size:18px;font-weight:800;color:#c62828">'+totLost+'</div>'+
+      '<div style="font-size:10px;color:#c62828">'+fmtL(totLostGMV)+'</div>'+
+    '</div>'+
+    '<div style="text-align:center;padding:10px;border-right:1px solid #f0f0f0">'+
+      '<div style="font-size:9px;color:#9e9e9e;font-weight:600;text-transform:uppercase;margin-bottom:4px">Inactive</div>'+
+      '<div style="font-size:18px;font-weight:800;color:#f57f17">'+totInact+'</div>'+
+      '<div style="font-size:10px;color:#f57f17">'+fmtL(totInactGMV)+'</div>'+
+    '</div>'+
+    '<div style="text-align:center;padding:10px">'+
+      '<div style="font-size:9px;color:#9e9e9e;font-weight:600;text-transform:uppercase;margin-bottom:4px">Potential</div>'+
+      '<div style="font-size:18px;font-weight:800;color:#2e7d32">'+fmtL(potentialGMV)+'</div>'+
+      '<div style="font-size:10px;color:#9e9e9e">if reactivated</div>'+
+    '</div>'+
+  '</div>'+
+
+  // MTD Progress bar
+  '<div style="background:#f8f0ff;padding:14px 24px;border-bottom:1px solid #ede7f6">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+      '<div style="font-size:11px;font-weight:700;color:#4a148c;text-transform:uppercase;letter-spacing:.5px">Territory MTD — Day '+todayDay+'</div>'+
+      '<div style="font-size:13px;font-weight:800;color:#4a148c">'+Math.min(thTgt>0?Math.round((thCurAmt/thTgt)*100):0,100)+'% of Target</div>'+
+    '</div>'+
+    '<div style="background:#ede7f6;border-radius:6px;height:8px;overflow:hidden">'+
+      '<div style="background:linear-gradient(90deg,#4a148c,#7b1fa2);height:100%;width:'+Math.min(thTgt>0?Math.round((thCurAmt/thTgt)*100):0,100)+'%;border-radius:6px"></div>'+
+    '</div>'+
+  '</div>'+
+
+  // BM Table
+  '<div style="background:#fff">'+
+    '<div style="padding:14px 24px 10px;font-size:13px;font-weight:700;color:#4a148c;border-bottom:1px solid #f0f0f0">'+
+      'BM-wise Channel Drive Status'+
+    '</div>'+
+    '<div style="overflow-x:auto">'+
+    '<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+      '<thead><tr style="background:#4a148c">'+
+        '<th style="padding:9px 12px;text-align:left;color:#fff;font-weight:700">BM Name</th>'+
+        '<th style="padding:9px 8px;text-align:left;color:#ce93d8;font-size:11px">AM</th>'+
+        '<th style="padding:9px 8px;text-align:center;color:#ce93d8;font-size:11px">Active/Tgt</th>'+
+        '<th style="padding:9px 8px;text-align:center;color:#ce93d8;font-size:11px">Gap</th>'+
+        '<th style="padding:9px 8px;text-align:center;color:#ef9a9a;font-size:11px">Lost</th>'+
+        '<th style="padding:9px 8px;text-align:right;color:#ef9a9a;font-size:11px">Lost GMV</th>'+
+        '<th style="padding:9px 8px;text-align:center;color:#ffe082;font-size:11px">Inactive</th>'+
+        '<th style="padding:9px 8px;text-align:right;color:#ffe082;font-size:11px">Potential</th>'+
+        '<th style="padding:9px 8px;text-align:center;color:#a5d6a7;font-size:11px">ACH%</th>'+
+        '<th style="padding:9px 8px;text-align:center;color:#fff;font-size:11px">Status</th>'+
+      '</tr></thead>'+
+      '<tbody>'+rows+'</tbody>'+
+    '</table></div>'+
+  '</div>'+
+
+  // Footer call-out
+  '<div style="background:#4a148c;padding:16px 24px;border-radius:0 0 14px 14px">'+
+    '<div style="color:#fff;font-size:12px;font-weight:700;margin-bottom:8px">PRIORITY ACTIONS FOR YOUR TEAM</div>'+
+    '<div style="color:rgba(255,255,255,.8);font-size:11px;line-height:1.8">'+
+      (totLost>0?'<div>&#9888; <b>'+totLost+' lost channels</b> across '+urgentBMs+' BMs — '+(totLostGMV>0?fmtL(totLostGMV)+' GMV risk':'')+'. Immediate BM-wise review needed.</div>':'')+
+      (totInact>0?'<div>&#9679; <b>'+totInact+' dormant channels</b> with '+fmtL(totInactGMV)+' potential GMV. Assign reactivation targets to respective BMs.</div>':'')+
+      '<div>&#9679; Total channel recovery potential: <b>'+fmtL(potentialGMV)+'</b> — prioritize before 25th '+month+'</div>'+
+    '</div>'+
+    '<div style="margin-top:10px;color:rgba(255,255,255,.5);font-size:10px">Rupyy Performance Dashboard &nbsp;|&nbsp; '+currentUser.name+' &nbsp;|&nbsp; '+dateStr+'</div>'+
+  '</div>'+
+
+  '</div></body></html>';
+}
+
 async function sendChannelToAMs() {
   const emps     = getEmpData();
   const checked  = [...document.querySelectorAll('.ch-am-chk:checked')];
@@ -6511,28 +6858,36 @@ async function sendChannelToAMs() {
   if (!checked.length) { statusEl.innerHTML = '<span style="color:#c62828">Select at least one AM</span>'; return; }
   if (!getASUrl()) { promptASUrl(); return; }
 
-  let sent=0;
-  statusEl.innerHTML = `<span style="color:#e53935">Sending...</span>`;
+  let sent = 0;
+  statusEl.innerHTML = `<span style="color:#e53935">Sending to ${checked.length} AM(s)...</span>`;
+  const l3Data = getLast6Months().slice(-3).flatMap(m => m.data().filter(t => t.rh_id === currentUser.id));
+
   for (const chk of checked) {
-    const am    = emps.find(e=>e.id===chk.dataset.id);
+    const am    = emps.find(e => e.id === chk.dataset.id);
     if (!am || !am.email) continue;
-    const thEmp = emps.find(e=>e.id===am.th_id);
+    const thEmp = emps.find(e => e.id === am.th_id);
     const cc    = [thEmp?.email].filter(Boolean);
+
+    const amCurTxns  = myTxns.filter(t => t.am_id === am.id);
+    const amPrevTxns = (window._LIVE_MAY||[]).filter(t => t.am_id === am.id);
+    const amL3Txns   = l3Data.filter(t => t.am_id === am.id);
+
     try {
       await fetch(getASUrl(), {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
           to: [am.email], cc,
-          subject: `Channel Drive Alert - ${am.name} Team - ${getCurMonthLabel()}`,
-          htmlBody: buildChannelEmailHTML('full','')
+          subject: `Channel Drive Alert — ${am.name} Area — ${getCurMonthLabel()}`,
+          htmlBody: buildAMChannelEmailHTML(am, amCurTxns, amPrevTxns, amL3Txns)
         }),
         mode:'no-cors'
       });
       sent++;
     } catch(e) {}
-    await new Promise(r=>setTimeout(r,300));
+    statusEl.innerHTML = `Sent ${sent}/${checked.length}...`;
+    await new Promise(r => setTimeout(r, 400));
   }
-  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} AMs | CC: TH</span>`;
+  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} AM(s) | CC: TH</span>`;
 }
 
 async function sendChannelToTHs() {
@@ -6542,21 +6897,41 @@ async function sendChannelToTHs() {
   if (!checked.length) { statusEl.innerHTML = '<span style="color:#c62828">Select at least one TH</span>'; return; }
   if (!getASUrl()) { promptASUrl(); return; }
 
-  const tos = checked.map(c=>c.dataset.email).filter(Boolean);
-  try {
-    await fetch(getASUrl(), {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        to: tos, cc: [],
-        subject: `Region Channel Drive Report - ${getCurMonthLabel()}`,
-        htmlBody: buildChannelEmailHTML('full','')
-      }),
-      mode:'no-cors'
-    });
-    statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${tos.length} THs</span>`;
-  } catch(e) {
-    statusEl.innerHTML = `<span style="color:#c62828">${e.message}</span>`;
+  statusEl.innerHTML = `Sending to ${checked.length} TH(s)...`;
+  let sent = 0;
+
+  for (const chk of checked) {
+    const thEmp = emps.find(e => e.id === chk.dataset.id);
+    if (!thEmp || !thEmp.email) continue;
+
+    // Scope BMs under this TH
+    const thBmIds = new Set(emps.filter(e =>
+      e.designation === 'BM' && (e.th_id === thEmp.id || e.am_id === thEmp.id)
+    ).map(e => e.id));
+
+    // Filter transactions to this TH's team only
+    const thCurTxns  = myTxns.filter(t => t.th_id === thEmp.id || thBmIds.has(t.bm_id));
+    const thPrevTxns = (window._LIVE_MAY||[]).filter(t => t.th_id === thEmp.id || thBmIds.has(t.bm_id));
+    const thL3Txns   = getLast6Months().slice(-3).flatMap(m =>
+      m.data().filter(t => t.th_id === thEmp.id || thBmIds.has(t.bm_id))
+    );
+
+    try {
+      await fetch(getASUrl(), {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          to: [thEmp.email], cc: [],
+          subject: `Channel Drive Alert - ${thEmp.name} Team - ${getCurMonthLabel()}`,
+          htmlBody: buildTHChannelEmailHTML(thEmp, thCurTxns, thPrevTxns, thL3Txns)
+        }),
+        mode:'no-cors'
+      });
+      sent++;
+    } catch(e) {}
+    statusEl.innerHTML = `Sent ${sent}/${checked.length}...`;
+    await new Promise(r => setTimeout(r, 400));
   }
+  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} TH(s)</span>`;
 }
 
 function selectGroup(prefix, role) {
