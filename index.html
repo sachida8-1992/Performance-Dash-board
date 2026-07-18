@@ -408,6 +408,7 @@ async function tryLoadLiveData() {
     window._LIVE_TXN = isSlim ? data.transactions : parseTransactions(data.transactions || []);
     window._LIVE_MAY = (data.may_data && data.may_data.length) ? data.may_data : TXN_DATA;
     window._LIVE_BANK_TIERS = data.bank_tiers || {};
+    window._LIVE_DATA = data; // store full data for commitment access
     window._LIVE_APR = data.apr_data ? parseTransactions(data.apr_data) : APR_DATA;
     window._LIVE_MAR = data.mar_data ? parseTransactions(data.mar_data) : MAR_DATA;
     loadHistoricalData(data); // store hist_YYYY_MM arrays for scorecard/monthly tabs
@@ -1116,17 +1117,8 @@ function buildOverview(el) {
       ${d === 'RH' ? `
       <!-- RH: AM/TH Performance Table replaces pie chart -->
       <div class="card" style="grid-column:1/-1;padding:16px 18px" id="rhPerfTableCard">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <div style="margin-bottom:12px">
           <div class="card-title" style="margin-bottom:0"> AM / TH Performance — MTD vs LMTD</div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <label style="font-size:12px;color:#757575;font-weight:600">Product:</label>
-            <select id="rhPerfFilter" onchange="buildRHPerfTable()"
-              style="padding:5px 10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:12px;color:#1a237e;font-weight:600;background:#fff;cursor:pointer">
-              <option value="all">All</option>
-              <option value="uc">UC</option>
-              <option value="cv">CV</option>
-            </select>
-          </div>
         </div>
         <div id="rhPerfTableBody" style="overflow-x:auto"></div>
       </div>
@@ -1208,11 +1200,22 @@ function buildOverview(el) {
 
     <!-- Daily Trend full width -->
     <div class="card" style="margin-bottom:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
         <div class="card-title" style="margin-bottom:0">Daily Disbursement Trend</div>
-        <div id="zeroDaysBadge"></div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          ${d === 'RH' ? ('<select id="trendPersonFilter" onchange="buildTrendChart()" style="padding:5px 10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:12px;color:#1a237e;font-weight:600;background:#fff;cursor:pointer"><option value=\"all\">All Region</option>'
+            + getEmpData().filter(e=>e.designation==='TH'&&e.rh_id===currentUser.id).map(e=>'<option value="th_'+e.id+'">TH: '+e.name+'</option>').join('')
+            + getEmpData().filter(e=>e.designation==='AM'&&e.rh_id===currentUser.id).map(e=>'<option value="am_'+e.id+'">AM: '+e.name+'</option>').join('')
+            + '</select>') : ''}
+          <div style="display:flex;gap:4px">
+            <button id="trendUC" class="city-tab-btn active" onclick="setTrendProduct('UC')">UC</button>
+            <button id="trendCV" class="city-tab-btn" onclick="setTrendProduct('CV')">CV</button>
+            <button id="trendAll" class="city-tab-btn" onclick="setTrendProduct('ALL')">All</button>
+          </div>
+          <div id="zeroDaysBadge"></div>
+        </div>
       </div>
-      <canvas id="chartTrend" height="160"></canvas>
+      <canvas id="chartTrend" height="180"></canvas>
       <div id="zeroDaysDetail" style="margin-top:10px"></div>
     </div>
   `;
@@ -1389,90 +1392,233 @@ function buildOverview(el) {
       }
     }
 
-    // Daily trend — June 1–30 only
-    const byDate = {};
-    // Only include June dates (ignore May spill-over)
-    myTxns.filter(t => t.date && t.date.slice(0,7) === getCurMonth()).forEach(t => {
-      const d = t.date.slice(0,10);
-      byDate[d] = (byDate[d]||0) + t.amt;
-    });
+    buildTrendChart();
+  }, 100);
+}
 
-    // Build full working-day range Jun 1 → today (or last txn date)
-    const isBM = currentUser.designation === 'BM';
-    let allDates = [];
-    const junStart = new Date('2026-07-01');
-    const today2   = new Date();
-    const lastTxnDates = Object.keys(byDate).sort();
-    const rangeEnd = lastTxnDates.length > 0
-      ? new Date(Math.max(today2, new Date(lastTxnDates[lastTxnDates.length-1])))
-      : today2;
+// ── Global trend product filter ────────────────────────────
+window._trendProduct = 'UC';
+function setTrendProduct(p) {
+  window._trendProduct = p;
+  ['UC','CV','ALL'].forEach(x => {
+    const btn = document.getElementById('trend'+x);
+    if (btn) btn.classList.toggle('active', x===p);
+  });
+  buildTrendChart();
+}
 
-    // Always show Jun 1 to today (Mon–Sat)
-    for (let d = new Date(junStart); d <= rangeEnd; d.setDate(d.getDate()+1)) {
-      if (d.getDay() !== 0) allDates.push(d.toISOString().slice(0,10));
+// ── Build trend line chart ─────────────────────────────────
+function buildTrendChart() {
+  const product   = window._trendProduct || 'UC';
+  const personSel = document.getElementById('trendPersonFilter');
+  const personVal = personSel ? personSel.value : 'all';
+  const role      = currentUser.designation;
+  const isBM      = role === 'BM';
+
+  // ── Filter transactions ──────────────────────────────────
+  function filterProd(arr) {
+    if (product === 'UC')  return arr.filter(t => t.product === 'Used Car');
+    if (product === 'CV')  return arr.filter(t => t.product !== 'Used Car');
+    return arr;
+  }
+  function filterPerson(arr) {
+    if (!personVal || personVal === 'all') return arr;
+    if (personVal.startsWith('th_')) {
+      const thId = personVal.slice(3);
+      const thBmIds = new Set(getEmpData().filter(e=>e.designation==='BM'&&(e.th_id===thId||e.am_id===thId)).map(e=>e.id));
+      return arr.filter(t => t.th_id===thId || thBmIds.has(t.bm_id));
     }
+    if (personVal.startsWith('am_')) {
+      const amId = personVal.slice(3);
+      return arr.filter(t => t.am_id===amId);
+    }
+    return arr;
+  }
 
-    const barColors = allDates.map(d => (byDate[d]||0) === 0 ? '#ef5350aa' : '#1a237e80');
-    const barBorders = allDates.map(d => (byDate[d]||0) === 0 ? '#c62828' : '#1a237e');
+  const curTxns = filterProd(filterPerson(myTxns.filter(t=>t.date&&t.date.slice(0,7)===getCurMonth())));
 
-    const ctx2 = document.getElementById('chartTrend');
-    if (ctx2) {
-      if (charts.trend) { try { charts.trend.destroy(); } catch(e){} delete charts.trend; }
-      charts.trend = new Chart(ctx2, {
-        type:'bar',
-        data:{
-          labels: allDates.map(d => d.slice(5)),
-          datasets:[{
-            label:'Disbursement',
-            data: allDates.map(d => byDate[d]||0),
-            backgroundColor: barColors,
-            borderColor: barBorders,
-            borderWidth:1,
-            borderRadius:4
-          }]
+  // ── Build date range (working days, current month) ───────
+  const todayStr = new Date().toISOString().slice(0,10);
+  const monthStr = getCurMonth(); // e.g. '2026-07'
+  const allDates = [];
+  const monthStart = new Date(monthStr + '-01');
+  const rangeEnd   = new Date();
+  for (let d = new Date(monthStart); d <= rangeEnd; d.setDate(d.getDate()+1)) {
+    if (d.getDay() !== 0) allDates.push(d.toISOString().slice(0,10)); // Mon-Sat
+  }
+
+  // ── Daily achievement (cumulative daily totals) ──────────
+  const byDate = {};
+  curTxns.forEach(t => {
+    const d = t.date.slice(0,10);
+    byDate[d] = (byDate[d]||0) + t.amt;
+  });
+  const achData = allDates.map(d => byDate[d] || null); // null = no data yet
+
+  // ── Commitment data from live data ───────────────────────
+  const commitData = window._LIVE_DATA && window._LIVE_DATA.commitments ? window._LIVE_DATA.commitments : [];
+  function getCommit(date) {
+    const rows = commitData.filter(c => c.date === date);
+    if (!rows.length) return null;
+    let val = 0;
+    if (!personVal || personVal === 'all') {
+      rows.forEach(c => {
+        val += product==='UC' ? (c.uc_commit||0) : product==='CV' ? (c.cv_commit||0) : (c.uc_commit||0)+(c.cv_commit||0);
+      });
+    } else {
+      const pid = personVal.startsWith('th_') ? personVal.slice(3) : personVal.slice(3);
+      const row = rows.find(c => c.id===pid);
+      if (row) val = product==='UC' ? (row.uc_commit||0) : product==='CV' ? (row.cv_commit||0) : (row.uc_commit||0)+(row.cv_commit||0);
+    }
+    return val > 0 ? val * 1e5 : null; // stored in L, convert to rupees
+  }
+  const commitLine = allDates.map(d => getCommit(d));
+
+  // ── Dynamic DRR per day ──────────────────────────────────
+  // DRR(day) = shortfall at start of that day / remaining working days after that day
+  function getTarget() {
+    if (!personVal || personVal === 'all') {
+      const emps = getEmpData().filter(e=>e.rh_id===currentUser.id);
+      return emps.reduce((s,e)=> s + (product==='UC'?(e.uc_tgt||0):product==='CV'?(e.cv_tgt||0):(e.uc_tgt||0)+(e.cv_tgt||0)), 0)*1e5;
+    }
+    if (personVal.startsWith('th_')) {
+      const thId = personVal.slice(3);
+      const emp = getEmpData().find(e=>e.id===thId);
+      return emp ? (product==='UC'?(emp.uc_tgt||0):product==='CV'?(emp.cv_tgt||0):(emp.uc_tgt||0)+(emp.cv_tgt||0))*1e5 : 0;
+    }
+    if (personVal.startsWith('am_')) {
+      const amId = personVal.slice(3);
+      const emp = getEmpData().find(e=>e.id===amId);
+      return emp ? (product==='UC'?(emp.uc_tgt||0):product==='CV'?(emp.cv_tgt||0):(emp.uc_tgt||0)+(emp.cv_tgt||0))*1e5 : 0;
+    }
+    return 0;
+  }
+  const totalTgt = getTarget();
+  // Build cumulative achievement by day
+  let cumAch = 0;
+  const drrLine = allDates.map((d, i) => {
+    // remaining working days AFTER this day
+    const remDays = allDates.slice(i+1).length;
+    const shortfall = Math.max(totalTgt - cumAch, 0);
+    const drr = remDays > 0 ? shortfall / remDays : null;
+    // now add today's ach so next day reflects it
+    cumAch += (byDate[d]||0);
+    return drr;
+  });
+
+  // ── Build chart ──────────────────────────────────────────
+  const ctx2 = document.getElementById('chartTrend');
+  if (!ctx2) return;
+  if (charts.trend) { try { charts.trend.destroy(); } catch(e){} delete charts.trend; }
+
+  const fL = v => v != null ? (v/1e5).toFixed(1)+'L' : '';
+
+  charts.trend = new Chart(ctx2, {
+    type: 'line',
+    data: {
+      labels: allDates.map(d => {
+        const dt = new Date(d+'T00:00:00');
+        return dt.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+      }),
+      datasets: [
+        {
+          label: 'Achievement',
+          data: achData,
+          borderColor: '#1565c0',
+          backgroundColor: 'rgba(21,101,192,0.08)',
+          borderWidth: 2.5,
+          pointRadius: 4,
+          pointBackgroundColor: achData.map(v => v === 0 ? '#ef5350' : '#1565c0'),
+          pointBorderColor: '#fff',
+          pointBorderWidth: 1.5,
+          tension: 0.3,
+          fill: true,
+          spanGaps: false,
         },
-        options:{
-          plugins:{
-            legend:{display:false},
-            tooltip:{callbacks:{label: ctx => ` ${fmtCr(ctx.raw)}${ctx.raw===0?' — Zero day':''}`}}
-          },
-          scales:{
-            y:{ticks:{callback:v=>fmtCr(v)},grid:{color:'#f0f0f0'}},
-            x:{grid:{display:false},ticks:{font:{size:10}}}
+        {
+          label: 'Commitment',
+          data: commitLine,
+          borderColor: '#2e7d32',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderDash: [6,4],
+          pointRadius: 4,
+          pointBackgroundColor: '#2e7d32',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 1.5,
+          tension: 0.3,
+          spanGaps: false,
+        },
+        {
+          label: 'DRR (Required)',
+          data: drrLine,
+          borderColor: '#e65100',
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          borderDash: [3,3],
+          pointRadius: 2,
+          pointBackgroundColor: '#e65100',
+          tension: 0.2,
+          spanGaps: true,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: {
+            boxWidth: 24,
+            font: { size: 11 },
+            usePointStyle: true,
+            pointStyleWidth: 18,
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              if (ctx.raw == null) return null;
+              const lbl = ctx.dataset.label;
+              const val = fL(ctx.raw);
+              if (lbl === 'Achievement' && ctx.raw === 0) return ' Achievement: 0 — Zero day';
+              return ' '+lbl+': '+val;
+            }
           }
         }
-      });
-    }
-
-    // Zero-days summary — BM only
-    if (isBM) {
-      const zeroDays = allDates.filter(d => (byDate[d]||0) === 0);
-      // exclude future dates (today or later with no data is ok if today)
-      const todayStr = new Date().toISOString().slice(0,10);
-      const zeroPast = zeroDays.filter(d => d < todayStr);
-
-      const badgeEl = document.getElementById('zeroDaysBadge');
-      if (badgeEl) {
-        if (zeroPast.length === 0) {
-          badgeEl.innerHTML = `<span style="background:#e8f5e9;color:#2e7d32;font-size:12px;font-weight:700;padding:4px 10px;border-radius:12px"> No zero days</span>`;
-        } else {
-          badgeEl.innerHTML = `<span style="background:#ffebee;color:#c62828;font-size:12px;font-weight:700;padding:4px 10px;border-radius:12px"> ${zeroPast.length} zero day${zeroPast.length>1?'s':''}</span>`;
+      },
+      scales: {
+        y: {
+          ticks: { callback: v => fL(v), font: { size: 10 } },
+          grid: { color: '#f0f0f0' }
+        },
+        x: {
+          grid: { display: false },
+          ticks: { font: { size: 10 }, maxRotation: 45 }
         }
       }
-
-      const detailEl = document.getElementById('zeroDaysDetail');
-      if (detailEl && zeroPast.length > 0) {
-        detailEl.innerHTML = `
-          <div style="background:#fff5f5;border:1px solid #ffcdd2;border-radius:8px;padding:10px 14px;font-size:12px">
-            <span style="color:#c62828;font-weight:700">No activity on: </span>
-            <span style="color:#555">${zeroPast.map(d => {
-              const dt = new Date(d);
-              return dt.toLocaleDateString('en-IN',{day:'numeric',month:'short',weekday:'short'});
-            }).join(' &nbsp;·&nbsp; ')}</span>
-          </div>`;
-      }
     }
-  }, 100);
+  });
+
+  // ── Zero-days summary (BM only) ──────────────────────────
+  if (isBM) {
+    const zeroPast = allDates.filter(d => (byDate[d]||0) === 0 && d < todayStr);
+    const badgeEl  = document.getElementById('zeroDaysBadge');
+    if (badgeEl) {
+      badgeEl.innerHTML = zeroPast.length === 0
+        ? '<span style="background:#e8f5e9;color:#2e7d32;font-size:12px;font-weight:700;padding:4px 10px;border-radius:12px"> No zero days</span>'
+        : '<span style="background:#ffebee;color:#c62828;font-size:12px;font-weight:700;padding:4px 10px;border-radius:12px"> '+zeroPast.length+' zero day'+(zeroPast.length>1?'s':'')+'</span>';
+    }
+    const detailEl = document.getElementById('zeroDaysDetail');
+    if (detailEl && zeroPast.length > 0) {
+      detailEl.innerHTML = '<div style="background:#fff5f5;border:1px solid #ffcdd2;border-radius:8px;padding:10px 14px;font-size:12px">'
+        +'<span style="color:#c62828;font-weight:700">No activity on: </span>'
+        +'<span style="color:#555">'+zeroPast.map(d=>{const dt=new Date(d+'T00:00:00');return dt.toLocaleDateString('en-IN',{day:'numeric',month:'short',weekday:'short'});}).join(' &nbsp;&middot;&nbsp; ')+'</span>'
+        +'</div>';
+    }
+  }
 }
 
 // ========== MONTH COMPARISON ==========
@@ -1622,207 +1768,201 @@ function buildRHPerfTable() {
   const el = document.getElementById('rhPerfTableBody');
   if (!el) return;
 
-  const filter    = (document.getElementById('rhPerfFilter') || {}).value || 'all';
-  const today     = new Date();
-  const todayStr  = today.toISOString().slice(0,10);
-  const yest      = new Date(today); yest.setDate(yest.getDate() - 1);
+  const today      = new Date();
+  const todayStr   = today.toISOString().slice(0,10);
+  const yest       = new Date(today); yest.setDate(yest.getDate() - 1);
   const yesterdayStr = yest.toISOString().slice(0,10);
-  const mtdDay    = today.getDate();
-  const remaining = getRemainingWorkingDays();
+  const mtdDay     = today.getDate();
+  const remaining  = getRemainingWorkingDays();
+  const allEmps    = getEmpData();
+  const juneTxns   = getTxnData().filter(t => t.date && t.date.startsWith(getCurMonth()));
+  const mayTxns    = toLMTD(getMayData());
 
-  const allEmps  = getEmpData();
-  const juneTxns = getTxnData().filter(t => t.date && t.date.startsWith(getCurMonth()));
-  const mayTxns  = toLMTD(getMayData());
-
-  // Product filter
-  function pf(arr) {
-    if (filter === 'uc') return arr.filter(t => t.product === 'Used Car');
-    if (filter === 'cv') return arr.filter(t => t.product !== 'Used Car');
-    return arr;
-  }
-
-  // Get target for an employee (in rupees)
-  function getTgt(empId) {
-    const emp = allEmps.find(e => e.id === empId);
-    if (!emp) return 0;
-    if (filter === 'uc') return (emp.uc_tgt || 0) * 1e5;
-    if (filter === 'cv') return (emp.cv_tgt || 0) * 1e5;
-    return ((emp.uc_tgt || 0) + (emp.cv_tgt || 0)) * 1e5;
-  }
-
-  // ── Build rows ──────────────────────────────────────────
-  // Logic:
-  //   • If AM has a real TH above (th_id != RH id) → group by TH, show TH name+target
-  //   • If AM reports directly to RH (th_id = RH id or blank) → show AM name+target
-  //   • Rosan (TH with direct BMs, no AM) → show as TH row with TH target
-
-  const RH_ID = currentUser.id;
-  const rows  = [];
-  const seenTH = new Set(); // avoid duplicating TH rows
-
-  // Collect all AM employees under this RH
-  allEmps.filter(e => e.designation === 'AM' && e.rh_id === RH_ID).forEach(amEmp => {
-    const thId  = amEmp.th_id;
-    const thEmp = allEmps.find(e => e.id === thId && e.designation === 'TH');
-
-    // Does this AM have a real TH (not RH)?
-    if (thEmp && thId !== RH_ID) {
-      // ── TH-layer row: aggregate all AMs under this TH ──
-      if (seenTH.has(thId)) return; // already added
-      seenTH.add(thId);
-
-      const thAMs  = allEmps.filter(e => e.designation === 'AM' && e.th_id === thId);
-      const thAmIds = thAMs.map(e => e.id);
-
-      const jTxns  = pf(juneTxns.filter(t => t.th_id === thId));
-      const mTxns  = pf(mayTxns.filter(t => t.th_id === thId && (t.day||0) <= mtdDay));
-      const ftTxns = pf(juneTxns.filter(t => t.th_id === thId && t.date === todayStr));
-      const ypTxns = pf(juneTxns.filter(t => t.th_id === thId && t.date === yesterdayStr));
-
-      const mtd    = jTxns.reduce((s,t) => s+t.amt, 0);
-      const lmtd   = mTxns.reduce((s,t) => s+t.amt, 0);
-      const ftd    = ftTxns.reduce((s,t) => s+t.amt, 0);
-      const yp     = ypTxns.reduce((s,t) => s+t.amt, 0);
-      const tgt    = getTgt(thId); // TH's own target
-      const short  = Math.max(tgt - mtd, 0);
-      const drr    = remaining > 0 && short > 0 ? short / remaining : 0;
-      const vLMTD  = mtd - lmtd;
-      const states = [...new Set(jTxns.map(t => t.state||'').filter(Boolean))].join(', ') || '—';
-
-      rows.push({ label: thEmp.name, subLabel: '(TH)', thName: '', states, tgt, mtd, lmtd, ftd, yp, short, vLMTD, drr, cases: jTxns.length, isTH: true });
-
-    } else {
-      // ── AM-direct row: AM reports directly to RH ──
-      const jTxns  = pf(juneTxns.filter(t => t.am_id === amEmp.id));
-      const mTxns  = pf(mayTxns.filter(t => t.am_id === amEmp.id && (t.day||0) <= mtdDay));
-      const ftTxns = pf(juneTxns.filter(t => t.am_id === amEmp.id && t.date === todayStr));
-      const ypTxns = pf(juneTxns.filter(t => t.am_id === amEmp.id && t.date === yesterdayStr));
-
-      const mtd    = jTxns.reduce((s,t) => s+t.amt, 0);
-      const lmtd   = mTxns.reduce((s,t) => s+t.amt, 0);
-      const ftd    = ftTxns.reduce((s,t) => s+t.amt, 0);
-      const yp     = ypTxns.reduce((s,t) => s+t.amt, 0);
-      const tgt    = getTgt(amEmp.id); // AM's own target
-      const short  = Math.max(tgt - mtd, 0);
-      const drr    = remaining > 0 && short > 0 ? short / remaining : 0;
-      const vLMTD  = mtd - lmtd;
-      const states = [...new Set(jTxns.map(t => t.state||'').filter(Boolean))].join(', ') || '—';
-
-      rows.push({ label: amEmp.name, subLabel: '(AM)', thName: 'Sachidananda panigrahy', states, tgt, mtd, lmtd, ftd, yp, short, vLMTD, drr, cases: jTxns.length, isTH: false });
+  // Build row data for each person — separate UC and CV
+  function buildRows(product) {
+    const isUC = product === 'UC';
+    function pf(arr) { return isUC ? arr.filter(t => t.product === 'Used Car') : arr.filter(t => t.product !== 'Used Car'); }
+    function getTgt(empId) {
+      const emp = allEmps.find(e => e.id === empId);
+      if (!emp) return 0;
+      return isUC ? (emp.uc_tgt||0)*1e5 : (emp.cv_tgt||0)*1e5;
     }
-  });
 
-  // ── TH with direct BMs (Rosan) — no AM layer ──
-  allEmps.filter(e => e.designation === 'TH' && e.rh_id === RH_ID && !seenTH.has(e.id)).forEach(thEmp => {
-    seenTH.add(thEmp.id);
-    const jTxns  = pf(juneTxns.filter(t => t.th_id === thEmp.id));
-    const mTxns  = pf(mayTxns.filter(t => t.th_id === thEmp.id && (t.day||0) <= mtdDay));
-    const ftTxns = pf(juneTxns.filter(t => t.th_id === thEmp.id && t.date === todayStr));
-    const ypTxns = pf(juneTxns.filter(t => t.th_id === thEmp.id && t.date === yesterdayStr));
+    const RH_ID = currentUser.id;
+    const rows  = [];
+    const seenTH = new Set();
 
-    const mtd   = jTxns.reduce((s,t) => s+t.amt, 0);
-    const lmtd  = mTxns.reduce((s,t) => s+t.amt, 0);
-    const ftd   = ftTxns.reduce((s,t) => s+t.amt, 0);
-    const yp    = ypTxns.reduce((s,t) => s+t.amt, 0);
-    const tgt   = getTgt(thEmp.id);
-    const short = Math.max(tgt - mtd, 0);
-    const drr   = remaining > 0 && short > 0 ? short / remaining : 0;
-    const vLMTD = mtd - lmtd;
-    const states = [...new Set(jTxns.map(t => t.state||'').filter(Boolean))].join(', ') || '—';
+    allEmps.filter(e => e.designation === 'AM' && e.rh_id === RH_ID).forEach(amEmp => {
+      const thId  = amEmp.th_id;
+      const thEmp = allEmps.find(e => e.id === thId && e.designation === 'TH');
 
-    rows.push({ label: thEmp.name, subLabel: '(TH)', thName: '', states, tgt, mtd, lmtd, ftd, yp, short, vLMTD, drr, cases: jTxns.length, isTH: true });
-  });
+      if (thEmp && thId !== RH_ID) {
+        if (seenTH.has(thId)) return;
+        seenTH.add(thId);
+        const jTxns  = pf(juneTxns.filter(t => t.th_id === thId));
+        const mTxns  = pf(mayTxns.filter(t => t.th_id === thId && (t.day||0) <= mtdDay));
+        const ftTxns = pf(juneTxns.filter(t => t.th_id === thId && t.date === todayStr));
+        const ypTxns = pf(juneTxns.filter(t => t.th_id === thId && t.date === yesterdayStr));
+        const mtd   = jTxns.reduce((s,t) => s+t.amt, 0);
+        const lmtd  = mTxns.reduce((s,t) => s+t.amt, 0);
+        const ftd   = ftTxns.reduce((s,t) => s+t.amt, 0);
+        const yp    = ypTxns.reduce((s,t) => s+t.amt, 0);
+        const tgt   = getTgt(thId);
+        const short = Math.max(tgt - mtd, 0);
+        const drr   = remaining > 0 && short > 0 ? short / remaining : 0;
+        const vLMTD = mtd - lmtd;
+        const states = [...new Set(jTxns.map(t => t.state||'').filter(Boolean))].join(', ') || '—';
+        rows.push({ id: thId, label: thEmp.name, subLabel: '(TH)', states, tgt, mtd, lmtd, ftd, yp, short, vLMTD, drr, cases: jTxns.length, isTH: true });
+      } else {
+        const jTxns  = pf(juneTxns.filter(t => t.am_id === amEmp.id));
+        const mTxns  = pf(mayTxns.filter(t => t.am_id === amEmp.id && (t.day||0) <= mtdDay));
+        const ftTxns = pf(juneTxns.filter(t => t.am_id === amEmp.id && t.date === todayStr));
+        const ypTxns = pf(juneTxns.filter(t => t.am_id === amEmp.id && t.date === yesterdayStr));
+        const mtd   = jTxns.reduce((s,t) => s+t.amt, 0);
+        const lmtd  = mTxns.reduce((s,t) => s+t.amt, 0);
+        const ftd   = ftTxns.reduce((s,t) => s+t.amt, 0);
+        const yp    = ypTxns.reduce((s,t) => s+t.amt, 0);
+        const tgt   = getTgt(amEmp.id);
+        const short = Math.max(tgt - mtd, 0);
+        const drr   = remaining > 0 && short > 0 ? short / remaining : 0;
+        const vLMTD = mtd - lmtd;
+        const states = [...new Set(jTxns.map(t => t.state||'').filter(Boolean))].join(', ') || '—';
+        rows.push({ id: amEmp.id, label: amEmp.name, subLabel: '(AM)', states, tgt, mtd, lmtd, ftd, yp, short, vLMTD, drr, cases: jTxns.length, isTH: false });
+      }
+    });
 
-  // Sort by MTD desc
-  rows.sort((a,b) => b.mtd - a.mtd);
+    allEmps.filter(e => e.designation === 'TH' && e.rh_id === RH_ID && !seenTH.has(e.id)).forEach(thEmp => {
+      seenTH.add(thEmp.id);
+      const jTxns  = pf(juneTxns.filter(t => t.th_id === thEmp.id));
+      const mTxns  = pf(mayTxns.filter(t => t.th_id === thEmp.id && (t.day||0) <= mtdDay));
+      const ftTxns = pf(juneTxns.filter(t => t.th_id === thEmp.id && t.date === todayStr));
+      const ypTxns = pf(juneTxns.filter(t => t.th_id === thEmp.id && t.date === yesterdayStr));
+      const mtd   = jTxns.reduce((s,t) => s+t.amt, 0);
+      const lmtd  = mTxns.reduce((s,t) => s+t.amt, 0);
+      const ftd   = ftTxns.reduce((s,t) => s+t.amt, 0);
+      const yp    = ypTxns.reduce((s,t) => s+t.amt, 0);
+      const tgt   = getTgt(thEmp.id);
+      const short = Math.max(tgt - mtd, 0);
+      const drr   = remaining > 0 && short > 0 ? short / remaining : 0;
+      const vLMTD = mtd - lmtd;
+      const states = [...new Set(jTxns.map(t => t.state||'').filter(Boolean))].join(', ') || '—';
+      rows.push({ id: thEmp.id, label: thEmp.name, subLabel: '(TH)', states, tgt, mtd, lmtd, ftd, yp, short, vLMTD, drr, cases: jTxns.length, isTH: true });
+    });
 
-  if (!rows.length) {
-    el.innerHTML = '<div style="color:#9e9e9e;padding:12px;text-align:center">No data</div>';
-    return;
+    rows.sort((a,b) => b.mtd - a.mtd);
+    return rows;
   }
-
-  // Totals
-  const totMTD   = rows.reduce((s,r) => s+r.mtd, 0);
-  const totLMTD  = rows.reduce((s,r) => s+r.lmtd, 0);
-  const totFTD   = rows.reduce((s,r) => s+r.ftd, 0);
-  const totYP    = rows.reduce((s,r) => s+(r.yp||0), 0);
-  const totTGT   = rows.reduce((s,r) => s+r.tgt, 0);
-  const totShort = rows.reduce((s,r) => s+r.short, 0);
-  const totCases = rows.reduce((s,r) => s+r.cases, 0);
 
   function fmtL(v) { return (v/1e5).toFixed(2)+'L'; }
   function shortCell(v) {
     return v <= 0
-      ? `<span style="color:#2e7d32;font-weight:700"> On Track</span>`
-      : `<span style="color:#c62828;font-weight:700">${fmtL(v)}</span>`;
+      ? '<span style="color:#2e7d32;font-weight:700">On Track</span>'
+      : '<span style="color:#c62828;font-weight:700">'+fmtL(v)+'</span>';
   }
   function diffCell(v) {
     const c = v >= 0 ? '#2e7d32' : '#c62828';
-    return `<span style="color:${c};font-weight:700">${v>=0?'+':''}${fmtL(v)}</span>`;
+    return '<span style="color:'+c+';font-weight:700">'+(v>=0?'+':'')+fmtL(v)+'</span>';
   }
 
-  let html = `
-  <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:820px">
-    <thead>
-      <tr style="background:#1a237e">
-        <th style="padding:8px 10px;text-align:left;border-radius:6px 0 0 0;white-space:nowrap;color:#fff">State</th>
-        <th style="padding:8px 10px;text-align:left;white-space:nowrap;color:#fff">Name</th>
-        <th style="padding:8px 10px;text-align:left;white-space:nowrap;color:#fff">Role</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap;color:#fff">TGT</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap;color:#fff">MTD ACH</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap;color:#fff">Short</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap;color:#fff">LMTD ACH</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap;color:#fff">MTD vs LMTD</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap;color:#fff">DRR</th>
-        <th style="padding:8px 10px;text-align:right;white-space:nowrap;color:#fff">YP</th>
-        <th style="padding:8px 10px;text-align:right;border-radius:0 6px 0 0;white-space:nowrap;color:#fff">FTD Ach</th>
-      </tr>
-    </thead>
-    <tbody>`;
+  function renderTable(rows, product, color) {
+    if (!rows.length) return '<div style="color:#9e9e9e;padding:8px;font-size:12px">No '+product+' data</div>';
+    const totMTD  = rows.reduce((s,r) => s+r.mtd, 0);
+    const totLMTD = rows.reduce((s,r) => s+r.lmtd, 0);
+    const totFTD  = rows.reduce((s,r) => s+r.ftd, 0);
+    const totYP   = rows.reduce((s,r) => s+(r.yp||0), 0);
+    const totTGT  = rows.reduce((s,r) => s+r.tgt, 0);
+    const totShort= rows.reduce((s,r) => s+r.short, 0);
+    const totCases= rows.reduce((s,r) => s+r.cases, 0);
+    const prefix  = product.toLowerCase();
 
-  rows.forEach((r, i) => {
-    const bg      = i % 2 === 0 ? '#f8f9ff' : '#fff';
-    const roleBadge = r.isTH
-      ? `<span style="background:#e8eaf6;color:#3949ab;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700">TH</span>`
-      : `<span style="background:#e8f5e9;color:#2e7d32;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700">AM</span>`;
+    let h = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px">';
+    h += '<thead><tr style="background:'+color+'">';
+    h += '<th style="padding:8px 10px;text-align:left;color:#fff;white-space:nowrap">State</th>';
+    h += '<th style="padding:8px 10px;text-align:left;color:#fff;white-space:nowrap">Name</th>';
+    h += '<th style="padding:8px 10px;text-align:left;color:#fff;white-space:nowrap">Role</th>';
+    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">TGT</th>';
+    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">MTD ACH</th>';
+    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">Short</th>';
+    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">LMTD ACH</th>';
+    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">MTD vs LMTD</th>';
+    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">DRR</th>';
+    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">YP</th>';
+    h += '<th style="padding:8px 10px;text-align:center;color:#fff;white-space:nowrap">Commitment</th>';
+    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">FTD Ach</th>';
+    h += '</tr></thead><tbody>';
 
-    html += `
-      <tr style="background:${bg};border-bottom:1px solid #e8eaf6">
-        <td style="padding:7px 10px;color:#455a64;font-size:11px">${r.states}</td>
-        <td style="padding:7px 10px;font-weight:700;color:${r.isTH ? '#3949ab' : '#1a237e'}">${r.label}</td>
-        <td style="padding:7px 10px">${roleBadge}</td>
-        <td style="padding:7px 10px;text-align:right;color:#546e7a">${r.tgt > 0 ? fmtL(r.tgt) : '—'}</td>
-        <td style="padding:7px 10px;text-align:right;font-weight:700;color:#1565c0">${fmtL(r.mtd)}</td>
-        <td style="padding:7px 10px;text-align:right">${shortCell(r.short)}</td>
-        <td style="padding:7px 10px;text-align:right;color:#546e7a">${fmtL(r.lmtd)}</td>
-        <td style="padding:7px 10px;text-align:right">${diffCell(r.vLMTD)}</td>
-        <td style="padding:7px 10px;text-align:right;color:#e65100;font-weight:600">${r.drr > 0 ? fmtL(r.drr)+'/day' : '—'}</td>
-        <td style="padding:7px 10px;text-align:right;font-weight:700;color:${(r.yp||0)>0?'#6a1b9a':'#9e9e9e'}">${(r.yp||0)>0?fmtL(r.yp):'—'}</td>
-        <td style="padding:7px 10px;text-align:right;font-weight:700;color:${r.ftd>0?'#2e7d32':'#9e9e9e'}">${r.ftd>0?fmtL(r.ftd):'—'}</td>
-      </tr>`;
-  });
+    rows.forEach((r, i) => {
+      const bg = i%2===0 ? '#f8f9ff' : '#fff';
+      const roleBadge = r.isTH
+        ? '<span style="background:#e8eaf6;color:#3949ab;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700">TH</span>'
+        : '<span style="background:#e8f5e9;color:#2e7d32;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700">AM</span>';
+      // Load commitment from live data (sheet-based, loaded via data.json)
+      const _today = new Date().toISOString().slice(0,10);
+      if (!window._rhCommit) window._rhCommit = {};
+      // Pre-populate from live data on first render
+      if (!window._rhCommitLoaded) {
+        window._rhCommitLoaded = true;
+        const commits = window._LIVE_DATA && window._LIVE_DATA.commitments ? window._LIVE_DATA.commitments : [];
+        commits.filter(c=>c.date===_today).forEach(c=>{
+          const ucKey = 'uc_'+c.id; const cvKey = 'cv_'+c.id;
+          if (c.uc_commit) window._rhCommit[ucKey] = c.uc_commit+'L';
+          if (c.cv_commit) window._rhCommit[cvKey] = c.cv_commit+'L';
+        });
+      }
+      const savedCommit = window._rhCommit[prefix+'_'+r.id] || '';
+      h += '<tr style="background:'+bg+';border-bottom:1px solid #e8eaf6">';
+      h += '<td style="padding:7px 10px;color:#455a64;font-size:11px">'+r.states+'</td>';
+      h += '<td style="padding:7px 10px;font-weight:700;color:'+(r.isTH?'#3949ab':'#1a237e')+'">'+r.label+'</td>';
+      h += '<td style="padding:7px 10px">'+roleBadge+'</td>';
+      h += '<td style="padding:7px 10px;text-align:right;color:#546e7a">'+(r.tgt>0?fmtL(r.tgt):'—')+'</td>';
+      h += '<td style="padding:7px 10px;text-align:right;font-weight:700;color:#1565c0">'+fmtL(r.mtd)+'</td>';
+      h += '<td style="padding:7px 10px;text-align:right">'+shortCell(r.short)+'</td>';
+      h += '<td style="padding:7px 10px;text-align:right;color:#546e7a">'+fmtL(r.lmtd)+'</td>';
+      h += '<td style="padding:7px 10px;text-align:right">'+diffCell(r.vLMTD)+'</td>';
+      h += '<td style="padding:7px 10px;text-align:right;color:#e65100;font-weight:600">'+(r.drr>0?fmtL(r.drr)+'/day':'—')+'</td>';
+      h += '<td style="padding:7px 10px;text-align:right;font-weight:700;color:'+((r.yp||0)>0?'#6a1b9a':'#9e9e9e')+'">'+(r.yp>0?fmtL(r.yp):'—')+'</td>';
+      const commitKey = prefix + '_' + r.id;
+      h += '<td style="padding:5px 8px;text-align:center"><input type="text" placeholder="e.g. 50L" value="'+savedCommit+'"'
+          +' data-key="'+commitKey+'" data-pid="'+r.id+'" data-pname="'+r.label+'" data-prole="'+(r.isTH?'TH':'AM')+'" data-product="'+prefix+'"'
+          +' oninput="saveCommitmentToSheet(this)"'
+          +' style="width:80px;padding:4px 6px;border:1.5px solid #c5cae9;border-radius:6px;font-size:11px;text-align:center;color:#1a237e;font-weight:600"></td>';
+      h += '<td style="padding:7px 10px;text-align:right;font-weight:700;color:'+(r.ftd>0?'#2e7d32':'#9e9e9e')+'">'+(r.ftd>0?fmtL(r.ftd):'—')+'</td>';
+      h += '</tr>';
+    });
 
-  html += `
-      <tr style="background:#e8eaf6;font-weight:700;border-top:2px solid #1a237e">
-        <td style="padding:8px 10px;color:#1a237e" colspan="3">TOTAL (${totCases} cases)</td>
-        <td style="padding:8px 10px;text-align:right;color:#1a237e">${totTGT>0?fmtL(totTGT):'—'}</td>
-        <td style="padding:8px 10px;text-align:right;color:#1565c0">${fmtL(totMTD)}</td>
-        <td style="padding:8px 10px;text-align:right">${shortCell(totShort)}</td>
-        <td style="padding:8px 10px;text-align:right;color:#546e7a">${fmtL(totLMTD)}</td>
-        <td style="padding:8px 10px;text-align:right">${diffCell(totMTD-totLMTD)}</td>
-        <td></td>
-        <td style="padding:8px 10px;text-align:right;color:#6a1b9a;font-weight:700">${totYP>0?fmtL(totYP):'—'}</td>
-        <td style="padding:8px 10px;text-align:right;color:#2e7d32">${totFTD>0?fmtL(totFTD):'—'}</td>
-      </tr>
-    </tbody>
-  </table>
-  <div style="font-size:10px;color:#9e9e9e;margin-top:8px;padding-left:4px">
-    MTD = Month till date &nbsp;|&nbsp; LMTD = Last month same days (till ${mtdDay}) &nbsp;|&nbsp; FTD = Today &nbsp;|&nbsp; YP = Yesterday Performance &nbsp;|&nbsp; DRR = Daily Required Rate (Shortfall ÷ Remaining working days)
-  </div>`;
+    h += '<tr style="background:#e8eaf6;font-weight:700;border-top:2px solid '+color+'">';
+    h += '<td style="padding:8px 10px;color:'+color+'" colspan="3">TOTAL ('+totCases+' cases)</td>';
+    h += '<td style="padding:8px 10px;text-align:right;color:'+color+'">'+(totTGT>0?fmtL(totTGT):'—')+'</td>';
+    h += '<td style="padding:8px 10px;text-align:right;color:#1565c0">'+fmtL(totMTD)+'</td>';
+    h += '<td style="padding:8px 10px;text-align:right">'+shortCell(totShort)+'</td>';
+    h += '<td style="padding:8px 10px;text-align:right;color:#546e7a">'+fmtL(totLMTD)+'</td>';
+    h += '<td style="padding:8px 10px;text-align:right">'+diffCell(totMTD-totLMTD)+'</td>';
+    h += '<td></td>';
+    h += '<td style="padding:8px 10px;text-align:right;color:#6a1b9a;font-weight:700">'+(totYP>0?fmtL(totYP):'—')+'</td>';
+    h += '<td></td>';
+    h += '<td style="padding:8px 10px;text-align:right;color:#2e7d32">'+(totFTD>0?fmtL(totFTD):'—')+'</td>';
+    h += '</tr></tbody></table></div>';
+    return h;
+  }
 
-  el.innerHTML = html;
+  const ucRows = buildRows('UC');
+  const cvRows = buildRows('CV');
+
+  el.innerHTML =
+    // UC Table
+    '<div style="margin-bottom:20px">'
+    +'<div style="font-size:12px;font-weight:800;color:#1565c0;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px;padding:6px 12px;background:#e3f2fd;border-radius:6px;display:inline-block">Used Car (UC)</div>'
+    +renderTable(ucRows,'UC','#1565c0')
+    +'</div>'
+    // CV Table
+    +'<div>'
+    +'<div style="font-size:12px;font-weight:800;color:#6a1b9a;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px;padding:6px 12px;background:#f3e5f5;border-radius:6px;display:inline-block">Commercial Vehicle (CV)</div>'
+    +renderTable(cvRows,'CV','#6a1b9a')
+    +'</div>'
+    +'<div style="font-size:10px;color:#9e9e9e;margin-top:10px;padding-left:4px">'
+    +'MTD = Month till date &nbsp;|&nbsp; LMTD = Last month same days (till '+mtdDay+') &nbsp;|&nbsp; FTD = Today &nbsp;|&nbsp; YP = Yesterday &nbsp;|&nbsp; DRR = Daily Required Rate &nbsp;|&nbsp; Commitment = Enter expected achievement for today'
+    +'</div>';
 }
-
 
 // ========== CHANNELS ==========
 function buildChannels(el) {
@@ -6898,6 +7038,72 @@ function buildTHChannelEmailHTML(thEmp, curTxns, prevTxns, l3Txns) {
     '<div style="color:rgba(255,255,255,.45);font-size:10px;margin-top:12px;border-top:1px solid rgba(255,255,255,.12);padding-top:8px">Rupyy Performance Dashboard &nbsp;|&nbsp; '+currentUser.name+' &nbsp;|&nbsp; '+dateStr+'</div>'+
   '</div>'+
   '</div></body></html>';
+}
+
+// ── Save commitment to Google Sheet via Apps Script ────────
+function saveCommitmentToSheet(inputEl) {
+  if (!window._rhCommit) window._rhCommit = {};
+  const key     = inputEl.dataset.key;
+  const val     = inputEl.value.trim();
+  window._rhCommit[key] = val;
+
+  // Parse value — accept "50L", "50", "1.5Cr", "150000" etc.
+  function parseAmt(s) {
+    if (!s) return 0;
+    const n = parseFloat(s.replace(/[^0-9.]/g,''));
+    if (isNaN(n)) return 0;
+    if (s.toLowerCase().includes('cr')) return n * 100;
+    if (s.toLowerCase().includes('l'))  return n;
+    return n / 1e5; // raw rupees to lakhs
+  }
+
+  const personId = inputEl.dataset.pid;
+  const name     = inputEl.dataset.pname;
+  const role     = inputEl.dataset.prole;
+  const product  = inputEl.dataset.product; // 'uc' or 'cv'
+  const amtL     = parseAmt(val);
+  const today    = new Date().toISOString().slice(0,10);
+
+  const asUrl = getASUrl();
+  if (!asUrl) return; // no AS URL configured — silently skip
+
+  // Debounce — wait 800ms after last keystroke
+  clearTimeout(inputEl._saveTimer);
+  inputEl._saveTimer = setTimeout(async () => {
+    const payload = {
+      action:    'saveCommitment',
+      date:      today,
+      personId,
+      name,
+      role,
+      ucCommit:  product === 'uc' ? amtL : 0,
+      cvCommit:  product === 'cv' ? amtL : 0,
+    };
+
+    // If both UC and CV exist for this person, merge them
+    const otherProduct = product === 'uc' ? 'cv' : 'uc';
+    const otherKey     = otherProduct + '_' + personId;
+    const otherVal     = window._rhCommit[otherKey] || '';
+    if (otherVal) {
+      payload.ucCommit = product === 'uc' ? amtL : parseAmt(otherVal);
+      payload.cvCommit = product === 'cv' ? amtL : parseAmt(otherVal);
+    }
+
+    try {
+      await fetch(asUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        mode: 'no-cors'
+      });
+      // Visual feedback
+      inputEl.style.borderColor = '#2e7d32';
+      setTimeout(() => inputEl.style.borderColor = '#c5cae9', 1500);
+    } catch(e) {
+      inputEl.style.borderColor = '#c62828';
+      setTimeout(() => inputEl.style.borderColor = '#c5cae9', 2000);
+    }
+  }, 800);
 }
 
 async function sendChannelToAMs() {
