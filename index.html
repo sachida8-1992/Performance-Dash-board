@@ -5658,9 +5658,9 @@ function buildTHScorecardHTML() {
     const prv    = toLMTD(prevData.filter(t=>t.am_id===am.id));
     const curAmt = cur.reduce((s,t)=>s+t.amt,0);
     const prvAmt = prv.reduce((s,t)=>s+t.amt,0);
-    const bmEmpObj2 = resolveEmpById(bm.id);
-    const curCh  = countChannels(cur, bmEmpObj2);
-    const prvCh  = countChannels(prv, bmEmpObj2);
+    const amEmpObj2 = resolveEmpById(am.id);
+    const curCh  = countChannels(cur, amEmpObj2);
+    const prvCh  = countChannels(prv, amEmpObj2);
     const amBMs  = bmList.filter(b=>b.am_id===am.id);
     const onT    = amBMs.filter(b=>{
       const t=myTxns.filter(x=>x.bm_id===b.id);
