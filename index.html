@@ -297,6 +297,23 @@ async function loadPayoutData() {
       } else {
         data = await res.json();
       }
+      // ── Normalise field names (handle old + new JSON versions) ──
+      const cases = data.cases || [];
+      const ucCaseCount = {}, cvCaseCount = {};
+      cases.forEach(c => {
+        const d = c.dcid || c.RPID || '';
+        if (c.product_type === 'UC') ucCaseCount[d] = (ucCaseCount[d]||0) + 1;
+        else                          cvCaseCount[d] = (cvCaseCount[d]||0) + 1;
+      });
+      (data.channels || []).forEach(c => {
+        // Map old field names → new
+        if (c.uc_payout     !== undefined && c.uc_final_payout === undefined) c.uc_final_payout = c.uc_payout;
+        if (c.cv_payout     !== undefined && c.cv_final_payout === undefined) c.cv_final_payout = c.cv_payout;
+        if (c.uc_cases      === undefined) c.uc_cases = ucCaseCount[c.dcid] || 0;
+        if (c.cv_cases      === undefined) c.cv_cases = cvCaseCount[c.dcid] || 0;
+        if (c.uc_final_payout === undefined) c.uc_final_payout = 0;
+        if (c.cv_final_payout === undefined) c.cv_final_payout = 0;
+      });
       _PAYOUT_DATA = data;
       return data;
     } catch(e) { continue; }
@@ -437,6 +454,7 @@ async function tryLoadLiveData() {
     window._LIVE_MAY = (data.may_data && data.may_data.length) ? data.may_data : TXN_DATA;
     window._LIVE_BANK_TIERS = data.bank_tiers || {};
     window._LIVE_DATA = data; // store full data for commitment access
+    window._rhCommitDate = null; // force commitment reload on next render
     window._LIVE_APR = data.apr_data ? parseTransactions(data.apr_data) : APR_DATA;
     window._LIVE_MAR = data.mar_data ? parseTransactions(data.mar_data) : MAR_DATA;
     loadHistoricalData(data); // store hist_YYYY_MM arrays for scorecard/monthly tabs
@@ -2110,31 +2128,33 @@ function buildRHPerfTable() {
     h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">FTD Ach</th>';
     h += '</tr></thead><tbody>';
 
+    // ── Pre-load today's commitments from live data ───────────
+    const _today = new Date().toISOString().slice(0,10);
+    if (!window._rhCommit || window._rhCommitDate !== _today) {
+      window._rhCommitDate = _today;
+      window._rhCommit = {};
+      const liveData = window._LIVE_DATA || window._LIVE_TXN_RAW;
+      const commits  = (liveData && liveData.commitments) ? liveData.commitments : [];
+      const todayCommits = commits.filter(c => String(c.date).slice(0,10) === _today);
+      todayCommits.forEach(c => {
+        const fmtV = v => {
+          v = parseFloat(v) || 0;
+          if (!v) return '';
+          if (v < 0.01) return Math.round(v * 1e5) + 'L'; // fix old bad saves
+          return v % 1 === 0 ? v + 'L' : parseFloat(v.toFixed(2)) + 'L';
+        };
+        const ucStr = fmtV(c.uc_commit);
+        const cvStr = fmtV(c.cv_commit);
+        if (ucStr) window._rhCommit['uc_'+c.id] = ucStr;
+        if (cvStr) window._rhCommit['cv_'+c.id] = cvStr;
+      });
+    }
+
     rows.forEach((r, i) => {
       const bg = i%2===0 ? '#f8f9ff' : '#fff';
       const roleBadge = r.isTH
         ? '<span style="background:#e8eaf6;color:#3949ab;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700">TH</span>'
         : '<span style="background:#e8f5e9;color:#2e7d32;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700">AM</span>';
-      // Load commitment from live data (sheet-based, loaded via data.json)
-      const _today = new Date().toISOString().slice(0,10);
-      if (!window._rhCommit) window._rhCommit = {};
-      if (!window._rhCommitDate || window._rhCommitDate !== _today) {
-        window._rhCommitDate = _today;
-        window._rhCommit = {};
-        const commits = (window._LIVE_DATA && window._LIVE_DATA.commitments) ? window._LIVE_DATA.commitments : [];
-        commits.filter(c => c.date === _today).forEach(c => {
-          const ucVal = parseFloat(c.uc_commit) || 0;
-          const cvVal = parseFloat(c.cv_commit) || 0;
-          // Format: if value >= 1, show as "50L"; if tiny (raw rupees saved by mistake), convert
-          const fmtCommit = v => {
-            if (!v) return '';
-            if (v < 0.01) return Math.round(v * 1e5) + 'L'; // legacy rupee-stored values
-            return v + 'L';
-          };
-          if (ucVal > 0) window._rhCommit['uc_'+c.id] = fmtCommit(ucVal);
-          if (cvVal > 0) window._rhCommit['cv_'+c.id] = fmtCommit(cvVal);
-        });
-      }
       const savedCommit = window._rhCommit[prefix+'_'+r.id] || '';
       h += '<tr style="background:'+bg+';border-bottom:1px solid #e8eaf6">';
       h += '<td style="padding:7px 10px;color:#455a64;font-size:11px">'+r.states+'</td>';
