@@ -889,15 +889,13 @@ function buildPageList() {
     pages.push({id:'team',      label:' My Team'});
     pages.push({id:'weekly',    label:' Weekly Review'});
     
-    pages.push({id:'dealers',   label:' Top Channels'});
     pages.push({id:'banks',     label:' Banks'});
     pages.push({id:'incentive', label:' Team Incentive'});
     pages.push({id:'deviation',  label:' Deviation'});
     pages.push({id:'scorecard',  label:' Scorecard'});
     pages.push({id:'monthly',    label:' Monthly Summary'});
-    pages.push({id:'channel6m',   label:' Channel 6M'});
+    pages.push({id:'channels_group', label:' Channels'});
     pages.push({id:'quarterly',   label:' Q1 Scorecard'});
-    pages.push({id:'channeldrive',label:' Channel Drive'});
     pages.push({id:'payout',       label:' Payout'});
     pages.push({id:'issues',      label:' Issues'});
     return pages;
@@ -907,16 +905,7 @@ function buildPageList() {
     pages.push({id:'hierarchy', label:' Hierarchy View'});
     pages.push({id:'weekly',    label:' Weekly Review'});
   }
-  if (d === 'BM') {
-    pages.push(
-            {id:'banks',    label:' Banks'}
-    );
-  } else {
-    pages.push(
-            {id:'dealers',  label:' Top Channels'},
-      {id:'banks',    label:' Banks'}
-    );
-  }
+  pages.push({id:'banks', label:' Banks'});
   if (d === 'BM') {
     pages.push({id:'incentive', label:' Incentive'});
   }
@@ -930,9 +919,8 @@ function buildPageList() {
   pages.push({id:'deviation',  label:' Deviation Matrix'});
   pages.push({id:'scorecard',   label:' Scorecard'});
   pages.push({id:'monthly',     label:' Monthly Summary'});
-  pages.push({id:'channel6m',   label:' Channel 6M'});
+  pages.push({id:'channels_group', label:' Channels'});
   pages.push({id:'quarterly',   label:' Q1 Scorecard'});
-  pages.push({id:'channeldrive',label:' Channel Drive'});
   if (d === 'RH') pages.push({id:'mailroom', label:' Send Mail'});
   pages.push({id:'payout',       label:' Payout'});
   pages.push({id:'issues',      label:' Issues'});
@@ -974,6 +962,7 @@ function buildPage(id, el) {
       case 'channel6m':    buildChannel6M(el); break;
       case 'quarterly':    buildQuarterly(el); break;
       case 'channeldrive': buildChannelDrive(el); break;
+      case 'channels_group': buildChannelsGroup(el); break;
       case 'mailroom':     buildMailroom(el); break;
     }
   } catch(err) {
@@ -984,6 +973,59 @@ function buildPage(id, el) {
       + '<pre style="font-size:10px;overflow:auto;max-height:200px;color:#555">' + err.stack + '</pre>'
       + '</div>';
   }
+}
+
+// ========== CHANNELS GROUP (sub-tabs) ==========
+function buildChannelsGroup(el) {
+  const subTabs = [
+    { id: 'channeldrive', label: ' Channel Drive' },
+    { id: 'channel6m',   label: ' Channel 6M' },
+    { id: 'dealers',     label: ' Top Channels' },
+  ];
+
+  el.innerHTML = `
+    <div style="background:#fff;border-bottom:2px solid #e8eaf6;padding:0 16px;display:flex;gap:0;overflow-x:auto;scrollbar-width:none">
+      ${subTabs.map((t,i) => `
+        <button id="chsub_${t.id}" onclick="showChannelSubTab('${t.id}')"
+          style="padding:11px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:${i===0?'700':'500'};
+          color:${i===0?'var(--primary)':'var(--muted)'};border-bottom:${i===0?'3px solid var(--primary)':'3px solid transparent'};
+          white-space:nowrap;transition:all .2s">${t.label}</button>
+      `).join('')}
+    </div>
+    <div id="chSubContent" style="min-height:400px"></div>
+  `;
+
+  showChannelSubTab('channeldrive');
+}
+
+function showChannelSubTab(id) {
+  const subTabs = ['channeldrive','channel6m','dealers'];
+  subTabs.forEach(t => {
+    const btn = document.getElementById('chsub_'+t);
+    if (btn) {
+      const active = t === id;
+      btn.style.fontWeight  = active ? '700' : '500';
+      btn.style.color       = active ? 'var(--primary)' : 'var(--muted)';
+      btn.style.borderBottom= active ? '3px solid var(--primary)' : '3px solid transparent';
+    }
+  });
+  const content = document.getElementById('chSubContent');
+  if (!content) return;
+
+  // Cache built sub-tabs to avoid rebuilding
+  if (!window._chSubBuilt) window._chSubBuilt = {};
+  if (window._chSubBuilt[id]) {
+    content.innerHTML = window._chSubBuilt[id];
+    // Re-run dynamic builders that need live DOM
+    if (id === 'channeldrive') { const tmp = document.createElement('div'); tmp.innerHTML = content.innerHTML; buildChannelDrive(content); }
+    else if (id === 'channel6m')  buildChannel6M(content);
+    else if (id === 'dealers')    buildDealers(content);
+    return;
+  }
+
+  if (id === 'channeldrive') buildChannelDrive(content);
+  else if (id === 'channel6m')  buildChannel6M(content);
+  else if (id === 'dealers')    buildDealers(content);
 }
 
 // ========== OVERVIEW ==========
