@@ -2123,8 +2123,16 @@ function buildRHPerfTable() {
         window._rhCommit = {};
         const commits = (window._LIVE_DATA && window._LIVE_DATA.commitments) ? window._LIVE_DATA.commitments : [];
         commits.filter(c => c.date === _today).forEach(c => {
-          if (c.uc_commit && parseFloat(c.uc_commit) > 0) window._rhCommit['uc_'+c.id] = parseFloat(c.uc_commit)+'L';
-          if (c.cv_commit && parseFloat(c.cv_commit) > 0) window._rhCommit['cv_'+c.id] = parseFloat(c.cv_commit)+'L';
+          const ucVal = parseFloat(c.uc_commit) || 0;
+          const cvVal = parseFloat(c.cv_commit) || 0;
+          // Format: if value >= 1, show as "50L"; if tiny (raw rupees saved by mistake), convert
+          const fmtCommit = v => {
+            if (!v) return '';
+            if (v < 0.01) return Math.round(v * 1e5) + 'L'; // legacy rupee-stored values
+            return v + 'L';
+          };
+          if (ucVal > 0) window._rhCommit['uc_'+c.id] = fmtCommit(ucVal);
+          if (cvVal > 0) window._rhCommit['cv_'+c.id] = fmtCommit(cvVal);
         });
       }
       const savedCommit = window._rhCommit[prefix+'_'+r.id] || '';
@@ -7270,9 +7278,10 @@ function saveCommitmentToSheet(inputEl) {
     if (!s) return 0;
     const n = parseFloat(s.replace(/[^0-9.]/g,''));
     if (isNaN(n)) return 0;
-    if (s.toLowerCase().includes('cr')) return n * 100;
-    if (s.toLowerCase().includes('l'))  return n;
-    return n / 1e5; // raw rupees to lakhs
+    if (s.toLowerCase().includes('cr')) return n * 100; // 1.5Cr → 150L
+    if (s.toLowerCase().includes('l'))  return n;        // 50L → 50L
+    // No unit — treat as lakhs directly (user types 50 meaning 50L)
+    return n;
   }
 
   const personId = inputEl.dataset.pid;
