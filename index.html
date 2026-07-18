@@ -1240,71 +1240,8 @@ function buildOverview(el) {
       <div id="monthCompareBody"></div>
     </div>
 
-    <!-- Daily Trend full width -->
-    <div class="card" style="margin-bottom:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-        <div class="card-title" style="margin-bottom:0">Daily Disbursement Trend</div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          ${d === 'RH' ? ('<select id="trendPersonFilter" onchange="buildTrendChart()" style="padding:5px 10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:12px;color:#1a237e;font-weight:600;background:#fff;cursor:pointer"><option value=\"all\">All Region</option>'
-            + getEmpData().filter(e=>e.designation==='TH'&&e.rh_id===currentUser.id).map(e=>'<option value="th_'+e.id+'">TH: '+e.name+'</option>').join('')
-            + getEmpData().filter(e=>e.designation==='AM'&&e.rh_id===currentUser.id).map(e=>'<option value="am_'+e.id+'">AM: '+e.name+'</option>').join('')
-            + '</select>') : ''}
-          <div style="display:flex;gap:4px">
-            <button id="trendUC" class="city-tab-btn active" onclick="setTrendProduct('UC')">UC</button>
-            <button id="trendCV" class="city-tab-btn" onclick="setTrendProduct('CV')">CV</button>
-            <button id="trendAll" class="city-tab-btn" onclick="setTrendProduct('ALL')">All</button>
-          </div>
-          <div id="zeroDaysBadge"></div>
-        </div>
-      </div>
-      <canvas id="chartTrend" height="180"></canvas>
-      <div id="zeroDaysDetail" style="margin-top:10px"></div>
-    </div>
-  `;
-
-  // ── DRR & Shortfall cards (BM only) ──────────────────────
-  (function() {
-    const remaining = getRemainingWorkingDays();
-    const shortfall  = Math.max(totalTgt - totalAmt, 0);
-    const ucShort    = Math.max(ucTgt - ucAmt, 0);
-    const cvShort    = Math.max(cvTgt - (cvAmt + ncvAmt), 0);
-    const drr        = remaining > 0 ? shortfall / remaining : 0;
-    const ucDrr      = remaining > 0 ? ucShort   / remaining : 0;
-    const cvDrr      = remaining > 0 ? cvShort   / remaining : 0;
-    const isCV       = (currentUser.product || 'UC') === 'CV';
-
-    const drrRow = document.getElementById('drrRow');
-    if (!drrRow) return;
-
-    // Only show for BM (has individual targets)
-    if (currentUser.designation !== 'BM') {
-      drrRow.style.display = 'none';
-      return;
-    }
-
-    drrRow.innerHTML = `
-      <div class="kpi" style="border-left:4px solid #e53935">
-        <div class="kpi-label"> Shortfall to Target</div>
-        <div class="kpi-value" style="color:#e53935;font-size:24px">${fmtCr(shortfall)}</div>
-        <div class="kpi-sub">Target ${fmtCr(totalTgt)} − Achieved ${fmtCr(totalAmt)}</div>
-      </div>
-      <div class="kpi" style="border-left:4px solid #f9a825">
-        <div class="kpi-label"> Daily Required Rate (DRR)</div>
-        <div class="kpi-value" style="color:#f9a825;font-size:24px">₹${fmtL(drr)}<span style="font-size:13px;font-weight:400;color:#9e9e9e"> /day</span></div>
-        <div class="kpi-sub">${fmtCr(shortfall)} ÷ ${remaining} working day${remaining!==1?'s':''} left</div>
-      </div>
-      ${isCV ? `` : `
-      <div class="kpi" style="border-left:4px solid #1565c0">
-        <div class="kpi-label"> UC Shortfall &amp; DRR</div>
-        <div class="kpi-value" style="color:#1565c0;font-size:24px">${fmtCr(ucShort)}</div>
-        <div class="kpi-sub">UC DRR: <b>₹${fmtL(ucDrr)}/day</b> &nbsp;|&nbsp; ${remaining} days left</div>
-      </div>
-      <div class="kpi" style="border-left:4px solid #6a1b9a">
-        <div class="kpi-label"> CV Shortfall</div>
-        <div class="kpi-value" style="color:#6a1b9a;font-size:24px">${fmtCr(cvShort)}</div>
-        <div class="kpi-sub">CV Target ${fmtCr(cvTgt)} − Achieved ${fmtCr(cvAmt+ncvAmt)}</div>
-      </div>
-      `}
+    <!-- Trend chart (RH) or FTD Case table (AM/TH/BM) built by JS -->
+    <div id="trendOrFtdWrapper"></div>
     `;
   })();
 
@@ -1434,8 +1371,74 @@ function buildOverview(el) {
       }
     }
 
-    buildTrendChart();
+    buildTrendOrFtd();
   }, 100);
+}
+
+function buildTrendOrFtd() {
+  const d   = currentUser.designation;
+  const emps= getEmpData();
+  const w   = document.getElementById('trendOrFtdWrapper');
+  if (!w) return;
+
+  if (d === 'RH') {
+    // Trend chart card
+    w.innerHTML = `<div class="card" style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div class="card-title" style="margin-bottom:0">Daily Disbursement Trend</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <select id="trendPersonFilter" onchange="buildTrendChart()" style="padding:5px 10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:12px;color:#1a237e;font-weight:600;background:#fff;cursor:pointer">
+            <option value="all">All Region</option>
+            ${emps.filter(e=>e.designation==='TH'&&e.rh_id===currentUser.id).map(e=>'<option value="th_'+e.id+'">TH: '+e.name+'</option>').join('')}
+            ${emps.filter(e=>e.designation==='AM'&&e.rh_id===currentUser.id).map(e=>'<option value="am_'+e.id+'">AM: '+e.name+'</option>').join('')}
+          </select>
+          <div style="display:flex;gap:4px">
+            <button id="trendUC" class="city-tab-btn active" onclick="setTrendProduct('UC')">UC</button>
+            <button id="trendCV" class="city-tab-btn" onclick="setTrendProduct('CV')">CV</button>
+            <button id="trendAll" class="city-tab-btn" onclick="setTrendProduct('ALL')">All</button>
+          </div>
+          <div id="zeroDaysBadge"></div>
+        </div>
+      </div>
+      <canvas id="chartTrend" height="180"></canvas>
+      <div id="zeroDaysDetail" style="margin-top:10px"></div>
+    </div>`;
+    buildTrendChart();
+  } else {
+    // FTD case table card
+    const todayStr = new Date().toISOString().slice(0,10);
+    // Build month's available dates from transactions
+    const curMonth = getCurMonth();
+    const availDates = [...new Set(myTxns.filter(t=>t.date&&t.date.startsWith(curMonth)).map(t=>t.date.slice(0,10)))].sort().reverse();
+
+    let filterHTML = '<input type="date" id="ftdDateFilter" value="'+todayStr+'" max="'+todayStr+'"'
+      + ' onchange="buildFTDCaseTable()" style="padding:5px 10px;border:1.5px solid #c5cae9;border-radius:8px;font-size:12px;color:#1a237e;font-weight:600;background:#fff;cursor:pointer">';
+
+    if (d === 'AM') {
+      filterHTML += '<select id="ftdAMFilter" onchange="buildFTDCaseTable()" style="padding:5px 10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:12px;color:#1a237e;font-weight:600;background:#fff;cursor:pointer">'
+        + '<option value="all">All BMs</option>'
+        + emps.filter(e=>e.designation==='BM'&&e.am_id===currentUser.id).map(e=>'<option value="'+e.id+'">'+e.name+'</option>').join('')
+        + '</select>';
+    } else if (d === 'TH') {
+      filterHTML += '<select id="ftdAMFilter" onchange="buildFTDCaseTable()" style="padding:5px 10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:12px;color:#1a237e;font-weight:600;background:#fff;cursor:pointer">'
+        + '<option value="all">All AMs</option>'
+        + emps.filter(e=>e.designation==='AM'&&(e.th_id===currentUser.id||e.am_id===currentUser.id)).map(e=>'<option value="am_'+e.id+'">AM: '+e.name+'</option>').join('')
+        + '</select>'
+        + '<select id="ftdBMFilter" onchange="buildFTDCaseTable()" style="padding:5px 10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:12px;color:#1a237e;font-weight:600;background:#fff;cursor:pointer">'
+        + '<option value="all">All BMs</option>'
+        + emps.filter(e=>e.designation==='BM'&&(e.th_id===currentUser.id||e.am_id===currentUser.id)).map(e=>'<option value="'+e.id+'">'+e.name+'</option>').join('')
+        + '</select>';
+    }
+
+    w.innerHTML = `<div class="card" style="margin-bottom:20px" id="ftdCaseCard">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <div class="card-title" style="margin-bottom:0" id="ftdCardTitle"> Disbursement Cases</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${filterHTML}</div>
+      </div>
+      <div id="ftdCaseTableBody"></div>
+    </div>`;
+    buildFTDCaseTable();
+  }
 }
 
 // ── Global trend product filter ────────────────────────────
@@ -1447,6 +1450,153 @@ function setTrendProduct(p) {
     if (btn) btn.classList.toggle('active', x===p);
   });
   buildTrendChart();
+}
+
+// ── Build FTD Case-wise table for AM/TH/BM ────────────────
+function buildFTDCaseTable() {
+  const el = document.getElementById('ftdCaseTableBody');
+  if (!el) return;
+
+  const d       = currentUser.designation;
+  const uid     = currentUser.id;
+  const todayStr= new Date().toISOString().slice(0,10);
+  const emps    = getEmpData();
+
+  // Get date filter — default to today
+  const dateSel    = document.getElementById('ftdDateFilter');
+  const selectedDate = dateSel ? dateSel.value : todayStr;
+  const isToday    = selectedDate === todayStr;
+
+  // Update card title
+  const titleEl = document.getElementById('ftdCardTitle');
+  if (titleEl) {
+    const dt = new Date(selectedDate + 'T00:00:00');
+    const dtLabel = dt.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
+    titleEl.textContent = (isToday ? ' Today' : ' ') + ' Disbursement Cases — ' + dtLabel;
+  }
+
+  // Get filter values
+  const amSel    = document.getElementById('ftdAMFilter');
+  const bmSel    = document.getElementById('ftdBMFilter');
+  const amFilter = amSel ? amSel.value : 'all';
+  const bmFilter = bmSel ? bmSel.value : 'all';
+
+  // Scope transactions to selected date
+  let todayTxns = myTxns.filter(t => t.date && t.date.slice(0,10) === selectedDate);
+
+  // Apply role scoping
+  if (d === 'BM') {
+    todayTxns = todayTxns.filter(t => t.bm_id === uid);
+  } else if (d === 'AM') {
+    todayTxns = todayTxns.filter(t => t.am_id === uid);
+    if (amFilter !== 'all') todayTxns = todayTxns.filter(t => t.bm_id === amFilter);
+  } else if (d === 'TH') {
+    const thBmIds = new Set(emps.filter(e=>e.designation==='BM'&&(e.th_id===uid||e.am_id===uid)).map(e=>e.id));
+    todayTxns = todayTxns.filter(t => t.th_id===uid || thBmIds.has(t.bm_id));
+    if (amFilter !== 'all') {
+      const amId = amFilter.replace('am_','');
+      const amBmIds = new Set(emps.filter(e=>e.designation==='BM'&&e.am_id===amId).map(e=>e.id));
+      todayTxns = todayTxns.filter(t => t.am_id===amId || amBmIds.has(t.bm_id));
+    }
+    if (bmFilter !== 'all') todayTxns = todayTxns.filter(t => t.bm_id === bmFilter);
+  }
+
+  const selectedDt  = new Date(selectedDate + 'T00:00:00');
+  const todayDate   = selectedDt.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long'});
+  const totalAmt    = todayTxns.reduce((s,t)=>s+t.amt,0);
+  const ucAmt     = todayTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+  const cvAmt     = todayTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+
+  function fmtL(n) {
+    if (!n) return '₹0';
+    if (n>=1e7) return '₹'+(n/1e7).toFixed(2)+' Cr';
+    if (n>=1e5) return '₹'+(n/1e5).toFixed(2)+' L';
+    return '₹'+Math.round(n).toLocaleString('en-IN');
+  }
+
+  if (!todayTxns.length) {
+    el.innerHTML = `
+      <div style="text-align:center;padding:32px 16px;color:#9e9e9e">
+        <div style="font-size:32px;margin-bottom:8px">📭</div>
+        <div style="font-size:14px;font-weight:600">No disbursements today</div>
+        <div style="font-size:12px;margin-top:4px">${todayDate}</div>
+      </div>`;
+    return;
+  }
+
+  // Summary row
+  const summary = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
+      <div style="background:#e3f2fd;border-radius:10px;padding:12px 14px;text-align:center">
+        <div style="font-size:10px;color:#1565c0;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Total FTD</div>
+        <div style="font-size:20px;font-weight:900;color:#1565c0;margin-top:2px">${fmtL(totalAmt)}</div>
+        <div style="font-size:11px;color:#546e7a;margin-top:2px">${todayTxns.length} cases</div>
+      </div>
+      <div style="background:#f3e5f5;border-radius:10px;padding:12px 14px;text-align:center">
+        <div style="font-size:10px;color:#6a1b9a;font-weight:700;text-transform:uppercase;letter-spacing:.5px">UC FTD</div>
+        <div style="font-size:20px;font-weight:900;color:#6a1b9a;margin-top:2px">${fmtL(ucAmt)}</div>
+        <div style="font-size:11px;color:#546e7a;margin-top:2px">${todayTxns.filter(t=>t.product==='Used Car').length} cases</div>
+      </div>
+      <div style="background:#e8f5e9;border-radius:10px;padding:12px 14px;text-align:center">
+        <div style="font-size:10px;color:#2e7d32;font-weight:700;text-transform:uppercase;letter-spacing:.5px">CV FTD</div>
+        <div style="font-size:20px;font-weight:900;color:#2e7d32;margin-top:2px">${fmtL(cvAmt)}</div>
+        <div style="font-size:11px;color:#546e7a;margin-top:2px">${todayTxns.filter(t=>t.product!=='Used Car').length} cases</div>
+      </div>
+    </div>`;
+
+  // Case table
+  const rows = todayTxns.map((t,i) => {
+    const isUC   = t.product === 'Used Car';
+    const bmName = t.bm || emps.find(e=>e.id===t.bm_id)?.name || t.bm_id;
+    const amEmp  = emps.find(e=>e.id===t.am_id);
+    const prodClr= isUC ? '#1565c0' : '#6a1b9a';
+    const prodBg = isUC ? '#e3f2fd' : '#f3e5f5';
+    const prodLbl= isUC ? 'UC' : t.product === 'Used Commercial Vehicle' ? 'UCV' : 'NCV';
+    return `<tr style="background:${i%2===0?'#fff':'#f8f9ff'};border-bottom:1px solid #f0f0f0">
+      <td style="padding:8px 10px;text-align:center;color:#9e9e9e;font-size:11px">${i+1}</td>
+      <td style="padding:8px 10px">
+        <div style="font-weight:700;font-size:12px;color:#1a237e">${t.dealer || '—'}</div>
+        <div style="font-size:10px;color:#9e9e9e">${t.dcid || ''}</div>
+      </td>
+      ${d !== 'BM' ? `<td style="padding:8px 10px;font-size:11px;color:#455a64">
+        <div style="font-weight:600">${bmName}</div>
+        ${amEmp && d === 'TH' ? '<div style="font-size:10px;color:#9e9e9e">'+amEmp.name+'</div>' : ''}
+      </td>` : ''}
+      <td style="padding:8px 10px;text-align:center">
+        <span style="background:${prodBg};color:${prodClr};font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px">${prodLbl}</span>
+      </td>
+      <td style="padding:8px 10px;font-size:11px;color:#546e7a">${t.loan_type || '—'}</td>
+      <td style="padding:8px 10px;font-size:11px;color:#546e7a">${t.bank || '—'}</td>
+      <td style="padding:8px 10px;font-size:11px;color:#455a64">${t.state || '—'}</td>
+      <td style="padding:8px 10px;text-align:right;font-weight:700;font-size:13px;color:#1565c0">${fmtL(t.amt)}</td>
+    </tr>`;
+  }).join('');
+
+  const colCount = d === 'BM' ? 6 : 7;
+  el.innerHTML = summary + `
+    <div style="overflow-x:auto;max-height:320px;overflow-y:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px">
+        <thead style="position:sticky;top:0;z-index:3">
+          <tr style="background:#1a237e">
+            <th style="padding:8px 10px;color:#fff;text-align:center;font-size:11px">#</th>
+            <th style="padding:8px 10px;color:#fff;text-align:left;font-size:11px">Channel / Dealer</th>
+            ${d !== 'BM' ? '<th style="padding:8px 10px;color:#90caf9;text-align:left;font-size:11px">'+(d==='TH'?'BM / AM':'BM')+'</th>' : ''}
+            <th style="padding:8px 10px;color:#fff;text-align:center;font-size:11px">Product</th>
+            <th style="padding:8px 10px;color:#fff;text-align:left;font-size:11px">Loan Type</th>
+            <th style="padding:8px 10px;color:#fff;text-align:left;font-size:11px">Bank</th>
+            <th style="padding:8px 10px;color:#fff;text-align:left;font-size:11px">State</th>
+            <th style="padding:8px 10px;color:#fff;text-align:right;font-size:11px">Amount</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr style="background:#e8eaf6;font-weight:700">
+            <td colspan="${colCount-1}" style="padding:8px 10px;font-size:12px;color:#1a237e">Total (${todayTxns.length} cases)</td>
+            <td style="padding:8px 10px;text-align:right;font-size:13px;color:#1565c0">${fmtL(totalAmt)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>`;
 }
 
 // ── Build trend line chart ─────────────────────────────────
