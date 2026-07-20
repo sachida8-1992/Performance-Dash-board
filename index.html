@@ -989,7 +989,8 @@ function showPage(id, btn) {
   const page = document.getElementById('page_' + id);
   if (page) {
     page.classList.add('active');
-    if (!page.dataset.built) {
+    // channels_group always rebuilds (sub-tab nav needs to be fresh)
+    if (!page.dataset.built || id === 'channels_group') {
       page.dataset.built = '1';
       buildPage(id, page);
     }
@@ -1033,22 +1034,31 @@ function buildPage(id, el) {
 // ========== CHANNELS GROUP (sub-tabs) ==========
 function buildChannelsGroup(el) {
   const subTabs = [
-    { id: 'channeldrive', label: ' Channel Drive' },
-    { id: 'channel6m',   label: ' Channel 6M' },
-    { id: 'dealers',     label: ' Top Channels' },
+    { id: 'channeldrive', label: 'Channel Drive', icon: '📊' },
+    { id: 'channel6m',   label: 'Channel 6M',    icon: '📅' },
+    { id: 'dealers',     label: 'Top Channels',   icon: '⭐' },
   ];
 
-  el.innerHTML = `
-    <div style="background:#fff;border-bottom:2px solid #e8eaf6;padding:0 16px;display:flex;gap:0;overflow-x:auto;scrollbar-width:none">
-      ${subTabs.map((t,i) => `
-        <button id="chsub_${t.id}" onclick="showChannelSubTab('${t.id}')"
-          style="padding:11px 20px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:${i===0?'700':'500'};
-          color:${i===0?'var(--primary)':'var(--muted)'};border-bottom:${i===0?'3px solid var(--primary)':'3px solid transparent'};
-          white-space:nowrap;transition:all .2s">${t.label}</button>
-      `).join('')}
-    </div>
-    <div id="chSubContent" style="min-height:400px"></div>
-  `;
+  const btnHTML = subTabs.map((t, i) =>
+    '<button id="chsub_' + t.id + '" onclick="showChannelSubTab(\'' + t.id + '\')"'
+    + ' style="display:inline-flex;align-items:center;gap:6px;'
+    + 'padding:8px 20px;border:none;border-radius:8px 8px 0 0;cursor:pointer;'
+    + 'font-size:13px;font-weight:' + (i===0?'700':'500') + ';'
+    + 'color:' + (i===0?'#1a237e':'#555') + ';'
+    + 'background:' + (i===0?'#fff':'#e8eaf6') + ';'
+    + 'border-top:' + (i===0?'3px solid #1a237e':'3px solid transparent') + ';'
+    + 'border-left:1px solid ' + (i===0?'#c5cae9':'transparent') + ';'
+    + 'border-right:1px solid ' + (i===0?'#c5cae9':'transparent') + ';'
+    + 'margin-right:4px;margin-bottom:-1px;transition:all .15s;white-space:nowrap">'
+    + t.icon + ' ' + t.label
+    + '</button>'
+  ).join('');
+
+  el.innerHTML =
+    '<div style="background:#e8eaf6;padding:12px 16px 0;border-bottom:1px solid #c5cae9;display:flex;align-items:flex-end;flex-wrap:nowrap">'
+    + btnHTML
+    + '</div>'
+    + '<div id="chSubContent" style="min-height:400px;background:#fff"></div>';
 
   showChannelSubTab('channeldrive');
 }
@@ -1056,27 +1066,19 @@ function buildChannelsGroup(el) {
 function showChannelSubTab(id) {
   const subTabs = ['channeldrive','channel6m','dealers'];
   subTabs.forEach(t => {
-    const btn = document.getElementById('chsub_'+t);
-    if (btn) {
-      const active = t === id;
-      btn.style.fontWeight  = active ? '700' : '500';
-      btn.style.color       = active ? 'var(--primary)' : 'var(--muted)';
-      btn.style.borderBottom= active ? '3px solid var(--primary)' : '3px solid transparent';
-    }
+    const btn = document.getElementById('chsub_' + t);
+    if (!btn) return;
+    const active = t === id;
+    btn.style.fontWeight   = active ? '700' : '500';
+    btn.style.color        = active ? '#1a237e' : '#555';
+    btn.style.background   = active ? '#fff' : '#e8eaf6';
+    btn.style.borderTop    = active ? '3px solid #1a237e' : '3px solid transparent';
+    btn.style.borderLeft   = active ? '1px solid #c5cae9' : '1px solid transparent';
+    btn.style.borderRight  = active ? '1px solid #c5cae9' : '1px solid transparent';
+    btn.style.marginBottom = active ? '-1px' : '0';
   });
   const content = document.getElementById('chSubContent');
   if (!content) return;
-
-  // Cache built sub-tabs to avoid rebuilding
-  if (!window._chSubBuilt) window._chSubBuilt = {};
-  if (window._chSubBuilt[id]) {
-    content.innerHTML = window._chSubBuilt[id];
-    // Re-run dynamic builders that need live DOM
-    if (id === 'channeldrive') { const tmp = document.createElement('div'); tmp.innerHTML = content.innerHTML; buildChannelDrive(content); }
-    else if (id === 'channel6m')  buildChannel6M(content);
-    else if (id === 'dealers')    buildDealers(content);
-    return;
-  }
 
   if (id === 'channeldrive') buildChannelDrive(content);
   else if (id === 'channel6m')  buildChannel6M(content);
