@@ -1441,7 +1441,7 @@ function buildTrendOrFtd() {
     // Trend chart card
     w.innerHTML = `<div class="card" style="margin-bottom:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-        <div class="card-title" style="margin-bottom:0">Daily Disbursement Trend</div>
+        <div class="card-title" style="margin-bottom:0">Daily Disbursement Trend — vs Last 2 Months (Day-wise)</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <select id="trendPersonFilter" onchange="buildTrendChart()" style="padding:5px 10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:12px;color:#1a237e;font-weight:600;background:#fff;cursor:pointer">
             <option value="all">All Region</option>
@@ -1466,8 +1466,13 @@ function buildTrendOrFtd() {
     // Build month's available dates from transactions
     const curMonth = getCurMonth();
     const availDates = [...new Set(myTxns.filter(t=>t.date&&t.date.startsWith(curMonth)).map(t=>t.date.slice(0,10)))].sort().reverse();
+    const monthStartStr = curMonth + '-01';
 
-    let filterHTML = '<input type="date" id="ftdDateFilter" value="'+todayStr+'" max="'+todayStr+'"'
+    let filterHTML = '<span style="font-size:11px;color:#9e9e9e;font-weight:600">From</span>'
+      + '<input type="date" id="ftdFromFilter" value="'+todayStr+'" min="'+monthStartStr+'" max="'+todayStr+'"'
+      + ' onchange="buildFTDCaseTable()" style="padding:5px 10px;border:1.5px solid #c5cae9;border-radius:8px;font-size:12px;color:#1a237e;font-weight:600;background:#fff;cursor:pointer">'
+      + '<span style="font-size:11px;color:#9e9e9e;font-weight:600">To</span>'
+      + '<input type="date" id="ftdToFilter" value="'+todayStr+'" min="'+monthStartStr+'" max="'+todayStr+'"'
       + ' onchange="buildFTDCaseTable()" style="padding:5px 10px;border:1.5px solid #c5cae9;border-radius:8px;font-size:12px;color:#1a237e;font-weight:600;background:#fff;cursor:pointer">';
 
     if (d === 'AM') {
@@ -1518,17 +1523,22 @@ function buildFTDCaseTable() {
   const todayStr= new Date().toISOString().slice(0,10);
   const emps    = getEmpData();
 
-  // Get date filter — default to today
-  const dateSel    = document.getElementById('ftdDateFilter');
-  const selectedDate = dateSel ? dateSel.value : todayStr;
-  const isToday    = selectedDate === todayStr;
+  // Get date-range filter — defaults to today only
+  const fromSel = document.getElementById('ftdFromFilter');
+  const toSel   = document.getElementById('ftdToFilter');
+  let fromDate  = fromSel ? fromSel.value : todayStr;
+  let toDate    = toSel   ? toSel.value   : todayStr;
+  if (fromDate > toDate) { const t = fromDate; fromDate = toDate; toDate = t; } // swap if user picked them backwards
+  const isSingleDay = fromDate === toDate;
+  const isToday      = isSingleDay && fromDate === todayStr;
 
   // Update card title
   const titleEl = document.getElementById('ftdCardTitle');
   if (titleEl) {
-    const dt = new Date(selectedDate + 'T00:00:00');
-    const dtLabel = dt.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
-    titleEl.textContent = (isToday ? ' Today' : ' ') + ' Disbursement Cases — ' + dtLabel;
+    const fmtLbl = ds => new Date(ds + 'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
+    titleEl.textContent = isSingleDay
+      ? (isToday ? ' Today' : ' ') + ' Disbursement Cases — ' + fmtLbl(fromDate)
+      : ' Disbursement Cases — ' + fmtLbl(fromDate) + ' to ' + fmtLbl(toDate);
   }
 
   // Get filter values
@@ -1537,8 +1547,8 @@ function buildFTDCaseTable() {
   const amFilter = amSel ? amSel.value : 'all';
   const bmFilter = bmSel ? bmSel.value : 'all';
 
-  // Scope transactions to selected date
-  let todayTxns = myTxns.filter(t => t.date && t.date.slice(0,10) === selectedDate);
+  // Scope transactions to selected date range (inclusive)
+  let todayTxns = myTxns.filter(t => t.date && t.date.slice(0,10) >= fromDate && t.date.slice(0,10) <= toDate);
 
   // Apply role scoping
   if (d === 'BM') {
@@ -1557,8 +1567,10 @@ function buildFTDCaseTable() {
     if (bmFilter !== 'all') todayTxns = todayTxns.filter(t => t.bm_id === bmFilter);
   }
 
-  const selectedDt  = new Date(selectedDate + 'T00:00:00');
-  const todayDate   = selectedDt.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long'});
+  const rangeLabel = isSingleDay
+    ? new Date(fromDate + 'T00:00:00').toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long'})
+    : new Date(fromDate + 'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'}) + ' – ' + new Date(toDate + 'T00:00:00').toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+  const periodTag  = isSingleDay ? 'FTD' : 'Period';
   const totalAmt    = todayTxns.reduce((s,t)=>s+t.amt,0);
   const ucAmt     = todayTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
   const cvAmt     = todayTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
@@ -1574,8 +1586,8 @@ function buildFTDCaseTable() {
     el.innerHTML = `
       <div style="text-align:center;padding:32px 16px;color:#9e9e9e">
         <div style="font-size:32px;margin-bottom:8px">📭</div>
-        <div style="font-size:14px;font-weight:600">No disbursements today</div>
-        <div style="font-size:12px;margin-top:4px">${todayDate}</div>
+        <div style="font-size:14px;font-weight:600">No disbursements ${isSingleDay ? (isToday?'today':'on this date') : 'in this period'}</div>
+        <div style="font-size:12px;margin-top:4px">${rangeLabel}</div>
       </div>`;
     return;
   }
@@ -1584,17 +1596,17 @@ function buildFTDCaseTable() {
   const summary = `
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
       <div style="background:#e3f2fd;border-radius:10px;padding:12px 14px;text-align:center">
-        <div style="font-size:10px;color:#1565c0;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Total FTD</div>
+        <div style="font-size:10px;color:#1565c0;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Total ${periodTag}</div>
         <div style="font-size:20px;font-weight:900;color:#1565c0;margin-top:2px">${fmtL(totalAmt)}</div>
         <div style="font-size:11px;color:#546e7a;margin-top:2px">${todayTxns.length} cases</div>
       </div>
       <div style="background:#f3e5f5;border-radius:10px;padding:12px 14px;text-align:center">
-        <div style="font-size:10px;color:#6a1b9a;font-weight:700;text-transform:uppercase;letter-spacing:.5px">UC FTD</div>
+        <div style="font-size:10px;color:#6a1b9a;font-weight:700;text-transform:uppercase;letter-spacing:.5px">UC ${periodTag}</div>
         <div style="font-size:20px;font-weight:900;color:#6a1b9a;margin-top:2px">${fmtL(ucAmt)}</div>
         <div style="font-size:11px;color:#546e7a;margin-top:2px">${todayTxns.filter(t=>t.product==='Used Car').length} cases</div>
       </div>
       <div style="background:#e8f5e9;border-radius:10px;padding:12px 14px;text-align:center">
-        <div style="font-size:10px;color:#2e7d32;font-weight:700;text-transform:uppercase;letter-spacing:.5px">CV FTD</div>
+        <div style="font-size:10px;color:#2e7d32;font-weight:700;text-transform:uppercase;letter-spacing:.5px">CV ${periodTag}</div>
         <div style="font-size:20px;font-weight:900;color:#2e7d32;margin-top:2px">${fmtL(cvAmt)}</div>
         <div style="font-size:11px;color:#546e7a;margin-top:2px">${todayTxns.filter(t=>t.product!=='Used Car').length} cases</div>
       </div>
@@ -1703,24 +1715,26 @@ function buildTrendChart() {
   });
   const achData = allDates.map(d => byDate[d] || null); // null = no data yet
 
-  // ── Commitment data from live data ───────────────────────
-  const commitData = window._LIVE_DATA && window._LIVE_DATA.commitments ? window._LIVE_DATA.commitments : [];
-  function getCommit(date) {
-    const rows = commitData.filter(c => c.date === date);
-    if (!rows.length) return null;
-    let val = 0;
-    if (!personVal || personVal === 'all') {
-      rows.forEach(c => {
-        val += product==='UC' ? (c.uc_commit||0) : product==='CV' ? (c.cv_commit||0) : (c.uc_commit||0)+(c.cv_commit||0);
-      });
-    } else {
-      const pid = personVal.startsWith('th_') ? personVal.slice(3) : personVal.slice(3);
-      const row = rows.find(c => c.id===pid);
-      if (row) val = product==='UC' ? (row.uc_commit||0) : product==='CV' ? (row.cv_commit||0) : (row.uc_commit||0)+(row.cv_commit||0);
-    }
-    return val > 0 ? val * 1e5 : null; // stored in L, convert to rupees
+  // ── Last two months' business performance, day-wise ──────
+  function scopeToRH(txns) { return txns.filter(t => t.rh_id === currentUser.id); }
+  function monthTxnsBack(n) {
+    const now = new Date();
+    const d = new Date(now.getFullYear(), now.getMonth() - n, 1);
+    return makeMonthEntry(d).data();
   }
-  const commitLine = allDates.map(d => getCommit(d));
+  function buildDayMap(txns) {
+    const scoped = filterProd(filterPerson(scopeToRH(txns)));
+    const map = {};
+    scoped.forEach(t => { map[t.day] = (map[t.day]||0) + t.amt; });
+    return map;
+  }
+  const now0 = new Date();
+  const lastMonthLabel = new Date(now0.getFullYear(), now0.getMonth()-1, 1).toLocaleDateString('en-IN',{month:'short'});
+  const prevMonthLabel = new Date(now0.getFullYear(), now0.getMonth()-2, 1).toLocaleDateString('en-IN',{month:'short'});
+  const lastMonthMap = buildDayMap(monthTxnsBack(1));
+  const prevMonthMap = buildDayMap(monthTxnsBack(2));
+  const lastMonthLine = allDates.map(d => { const dn = new Date(d+'T00:00:00').getDate(); return lastMonthMap[dn] || null; });
+  const prevMonthLine = allDates.map(d => { const dn = new Date(d+'T00:00:00').getDate(); return prevMonthMap[dn] || null; });
 
   // ── Dynamic DRR per day ──────────────────────────────────
   // DRR(day) = shortfall at start of that day / remaining working days after that day
@@ -1784,16 +1798,30 @@ function buildTrendChart() {
           spanGaps: false,
         },
         {
-          label: 'Commitment',
-          data: commitLine,
-          borderColor: '#2e7d32',
+          label: lastMonthLabel + ' (Last Month)',
+          data: lastMonthLine,
+          borderColor: '#8e24aa',
           backgroundColor: 'transparent',
           borderWidth: 2,
           borderDash: [6,4],
-          pointRadius: 4,
-          pointBackgroundColor: '#2e7d32',
+          pointRadius: 3,
+          pointBackgroundColor: '#8e24aa',
           pointBorderColor: '#fff',
           pointBorderWidth: 1.5,
+          tension: 0.3,
+          spanGaps: false,
+        },
+        {
+          label: prevMonthLabel + ' (2 Months Ago)',
+          data: prevMonthLine,
+          borderColor: '#9e9e9e',
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          borderDash: [2,3],
+          pointRadius: 2,
+          pointBackgroundColor: '#9e9e9e',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 1,
           tension: 0.3,
           spanGaps: false,
         },
@@ -2112,7 +2140,8 @@ function buildRHPerfTable() {
     return '<span style="color:'+c+';font-weight:700">'+(v>=0?'+':'')+fmtL(v)+'</span>';
   }
 
-  function renderTable(rows, product, color) {
+  // ── Hierarchy-page style card renderer (no Commitment column) ──
+  function renderCards(rows, product, color, ypLabel) {
     if (!rows.length) return '<div style="color:#9e9e9e;padding:8px;font-size:12px">No '+product+' data</div>';
     const totMTD  = rows.reduce((s,r) => s+r.mtd, 0);
     const totLMTD = rows.reduce((s,r) => s+r.lmtd, 0);
@@ -2121,103 +2150,73 @@ function buildRHPerfTable() {
     const totTGT  = rows.reduce((s,r) => s+r.tgt, 0);
     const totShort= rows.reduce((s,r) => s+r.short, 0);
     const totCases= rows.reduce((s,r) => s+r.cases, 0);
-    const prefix  = product.toLowerCase();
+    const totAch  = totTGT > 0 ? pct(totMTD, totTGT) : 0;
 
-    let h = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px">';
-    h += '<thead><tr style="background:'+color+'">';
-    h += '<th style="padding:8px 10px;text-align:left;color:#fff;white-space:nowrap">State</th>';
-    h += '<th style="padding:8px 10px;text-align:left;color:#fff;white-space:nowrap">Name</th>';
-    h += '<th style="padding:8px 10px;text-align:left;color:#fff;white-space:nowrap">Role</th>';
-    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">TGT</th>';
-    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">MTD ACH</th>';
-    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">Short</th>';
-    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">LMTD ACH</th>';
-    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">MTD vs LMTD</th>';
-    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">DRR</th>';
-    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">YP</th>';
-    h += '<th style="padding:8px 10px;text-align:center;color:#fff;white-space:nowrap">Commitment</th>';
-    h += '<th style="padding:8px 10px;text-align:right;color:#fff;white-space:nowrap">FTD Ach</th>';
-    h += '</tr></thead><tbody>';
-
-    // ── Pre-load today's commitments from live data ───────────
-    const _today = new Date().toISOString().slice(0,10);
-    if (!window._rhCommit || window._rhCommitDate !== _today) {
-      window._rhCommitDate = _today;
-      window._rhCommit = {};
-      const liveData = window._LIVE_DATA || window._LIVE_TXN_RAW;
-      const commits  = (liveData && liveData.commitments) ? liveData.commitments : [];
-      const todayCommits = commits.filter(c => String(c.date).slice(0,10) === _today);
-      todayCommits.forEach(c => {
-        const fmtV = v => {
-          v = parseFloat(v) || 0;
-          if (!v) return '';
-          if (v < 0.01) return Math.round(v * 1e5) + 'L'; // fix old bad saves
-          return v % 1 === 0 ? v + 'L' : parseFloat(v.toFixed(2)) + 'L';
-        };
-        const ucStr = fmtV(c.uc_commit);
-        const cvStr = fmtV(c.cv_commit);
-        if (ucStr) window._rhCommit['uc_'+c.id] = ucStr;
-        if (cvStr) window._rhCommit['cv_'+c.id] = cvStr;
-      });
-    }
-
-    rows.forEach((r, i) => {
-      const bg = i%2===0 ? '#f8f9ff' : '#fff';
+    const cardsHtml = rows.map(r => {
+      const ach = r.tgt > 0 ? pct(r.mtd, r.tgt) : 0;
       const roleBadge = r.isTH
-        ? '<span style="background:#e8eaf6;color:#3949ab;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700">TH</span>'
-        : '<span style="background:#e8f5e9;color:#2e7d32;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700">AM</span>';
-      const savedCommit = window._rhCommit[prefix+'_'+r.id] || '';
-      h += '<tr style="background:'+bg+';border-bottom:1px solid #e8eaf6">';
-      h += '<td style="padding:7px 10px;color:#455a64;font-size:11px">'+r.states+'</td>';
-      h += '<td style="padding:7px 10px;font-weight:700;color:'+(r.isTH?'#3949ab':'#1a237e')+'">'+r.label+'</td>';
-      h += '<td style="padding:7px 10px">'+roleBadge+'</td>';
-      h += '<td style="padding:7px 10px;text-align:right;color:#546e7a">'+(r.tgt>0?fmtL(r.tgt):'—')+'</td>';
-      h += '<td style="padding:7px 10px;text-align:right;font-weight:700;color:#1565c0">'+fmtL(r.mtd)+'</td>';
-      h += '<td style="padding:7px 10px;text-align:right">'+shortCell(r.short)+'</td>';
-      h += '<td style="padding:7px 10px;text-align:right;color:#546e7a">'+fmtL(r.lmtd)+'</td>';
-      h += '<td style="padding:7px 10px;text-align:right">'+diffCell(r.vLMTD)+'</td>';
-      h += '<td style="padding:7px 10px;text-align:right;color:#e65100;font-weight:600">'+(r.drr>0?fmtL(r.drr)+'/day':'—')+'</td>';
-      h += '<td style="padding:7px 10px;text-align:right;font-weight:700;color:'+((r.yp||0)>0?'#6a1b9a':'#9e9e9e')+'">'+(r.yp>0?fmtL(r.yp):'—')+'</td>';
-      const commitKey = prefix + '_' + r.id;
-      h += '<td style="padding:5px 8px;text-align:center"><input type="text" placeholder="e.g. 50L" value="'+savedCommit+'"'
-          +' data-key="'+commitKey+'" data-pid="'+r.id+'" data-pname="'+r.label+'" data-prole="'+(r.isTH?'TH':'AM')+'" data-product="'+prefix+'"'
-          +' oninput="saveCommitmentToSheet(this)"'
-          +' style="width:80px;padding:4px 6px;border:1.5px solid #c5cae9;border-radius:6px;font-size:11px;text-align:center;color:#1a237e;font-weight:600"></td>';
-      h += '<td style="padding:7px 10px;text-align:right;font-weight:700;color:'+(r.ftd>0?'#2e7d32':'#9e9e9e')+'">'+(r.ftd>0?fmtL(r.ftd):'—')+'</td>';
-      h += '</tr>';
-    });
+        ? '<span class="badge badge-blue" style="font-size:10px">TH</span>'
+        : '<span class="badge badge-green" style="font-size:10px">AM</span>';
+      const borderClr = r.isTH ? '#3949ab' : color;
+      return `
+      <div style="background:#fff;border-radius:10px;box-shadow:0 1px 6px rgba(0,0,0,.07);margin-bottom:10px;padding:14px 18px;border-left:4px solid ${borderClr}">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:14px;font-weight:800;color:${r.isTH?'#3949ab':'#1a237e'}">${r.label}</span>
+            ${roleBadge}
+            ${r.tgt>0 ? achBadge(ach) : '<span class="badge badge-grey">No Target</span>'}
+          </div>
+          <div style="font-size:11px;color:#9e9e9e">${r.states} &nbsp;|&nbsp; ${r.cases} cases</div>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:18px;flex-wrap:wrap;font-size:12px">
+          <span style="color:#666">TGT: <b style="color:#1a237e">${r.tgt>0?fmtL(r.tgt):'—'}</b></span>
+          <span style="color:#666">MTD ACH: <b style="color:#1565c0">${fmtL(r.mtd)}</b></span>
+          <span style="color:#666">Short: ${shortCell(r.short)}</span>
+          <span style="color:#666">LMTD ACH: <b style="color:#546e7a">${fmtL(r.lmtd)}</b></span>
+          <span style="color:#666">MTD vs LMTD: ${diffCell(r.vLMTD)}</span>
+          <span style="color:#666">DRR: <b style="color:#e65100">${r.drr>0?fmtL(r.drr)+'/day':'—'}</b></span>
+          <span style="color:#666">${ypLabel}: <b style="color:${(r.yp||0)>0?'#6a1b9a':'#9e9e9e'}">${r.yp>0?fmtL(r.yp):'—'}</b></span>
+          <span style="color:#666">FTD Ach: <b style="color:${r.ftd>0?'#2e7d32':'#9e9e9e'}">${r.ftd>0?fmtL(r.ftd):'—'}</b></span>
+        </div>
+      </div>`;
+    }).join('');
 
-    h += '<tr style="background:#e8eaf6;font-weight:700;border-top:2px solid '+color+'">';
-    h += '<td style="padding:8px 10px;color:'+color+'" colspan="3">TOTAL ('+totCases+' cases)</td>';
-    h += '<td style="padding:8px 10px;text-align:right;color:'+color+'">'+(totTGT>0?fmtL(totTGT):'—')+'</td>';
-    h += '<td style="padding:8px 10px;text-align:right;color:#1565c0">'+fmtL(totMTD)+'</td>';
-    h += '<td style="padding:8px 10px;text-align:right">'+shortCell(totShort)+'</td>';
-    h += '<td style="padding:8px 10px;text-align:right;color:#546e7a">'+fmtL(totLMTD)+'</td>';
-    h += '<td style="padding:8px 10px;text-align:right">'+diffCell(totMTD-totLMTD)+'</td>';
-    h += '<td></td>';
-    h += '<td style="padding:8px 10px;text-align:right;color:#6a1b9a;font-weight:700">'+(totYP>0?fmtL(totYP):'—')+'</td>';
-    h += '<td style="padding:8px 10px;text-align:center"><span style="color:#9e9e9e;font-size:11px">—</span></td>';
-    h += '<td style="padding:8px 10px;text-align:right;font-weight:800;color:#2e7d32">'+(totFTD>0?fmtL(totFTD):'—')+'</td>';
-    h += '</tr></tbody></table></div>';
-    return h;
+    const totalCard = `
+      <div style="background:#e8eaf6;border-radius:10px;padding:12px 18px;border-top:2px solid ${color}">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <span style="font-weight:800;color:${color}">TOTAL (${totCases} cases)</span>
+          ${totTGT>0 ? achBadge(totAch) : ''}
+        </div>
+        <div style="margin-top:8px;display:flex;gap:18px;flex-wrap:wrap;font-size:12px;font-weight:700">
+          <span style="color:#666;font-weight:400">TGT: <b style="color:${color}">${totTGT>0?fmtL(totTGT):'—'}</b></span>
+          <span style="color:#666;font-weight:400">MTD ACH: <b style="color:#1565c0">${fmtL(totMTD)}</b></span>
+          <span style="color:#666;font-weight:400">Short: ${shortCell(totShort)}</span>
+          <span style="color:#666;font-weight:400">LMTD ACH: <b style="color:#546e7a">${fmtL(totLMTD)}</b></span>
+          <span style="color:#666;font-weight:400">MTD vs LMTD: ${diffCell(totMTD-totLMTD)}</span>
+          <span style="color:#666;font-weight:400">${ypLabel}: <b style="color:#6a1b9a">${totYP>0?fmtL(totYP):'—'}</b></span>
+          <span style="color:#666;font-weight:400">FTD Ach: <b style="color:#2e7d32">${totFTD>0?fmtL(totFTD):'—'}</b></span>
+        </div>
+      </div>`;
+
+    return '<div>' + cardsHtml + totalCard + '</div>';
   }
 
   const ucRows = buildRows('UC');
   const cvRows = buildRows('CV');
 
   el.innerHTML =
-    // UC Table
+    // UC Cards
     '<div style="margin-bottom:20px">'
-    +'<div style="font-size:12px;font-weight:800;color:#1565c0;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px;padding:6px 12px;background:#e3f2fd;border-radius:6px;display:inline-block">Used Car (UC)</div>'
-    +renderTable(ucRows,'UC','#1565c0')
+    +'<div style="font-size:12px;font-weight:800;color:#1565c0;letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px;padding:6px 12px;background:#e3f2fd;border-radius:6px;display:inline-block">Used Car (UC)</div>'
+    +renderCards(ucRows,'UC','#1565c0','YP UC')
     +'</div>'
-    // CV Table
+    // CV Cards
     +'<div>'
-    +'<div style="font-size:12px;font-weight:800;color:#6a1b9a;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px;padding:6px 12px;background:#f3e5f5;border-radius:6px;display:inline-block">Commercial Vehicle (CV)</div>'
-    +renderTable(cvRows,'CV','#6a1b9a')
+    +'<div style="font-size:12px;font-weight:800;color:#6a1b9a;letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px;padding:6px 12px;background:#f3e5f5;border-radius:6px;display:inline-block">Commercial Vehicle (CV)</div>'
+    +renderCards(cvRows,'CV','#6a1b9a','YP CV')
     +'</div>'
     +'<div style="font-size:10px;color:#9e9e9e;margin-top:10px;padding-left:4px">'
-    +'MTD = Month till date &nbsp;|&nbsp; LMTD = Last month same days (till '+mtdDay+') &nbsp;|&nbsp; FTD = Today &nbsp;|&nbsp; YP = Yesterday &nbsp;|&nbsp; DRR = Daily Required Rate &nbsp;|&nbsp; Commitment = Enter expected achievement for today'
+    +'MTD = Month till date &nbsp;|&nbsp; LMTD = Last month same days (till '+mtdDay+') &nbsp;|&nbsp; FTD = Today &nbsp;|&nbsp; YP UC/YP CV = Yesterday&#39;s performance &nbsp;|&nbsp; DRR = Daily Required Rate'
     +'</div>';
 }
 
