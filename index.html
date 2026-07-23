@@ -1441,7 +1441,7 @@ function buildTrendOrFtd() {
     // Trend chart card
     w.innerHTML = `<div class="card" style="margin-bottom:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-        <div class="card-title" style="margin-bottom:0">Daily Disbursement Trend — vs Last 2 Months (Day-wise)</div>
+        <div class="card-title" style="margin-bottom:0">MTD Trend — vs Last 2 Months</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <select id="trendPersonFilter" onchange="buildTrendChart()" style="padding:5px 10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:12px;color:#1a237e;font-weight:600;background:#fff;cursor:pointer">
             <option value="all">All Region</option>
@@ -1707,15 +1707,15 @@ function buildTrendChart() {
     if (d.getDay() !== 0) allDates.push(d.toISOString().slice(0,10)); // Mon-Sat
   }
 
-  // ── Daily achievement (July / current month) ──────────────
-  // Past & today = real value (0 if no disbursement that day, so the line stays connected).
-  // Future days (month hasn't reached them yet) = null, so nothing is drawn there.
+  // ── Daily raw amounts (July / current month) ──────────────
+  // Past & today = real value (0 if no disbursement that day).
+  // Future days (month hasn't reached them yet) = null.
   const byDate = {};
   curTxns.forEach(t => {
     const d = t.date.slice(0,10);
     byDate[d] = (byDate[d]||0) + t.amt;
   });
-  const achData = allDates.map(d => d <= todayStr ? (byDate[d] || 0) : null);
+  const dailyAch = allDates.map(d => d <= todayStr ? (byDate[d] || 0) : null);
 
   // ── Last two months' business performance, day-wise ──────
   function scopeToRH(txns) { return txns.filter(t => t.rh_id === currentUser.id); }
@@ -1731,6 +1731,7 @@ function buildTrendChart() {
     return map;
   }
   const now0 = new Date();
+  const curMonthLabel  = now0.toLocaleDateString('en-IN',{month:'short'});
   const lastMonthLabel = new Date(now0.getFullYear(), now0.getMonth()-1, 1).toLocaleDateString('en-IN',{month:'short'});
   const prevMonthLabel = new Date(now0.getFullYear(), now0.getMonth()-2, 1).toLocaleDateString('en-IN',{month:'short'});
   const lastMonthMap  = buildDayMap(monthTxnsBack(1));
@@ -1738,14 +1739,27 @@ function buildTrendChart() {
   // Days actually in each of those months (May/June are complete months, so run the line to their own month-end)
   const lastMonthDays = new Date(now0.getFullYear(), now0.getMonth(), 0).getDate();   // days in "last month"
   const prevMonthDays = new Date(now0.getFullYear(), now0.getMonth()-1, 0).getDate(); // days in "2 months ago"
-  const lastMonthLine = allDates.map(d => {
+  const dailyLastMonth = allDates.map(d => {
     const dn = new Date(d+'T00:00:00').getDate();
     return dn <= lastMonthDays ? (lastMonthMap[dn] || 0) : null;
   });
-  const prevMonthLine = allDates.map(d => {
+  const dailyPrevMonth = allDates.map(d => {
     const dn = new Date(d+'T00:00:00').getDate();
     return dn <= prevMonthDays ? (prevMonthMap[dn] || 0) : null;
   });
+
+  // ── Convert daily amounts into cumulative MTD running totals ──
+  function toCumulative(daily) {
+    let running = 0;
+    return daily.map(v => {
+      if (v == null) return null;
+      running += v;
+      return running;
+    });
+  }
+  const achData       = toCumulative(dailyAch);
+  const lastMonthLine = toCumulative(dailyLastMonth);
+  const prevMonthLine = toCumulative(dailyPrevMonth);
 
   // ── Build chart ──────────────────────────────────────────
   const ctx2 = document.getElementById('chartTrend');
@@ -1763,13 +1777,13 @@ function buildTrendChart() {
       }),
       datasets: [
         {
-          label: 'Achievement',
+          label: curMonthLabel + ' MTD',
           data: achData,
           borderColor: '#1565c0',
           backgroundColor: 'rgba(21,101,192,0.08)',
           borderWidth: 2.5,
-          pointRadius: 4,
-          pointBackgroundColor: achData.map(v => v === 0 ? '#ef5350' : '#1565c0'),
+          pointRadius: 3,
+          pointBackgroundColor: '#1565c0',
           pointBorderColor: '#fff',
           pointBorderWidth: 1.5,
           tension: 0.3,
@@ -1777,7 +1791,7 @@ function buildTrendChart() {
           spanGaps: true,
         },
         {
-          label: lastMonthLabel + ' (Last Month)',
+          label: lastMonthLabel + ' MTD (Last Month)',
           data: lastMonthLine,
           borderColor: '#8e24aa',
           backgroundColor: 'transparent',
@@ -1791,7 +1805,7 @@ function buildTrendChart() {
           spanGaps: true,
         },
         {
-          label: prevMonthLabel + ' (2 Months Ago)',
+          label: prevMonthLabel + ' MTD (2 Months Ago)',
           data: prevMonthLine,
           borderColor: '#ec407a',
           backgroundColor: 'transparent',
@@ -1826,7 +1840,6 @@ function buildTrendChart() {
               if (ctx.raw == null) return null;
               const lbl = ctx.dataset.label;
               const val = fL(ctx.raw);
-              if (lbl === 'Achievement' && ctx.raw === 0) return ' Achievement: 0 — Zero day';
               return ' '+lbl+': '+val;
             }
           }
