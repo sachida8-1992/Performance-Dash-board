@@ -1755,17 +1755,22 @@ function buildTrendChart() {
     }
     return 0;
   }
+  // ── DRR per day: DRR = Target / Remaining Working Days ───
   const totalTgt = getTarget();
-  // Build cumulative achievement by day
-  let cumAch = 0;
-  const drrLine = allDates.map((d, i) => {
-    // remaining working days AFTER this day
-    const remDays = allDates.slice(i+1).length;
-    const shortfall = Math.max(totalTgt - cumAch, 0);
-    const drr = remDays > 0 ? shortfall / remDays : null;
-    // now add today's ach so next day reflects it
-    cumAch += (byDate[d]||0);
-    return drr;
+  const monthEndDate = new Date(monthStart.getFullYear(), monthStart.getMonth()+1, 0); // last day of month
+  function workingDaysBetween(startDate, endDate) {
+    let count = 0;
+    let dd = new Date(startDate);
+    while (dd <= endDate) {
+      if (dd.getDay() !== 0) count++; // exclude Sundays
+      dd.setDate(dd.getDate()+1);
+    }
+    return count;
+  }
+  const drrLine = allDates.map(d => {
+    const dayDate = new Date(d+'T00:00:00');
+    const remDays = workingDaysBetween(dayDate, monthEndDate); // working days from this day through month-end
+    return remDays > 0 ? totalTgt / remDays : null;
   });
 
   // ── Build chart ──────────────────────────────────────────
@@ -1868,8 +1873,8 @@ function buildTrendChart() {
       scales: {
         y: {
           min: 50 * 1e5,     // 50L
-          max: 20 * 1e7,     // 20 Cr
-          ticks: { callback: v => fL(v), font: { size: 10 }, stepSize: 1e7 },
+          max: 10 * 1e7,     // 10 Cr
+          ticks: { callback: v => fL(v), font: { size: 10 }, stepSize: 0.5e7 },
           grid: { color: '#f0f0f0' }
         },
         x: {
@@ -2166,14 +2171,16 @@ function buildRHPerfTable() {
 
   const hdrStyle = 'padding:9px 8px;text-align:right;white-space:nowrap;font-size:11px;font-weight:700;color:#fff;border-right:1px solid rgba(255,255,255,.1)';
   const hdrL     = 'padding:9px 10px;text-align:left;white-space:nowrap;font-size:11px;font-weight:700;color:#fff;border-right:1px solid rgba(255,255,255,.1)';
+  const numColW  = 36;  // px width of frozen "#" column
+  const nameColW = 150; // px width of frozen "Name" column
 
   el.innerHTML = `
     <div style="overflow-x:auto">
       <table style="min-width:1300px;border-collapse:collapse;font-size:12px;width:100%">
         <thead>
           <tr style="background:#0d1b5e;color:#fff">
-            <th style="${hdrL}" rowspan="2">#</th>
-            <th style="${hdrL}" rowspan="2">Name</th>
+            <th style="${hdrL};position:sticky;left:0;z-index:4;background:#0d1b5e;width:${numColW}px" rowspan="2">#</th>
+            <th style="${hdrL};position:sticky;left:${numColW}px;z-index:4;background:#0d1b5e;width:${nameColW}px;box-shadow:2px 0 4px rgba(0,0,0,.15)" rowspan="2">Name</th>
             <th style="${hdrL}" rowspan="2">Role</th>
             <th style="${hdrStyle}" rowspan="2">Total TGT</th>
             <th style="${hdrStyle}" rowspan="2">Total Disb</th>
@@ -2202,13 +2209,14 @@ function buildRHPerfTable() {
         </thead>
         <tbody>
           ${rows.map((r,i) => {
-            const rowBg = r.cases===0 ? 'background:#fafafa;opacity:.65' : i%2===0 ? '' : 'background:#f8f9ff';
+            const bgColor = r.cases===0 ? '#fafafa' : (i%2===0 ? '#ffffff' : '#f8f9ff');
+            const rowBg = r.cases===0 ? 'background:'+bgColor+';opacity:.65' : 'background:'+bgColor;
             const roleBadge = r.isTH
               ? '<span class="badge badge-blue" style="font-size:10px">TH</span>'
               : '<span class="badge badge-green" style="font-size:10px">AM</span>';
             return `<tr style="${rowBg}">
-              <td style="padding:7px 10px;color:#9e9e9e;font-size:11px;border-bottom:1px solid #f0f0f0">${i+1}</td>
-              <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0">
+              <td style="padding:7px 10px;color:#9e9e9e;font-size:11px;border-bottom:1px solid #f0f0f0;position:sticky;left:0;z-index:1;background:${bgColor};width:${numColW}px">${i+1}</td>
+              <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;position:sticky;left:${numColW}px;z-index:1;background:${bgColor};width:${nameColW}px;box-shadow:2px 0 4px rgba(0,0,0,.08)">
                 <b style="font-size:12px;color:${r.isTH?'#3949ab':'#1a237e'}">${r.label}</b>
                 ${r.cases===0?'<span style="font-size:9px;color:#e53935;margin-left:4px">No txn</span>':''}
               </td>
@@ -2247,7 +2255,7 @@ function buildRHPerfTable() {
         </tbody>
         <tfoot>
           <tr style="background:#e8eaf6;font-weight:700;border-top:2px solid #1a237e">
-            <td style="padding:8px 10px;color:#1a237e" colspan="3">TOTAL (${rows.length})</td>
+            <td style="padding:8px 10px;color:#1a237e;position:sticky;left:0;z-index:1;background:#e8eaf6;box-shadow:2px 0 4px rgba(0,0,0,.08)" colspan="3">TOTAL (${rows.length})</td>
             <td style="padding:8px;text-align:right">${fmtCr(totTgtSum)}</td>
             <td style="padding:8px;text-align:right;font-size:13px">${fmtCr(totDisb)}</td>
             <td style="padding:8px;text-align:right">${fmtCr(totUCTgt)}</td>
@@ -3220,7 +3228,7 @@ function computeBMIncentive(bmTxns, bmEmp, opts) {
     }
   }
 
-  const baseIncentive = activeSlab ? Math.round(effGMV * (appliedRate / 100)) : 0;
+  const baseIncentive = activeSlab ? Math.round(effGMV * appliedRate) : 0;
 
   // Dealer bonus: unique UC channel activations (ch_check > 0 for UC txns)
   const ucDealers = new Set(
@@ -3506,7 +3514,7 @@ function buildIncentive(el) {
     }
   }
 
-  const baseIncentive = activeSlab ? Math.round(effGMV * (appliedRate / 100)) : 0;
+  const baseIncentive = activeSlab ? Math.round(effGMV * appliedRate) : 0;
 
   // Dealer bonus: unique UC channel activations (ch_check > 0), bonus = % of TOTAL incentive
   const ucDealers = new Set(bmTxns.filter(t=>t.product==='Used Car' && t.ch_check>0 && t.dcid).map(t=>t.dcid)).size;
