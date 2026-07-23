@@ -1736,43 +1736,6 @@ function buildTrendChart() {
   const lastMonthLine = allDates.map(d => { const dn = new Date(d+'T00:00:00').getDate(); return lastMonthMap[dn] || null; });
   const prevMonthLine = allDates.map(d => { const dn = new Date(d+'T00:00:00').getDate(); return prevMonthMap[dn] || null; });
 
-  // ── Dynamic DRR per day ──────────────────────────────────
-  // DRR(day) = shortfall at start of that day / remaining working days after that day
-  function getTarget() {
-    if (!personVal || personVal === 'all') {
-      const emps = getEmpData().filter(e=>e.rh_id===currentUser.id);
-      return emps.reduce((s,e)=> s + (product==='UC'?(e.uc_tgt||0):product==='CV'?(e.cv_tgt||0):(e.uc_tgt||0)+(e.cv_tgt||0)), 0)*1e5;
-    }
-    if (personVal.startsWith('th_')) {
-      const thId = personVal.slice(3);
-      const emp = getEmpData().find(e=>e.id===thId);
-      return emp ? (product==='UC'?(emp.uc_tgt||0):product==='CV'?(emp.cv_tgt||0):(emp.uc_tgt||0)+(emp.cv_tgt||0))*1e5 : 0;
-    }
-    if (personVal.startsWith('am_')) {
-      const amId = personVal.slice(3);
-      const emp = getEmpData().find(e=>e.id===amId);
-      return emp ? (product==='UC'?(emp.uc_tgt||0):product==='CV'?(emp.cv_tgt||0):(emp.uc_tgt||0)+(emp.cv_tgt||0))*1e5 : 0;
-    }
-    return 0;
-  }
-  // ── DRR per day: DRR = Target / Remaining Working Days ───
-  const totalTgt = getTarget();
-  const monthEndDate = new Date(monthStart.getFullYear(), monthStart.getMonth()+1, 0); // last day of month
-  function workingDaysBetween(startDate, endDate) {
-    let count = 0;
-    let dd = new Date(startDate);
-    while (dd <= endDate) {
-      if (dd.getDay() !== 0) count++; // exclude Sundays
-      dd.setDate(dd.getDate()+1);
-    }
-    return count;
-  }
-  const drrLine = allDates.map(d => {
-    const dayDate = new Date(d+'T00:00:00');
-    const remDays = workingDaysBetween(dayDate, monthEndDate); // working days from this day through month-end
-    return remDays > 0 ? totalTgt / remDays : null;
-  });
-
   // ── Build chart ──────────────────────────────────────────
   const ctx2 = document.getElementById('chartTrend');
   if (!ctx2) return;
@@ -1819,28 +1782,16 @@ function buildTrendChart() {
         {
           label: prevMonthLabel + ' (2 Months Ago)',
           data: prevMonthLine,
-          borderColor: '#9e9e9e',
+          borderColor: '#ec407a',
           backgroundColor: 'transparent',
           borderWidth: 1.5,
           borderDash: [2,3],
           pointRadius: 2,
-          pointBackgroundColor: '#9e9e9e',
+          pointBackgroundColor: '#ec407a',
           pointBorderColor: '#fff',
           pointBorderWidth: 1,
           tension: 0.3,
           spanGaps: false,
-        },
-        {
-          label: 'DRR (Required)',
-          data: drrLine,
-          borderColor: '#e65100',
-          backgroundColor: 'transparent',
-          borderWidth: 1.5,
-          borderDash: [3,3],
-          pointRadius: 2,
-          pointBackgroundColor: '#e65100',
-          tension: 0.2,
-          spanGaps: true,
         }
       ]
     },
@@ -1872,9 +1823,8 @@ function buildTrendChart() {
       },
       scales: {
         y: {
-          min: 50 * 1e5,     // 50L
-          max: 10 * 1e7,     // 10 Cr
-          ticks: { callback: v => fL(v), font: { size: 10 }, stepSize: 0.5e7 },
+          beginAtZero: true,
+          ticks: { callback: v => fL(v), font: { size: 10 } },
           grid: { color: '#f0f0f0' }
         },
         x: {
