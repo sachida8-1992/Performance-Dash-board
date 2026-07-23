@@ -1697,23 +1697,25 @@ function buildTrendChart() {
 
   const curTxns = filterProd(filterPerson(myTxns.filter(t=>t.date&&t.date.slice(0,7)===getCurMonth())));
 
-  // ── Build date range (working days, current month) ───────
+  // ── Build date range (working days, full current month) ──
   const todayStr = new Date().toISOString().slice(0,10);
   const monthStr = getCurMonth(); // e.g. '2026-07'
   const allDates = [];
-  const monthStart = new Date(monthStr + '-01');
-  const rangeEnd   = new Date();
-  for (let d = new Date(monthStart); d <= rangeEnd; d.setDate(d.getDate()+1)) {
+  const monthStart   = new Date(monthStr + '-01');
+  const monthEndDate = new Date(monthStart.getFullYear(), monthStart.getMonth()+1, 0); // last day of current month
+  for (let d = new Date(monthStart); d <= monthEndDate; d.setDate(d.getDate()+1)) {
     if (d.getDay() !== 0) allDates.push(d.toISOString().slice(0,10)); // Mon-Sat
   }
 
-  // ── Daily achievement (cumulative daily totals) ──────────
+  // ── Daily achievement (July / current month) ──────────────
+  // Past & today = real value (0 if no disbursement that day, so the line stays connected).
+  // Future days (month hasn't reached them yet) = null, so nothing is drawn there.
   const byDate = {};
   curTxns.forEach(t => {
     const d = t.date.slice(0,10);
     byDate[d] = (byDate[d]||0) + t.amt;
   });
-  const achData = allDates.map(d => byDate[d] || null); // null = no data yet
+  const achData = allDates.map(d => d <= todayStr ? (byDate[d] || 0) : null);
 
   // ── Last two months' business performance, day-wise ──────
   function scopeToRH(txns) { return txns.filter(t => t.rh_id === currentUser.id); }
@@ -1731,10 +1733,19 @@ function buildTrendChart() {
   const now0 = new Date();
   const lastMonthLabel = new Date(now0.getFullYear(), now0.getMonth()-1, 1).toLocaleDateString('en-IN',{month:'short'});
   const prevMonthLabel = new Date(now0.getFullYear(), now0.getMonth()-2, 1).toLocaleDateString('en-IN',{month:'short'});
-  const lastMonthMap = buildDayMap(monthTxnsBack(1));
-  const prevMonthMap = buildDayMap(monthTxnsBack(2));
-  const lastMonthLine = allDates.map(d => { const dn = new Date(d+'T00:00:00').getDate(); return lastMonthMap[dn] || null; });
-  const prevMonthLine = allDates.map(d => { const dn = new Date(d+'T00:00:00').getDate(); return prevMonthMap[dn] || null; });
+  const lastMonthMap  = buildDayMap(monthTxnsBack(1));
+  const prevMonthMap  = buildDayMap(monthTxnsBack(2));
+  // Days actually in each of those months (May/June are complete months, so run the line to their own month-end)
+  const lastMonthDays = new Date(now0.getFullYear(), now0.getMonth(), 0).getDate();   // days in "last month"
+  const prevMonthDays = new Date(now0.getFullYear(), now0.getMonth()-1, 0).getDate(); // days in "2 months ago"
+  const lastMonthLine = allDates.map(d => {
+    const dn = new Date(d+'T00:00:00').getDate();
+    return dn <= lastMonthDays ? (lastMonthMap[dn] || 0) : null;
+  });
+  const prevMonthLine = allDates.map(d => {
+    const dn = new Date(d+'T00:00:00').getDate();
+    return dn <= prevMonthDays ? (prevMonthMap[dn] || 0) : null;
+  });
 
   // ── Build chart ──────────────────────────────────────────
   const ctx2 = document.getElementById('chartTrend');
@@ -1763,7 +1774,7 @@ function buildTrendChart() {
           pointBorderWidth: 1.5,
           tension: 0.3,
           fill: true,
-          spanGaps: false,
+          spanGaps: true,
         },
         {
           label: lastMonthLabel + ' (Last Month)',
@@ -1777,7 +1788,7 @@ function buildTrendChart() {
           pointBorderColor: '#fff',
           pointBorderWidth: 1.5,
           tension: 0.3,
-          spanGaps: false,
+          spanGaps: true,
         },
         {
           label: prevMonthLabel + ' (2 Months Ago)',
@@ -1791,7 +1802,7 @@ function buildTrendChart() {
           pointBorderColor: '#fff',
           pointBorderWidth: 1,
           tension: 0.3,
-          spanGaps: false,
+          spanGaps: true,
         }
       ]
     },
