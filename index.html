@@ -1867,7 +1867,9 @@ function buildTrendChart() {
       },
       scales: {
         y: {
-          ticks: { callback: v => fL(v), font: { size: 10 } },
+          min: 50 * 1e5,     // 50L
+          max: 20 * 1e7,     // 20 Cr
+          ticks: { callback: v => fL(v), font: { size: 10 }, stepSize: 1e7 },
           grid: { color: '#f0f0f0' }
         },
         x: {
@@ -2049,175 +2051,226 @@ function buildRHPerfTable() {
   const yest       = new Date(today); yest.setDate(yest.getDate() - 1);
   const yesterdayStr = yest.toISOString().slice(0,10);
   const mtdDay     = today.getDate();
-  const remaining  = getRemainingWorkingDays();
   const allEmps    = getEmpData();
   const juneTxns   = getTxnData().filter(t => t.date && t.date.startsWith(getCurMonth()));
-  const mayTxns    = toLMTD(getMayData());
-
-  // Build row data for each person — separate UC and CV
-  function buildRows(product) {
-    const isUC = product === 'UC';
-    function pf(arr) { return isUC ? arr.filter(t => t.product === 'Used Car') : arr.filter(t => t.product !== 'Used Car'); }
-    function getTgt(empId) {
-      const emp = allEmps.find(e => e.id === empId);
-      if (!emp) return 0;
-      return isUC ? (emp.uc_tgt||0)*1e5 : (emp.cv_tgt||0)*1e5;
-    }
-
-    const RH_ID = currentUser.id;
-    const rows  = [];
-    const seenTH = new Set();
-
-    allEmps.filter(e => e.designation === 'AM' && e.rh_id === RH_ID).forEach(amEmp => {
-      const thId  = amEmp.th_id;
-      const thEmp = allEmps.find(e => e.id === thId && e.designation === 'TH');
-
-      if (thEmp && thId !== RH_ID) {
-        if (seenTH.has(thId)) return;
-        seenTH.add(thId);
-        const jTxns  = pf(juneTxns.filter(t => t.th_id === thId));
-        const mTxns  = pf(mayTxns.filter(t => t.th_id === thId && (t.day||0) <= mtdDay));
-        const ftTxns = pf(juneTxns.filter(t => t.th_id === thId && t.date === todayStr));
-        const ypTxns = pf(juneTxns.filter(t => t.th_id === thId && t.date === yesterdayStr));
-        const mtd   = jTxns.reduce((s,t) => s+t.amt, 0);
-        const lmtd  = mTxns.reduce((s,t) => s+t.amt, 0);
-        const ftd   = ftTxns.reduce((s,t) => s+t.amt, 0);
-        const yp    = ypTxns.reduce((s,t) => s+t.amt, 0);
-        const tgt   = getTgt(thId);
-        const short = Math.max(tgt - mtd, 0);
-        const drr   = remaining > 0 && short > 0 ? short / remaining : 0;
-        const vLMTD = mtd - lmtd;
-        const states = [...new Set(jTxns.map(t => t.state||'').filter(Boolean))].join(', ') || '—';
-        rows.push({ id: thId, label: thEmp.name, subLabel: '(TH)', states, tgt, mtd, lmtd, ftd, yp, short, vLMTD, drr, cases: jTxns.length, isTH: true });
-      } else {
-        const jTxns  = pf(juneTxns.filter(t => t.am_id === amEmp.id));
-        const mTxns  = pf(mayTxns.filter(t => t.am_id === amEmp.id && (t.day||0) <= mtdDay));
-        const ftTxns = pf(juneTxns.filter(t => t.am_id === amEmp.id && t.date === todayStr));
-        const ypTxns = pf(juneTxns.filter(t => t.am_id === amEmp.id && t.date === yesterdayStr));
-        const mtd   = jTxns.reduce((s,t) => s+t.amt, 0);
-        const lmtd  = mTxns.reduce((s,t) => s+t.amt, 0);
-        const ftd   = ftTxns.reduce((s,t) => s+t.amt, 0);
-        const yp    = ypTxns.reduce((s,t) => s+t.amt, 0);
-        const tgt   = getTgt(amEmp.id);
-        const short = Math.max(tgt - mtd, 0);
-        const drr   = remaining > 0 && short > 0 ? short / remaining : 0;
-        const vLMTD = mtd - lmtd;
-        const states = [...new Set(jTxns.map(t => t.state||'').filter(Boolean))].join(', ') || '—';
-        rows.push({ id: amEmp.id, label: amEmp.name, subLabel: '(AM)', states, tgt, mtd, lmtd, ftd, yp, short, vLMTD, drr, cases: jTxns.length, isTH: false });
-      }
-    });
-
-    allEmps.filter(e => e.designation === 'TH' && e.rh_id === RH_ID && !seenTH.has(e.id)).forEach(thEmp => {
-      seenTH.add(thEmp.id);
-      const jTxns  = pf(juneTxns.filter(t => t.th_id === thEmp.id));
-      const mTxns  = pf(mayTxns.filter(t => t.th_id === thEmp.id && (t.day||0) <= mtdDay));
-      const ftTxns = pf(juneTxns.filter(t => t.th_id === thEmp.id && t.date === todayStr));
-      const ypTxns = pf(juneTxns.filter(t => t.th_id === thEmp.id && t.date === yesterdayStr));
-      const mtd   = jTxns.reduce((s,t) => s+t.amt, 0);
-      const lmtd  = mTxns.reduce((s,t) => s+t.amt, 0);
-      const ftd   = ftTxns.reduce((s,t) => s+t.amt, 0);
-      const yp    = ypTxns.reduce((s,t) => s+t.amt, 0);
-      const tgt   = getTgt(thEmp.id);
-      const short = Math.max(tgt - mtd, 0);
-      const drr   = remaining > 0 && short > 0 ? short / remaining : 0;
-      const vLMTD = mtd - lmtd;
-      const states = [...new Set(jTxns.map(t => t.state||'').filter(Boolean))].join(', ') || '—';
-      rows.push({ id: thEmp.id, label: thEmp.name, subLabel: '(TH)', states, tgt, mtd, lmtd, ftd, yp, short, vLMTD, drr, cases: jTxns.length, isTH: true });
-    });
-
-    rows.sort((a,b) => b.mtd - a.mtd);
-    return rows;
-  }
+  const mayRaw     = getMayData();
+  const mayLMTD    = toLMTD(mayRaw);
 
   function fmtL(v) { return (v/1e5).toFixed(2)+'L'; }
-  function shortCell(v) {
-    return v <= 0
-      ? '<span style="color:#2e7d32;font-weight:700">On Track</span>'
-      : '<span style="color:#c62828;font-weight:700">'+fmtL(v)+'</span>';
+
+  function gTag(cur, prev, isAmt=true) {
+    if (!prev && prev !== 0) return '<span style="color:#ccc">—</span>';
+    const d = cur - prev; const up = d >= 0;
+    const col = up ? '#2e7d32' : '#c62828';
+    const bg  = up ? '#e8f5e9' : '#ffebee';
+    const val = isAmt ? (up?'+':'')+fmtCr(Math.abs(d)) : (up?'+':'')+d;
+    return '<span style="background:'+bg+';color:'+col+';padding:2px 6px;border-radius:8px;font-size:10px;font-weight:700">'+(up?'&#9650;':'&#9660;')+' '+val+'</span>';
   }
-  function diffCell(v) {
-    const c = v >= 0 ? '#2e7d32' : '#c62828';
-    return '<span style="color:'+c+';font-weight:700">'+(v>=0?'+':'')+fmtL(v)+'</span>';
+  function achBadgeSmall(p) {
+    if (p === null) return '<span style="color:#9e9e9e">—</span>';
+    const col = p>=100?'#2e7d32':p>=70?'#1565c0':'#c62828';
+    const bg  = p>=100?'#e8f5e9':p>=70?'#e3f2fd':'#ffebee';
+    return '<span style="background:'+bg+';color:'+col+';padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">'+p+'%</span>';
   }
-
-  // ── Hierarchy-page style card renderer (no Commitment column) ──
-  function renderCards(rows, product, color, ypLabel) {
-    if (!rows.length) return '<div style="color:#9e9e9e;padding:8px;font-size:12px">No '+product+' data</div>';
-    const totMTD  = rows.reduce((s,r) => s+r.mtd, 0);
-    const totLMTD = rows.reduce((s,r) => s+r.lmtd, 0);
-    const totFTD  = rows.reduce((s,r) => s+r.ftd, 0);
-    const totYP   = rows.reduce((s,r) => s+(r.yp||0), 0);
-    const totTGT  = rows.reduce((s,r) => s+r.tgt, 0);
-    const totShort= rows.reduce((s,r) => s+r.short, 0);
-    const totCases= rows.reduce((s,r) => s+r.cases, 0);
-    const totAch  = totTGT > 0 ? pct(totMTD, totTGT) : 0;
-
-    const cardsHtml = rows.map(r => {
-      const ach = r.tgt > 0 ? pct(r.mtd, r.tgt) : 0;
-      const roleBadge = r.isTH
-        ? '<span class="badge badge-blue" style="font-size:10px">TH</span>'
-        : '<span class="badge badge-green" style="font-size:10px">AM</span>';
-      const borderClr = r.isTH ? '#3949ab' : color;
-      return `
-      <div style="background:#fff;border-radius:10px;box-shadow:0 1px 6px rgba(0,0,0,.07);margin-bottom:10px;padding:14px 18px;border-left:4px solid ${borderClr}">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:14px;font-weight:800;color:${r.isTH?'#3949ab':'#1a237e'}">${r.label}</span>
-            ${roleBadge}
-            ${r.tgt>0 ? achBadge(ach) : '<span class="badge badge-grey">No Target</span>'}
-          </div>
-          <div style="font-size:11px;color:#9e9e9e">${r.states} &nbsp;|&nbsp; ${r.cases} cases</div>
-        </div>
-        <div style="margin-top:10px;display:flex;gap:18px;flex-wrap:wrap;font-size:12px">
-          <span style="color:#666">TGT: <b style="color:#1a237e">${r.tgt>0?fmtL(r.tgt):'—'}</b></span>
-          <span style="color:#666">MTD ACH: <b style="color:#1565c0">${fmtL(r.mtd)}</b></span>
-          <span style="color:#666">Short: ${shortCell(r.short)}</span>
-          <span style="color:#666">LMTD ACH: <b style="color:#546e7a">${fmtL(r.lmtd)}</b></span>
-          <span style="color:#666">MTD vs LMTD: ${diffCell(r.vLMTD)}</span>
-          <span style="color:#666">DRR: <b style="color:#e65100">${r.drr>0?fmtL(r.drr)+'/day':'—'}</b></span>
-          <span style="color:#666">${ypLabel}: <b style="color:${(r.yp||0)>0?'#6a1b9a':'#9e9e9e'}">${r.yp>0?fmtL(r.yp):'—'}</b></span>
-          <span style="color:#666">FTD Ach: <b style="color:${r.ftd>0?'#2e7d32':'#9e9e9e'}">${r.ftd>0?fmtL(r.ftd):'—'}</b></span>
-        </div>
-      </div>`;
-    }).join('');
-
-    const totalCard = `
-      <div style="background:#e8eaf6;border-radius:10px;padding:12px 18px;border-top:2px solid ${color}">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-          <span style="font-weight:800;color:${color}">TOTAL (${totCases} cases)</span>
-          ${totTGT>0 ? achBadge(totAch) : ''}
-        </div>
-        <div style="margin-top:8px;display:flex;gap:18px;flex-wrap:wrap;font-size:12px;font-weight:700">
-          <span style="color:#666;font-weight:400">TGT: <b style="color:${color}">${totTGT>0?fmtL(totTGT):'—'}</b></span>
-          <span style="color:#666;font-weight:400">MTD ACH: <b style="color:#1565c0">${fmtL(totMTD)}</b></span>
-          <span style="color:#666;font-weight:400">Short: ${shortCell(totShort)}</span>
-          <span style="color:#666;font-weight:400">LMTD ACH: <b style="color:#546e7a">${fmtL(totLMTD)}</b></span>
-          <span style="color:#666;font-weight:400">MTD vs LMTD: ${diffCell(totMTD-totLMTD)}</span>
-          <span style="color:#666;font-weight:400">${ypLabel}: <b style="color:#6a1b9a">${totYP>0?fmtL(totYP):'—'}</b></span>
-          <span style="color:#666;font-weight:400">FTD Ach: <b style="color:#2e7d32">${totFTD>0?fmtL(totFTD):'—'}</b></span>
-        </div>
-      </div>`;
-
-    return '<div>' + cardsHtml + totalCard + '</div>';
+  // Aggregate channel count across all BMs in a txn set (sum of each BM's unique dcids)
+  function aggChannels(txns) {
+    const bmMap = {};
+    txns.forEach(t => {
+      if (!bmMap[t.bm_id]) bmMap[t.bm_id] = new Set();
+      if (t.ch_check > 0 && t.dcid) bmMap[t.bm_id].add(t.dcid);
+    });
+    return Object.values(bmMap).reduce((s,set) => s+set.size, 0);
+  }
+  // New channels activated today (across scope) that weren't active earlier this month
+  function newChannelsToday(scopeTxns) {
+    const ftd = scopeTxns.filter(t => t.date === todayStr);
+    const ftdDcids = new Set(ftd.filter(t=>t.dcid && t.product==='Used Car').map(t=>t.dcid));
+    const beforeTodayDcids = new Set(scopeTxns.filter(t => t.date < todayStr && t.dcid).map(t=>t.dcid));
+    return [...ftdDcids].filter(d => !beforeTodayDcids.has(d)).length;
   }
 
-  const ucRows = buildRows('UC');
-  const cvRows = buildRows('CV');
+  const RH_ID  = currentUser.id;
+  const rows   = [];
+  const seenTH = new Set();
 
-  el.innerHTML =
-    // UC Cards
-    '<div style="margin-bottom:20px">'
-    +'<div style="font-size:12px;font-weight:800;color:#1565c0;letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px;padding:6px 12px;background:#e3f2fd;border-radius:6px;display:inline-block">Used Car (UC)</div>'
-    +renderCards(ucRows,'UC','#1565c0','YP UC')
-    +'</div>'
-    // CV Cards
-    +'<div>'
-    +'<div style="font-size:12px;font-weight:800;color:#6a1b9a;letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px;padding:6px 12px;background:#f3e5f5;border-radius:6px;display:inline-block">Commercial Vehicle (CV)</div>'
-    +renderCards(cvRows,'CV','#6a1b9a','YP CV')
-    +'</div>'
-    +'<div style="font-size:10px;color:#9e9e9e;margin-top:10px;padding-left:4px">'
-    +'MTD = Month till date &nbsp;|&nbsp; LMTD = Last month same days (till '+mtdDay+') &nbsp;|&nbsp; FTD = Today &nbsp;|&nbsp; YP UC/YP CV = Yesterday&#39;s performance &nbsp;|&nbsp; DRR = Daily Required Rate'
-    +'</div>';
+  function pushRow(idField, id, label, isTH, bmScopeFilter) {
+    const jTxns = juneTxns.filter(t => t[idField] === id);
+    const mTxns = mayLMTD.filter(t => t[idField] === id);
+    const bmScope = allEmps.filter(e => e.designation === 'BM' && bmScopeFilter(e));
+
+    const ucAmt  = jTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+    const cvAmt  = jTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+    const prevUC = mTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+    const prevCV = mTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+    const ucTgt  = bmScope.reduce((s,e)=>s+(e.uc_tgt||0),0)*1e5;
+    const cvTgt  = bmScope.reduce((s,e)=>s+(e.cv_tgt||0),0)*1e5;
+    const totTgt = ucTgt + cvTgt;
+    const tot    = ucAmt + cvAmt;
+    const ucAch  = ucTgt>0 ? Math.round((ucAmt/ucTgt)*100) : null;
+    const cvAch  = cvTgt>0 ? Math.round((cvAmt/cvTgt)*100) : null;
+
+    const ch      = aggChannels(jTxns);
+    const prevCh  = aggChannels(mTxns);
+    const chTgt   = bmScope.reduce((s,e)=>s+(e.ch_tgt||0),0);
+    const chAch   = chTgt>0 ? Math.round((ch/chTgt)*100) : null;
+
+    const ftdTxns = jTxns.filter(t => t.date === todayStr);
+    const ypTxns  = jTxns.filter(t => t.date === yesterdayStr);
+    const ftdUC   = ftdTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+    const ftdCV   = ftdTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+    const ypUC    = ypTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+    const ypCV    = ypTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+    const ftdNewCh = newChannelsToday(jTxns);
+
+    rows.push({ id, label, isTH, tot, totTgt, ucAmt, cvAmt, ucTgt, cvTgt, ucAch, cvAch,
+                prevUC, prevCV, ch, prevCh, chTgt, chAch,
+                ftdUC, ftdCV, ypUC, ypCV, ftdNewCh, cases: jTxns.length });
+  }
+
+  allEmps.filter(e => e.designation === 'AM' && e.rh_id === RH_ID).forEach(amEmp => {
+    const thId  = amEmp.th_id;
+    const thEmp = allEmps.find(e => e.id === thId && e.designation === 'TH');
+    if (thEmp && thId !== RH_ID) {
+      if (seenTH.has(thId)) return;
+      seenTH.add(thId);
+      pushRow('th_id', thId, thEmp.name, true, e => e.th_id === thId);
+    } else {
+      pushRow('am_id', amEmp.id, amEmp.name, false, e => e.am_id === amEmp.id);
+    }
+  });
+  allEmps.filter(e => e.designation === 'TH' && e.rh_id === RH_ID && !seenTH.has(e.id)).forEach(thEmp => {
+    seenTH.add(thEmp.id);
+    pushRow('th_id', thEmp.id, thEmp.name, true, e => e.th_id === thEmp.id);
+  });
+
+  rows.sort((a,b) => b.tot - a.tot);
+
+  if (!rows.length) {
+    el.innerHTML = '<div style="color:#9e9e9e;padding:16px;font-size:12px">No AM/TH data</div>';
+    return;
+  }
+
+  const totDisb  = rows.reduce((s,r)=>s+r.tot,0);
+  const totTgtSum= rows.reduce((s,r)=>s+r.totTgt,0);
+  const totUC    = rows.reduce((s,r)=>s+r.ucAmt,0);
+  const totCV    = rows.reduce((s,r)=>s+r.cvAmt,0);
+  const totUCTgt = rows.reduce((s,r)=>s+r.ucTgt,0);
+  const totCVTgt = rows.reduce((s,r)=>s+r.cvTgt,0);
+  const totCh    = rows.reduce((s,r)=>s+r.ch,0);
+  const totChTgt = rows.reduce((s,r)=>s+r.chTgt,0);
+  const totFtdUC = rows.reduce((s,r)=>s+r.ftdUC,0);
+  const totFtdCV = rows.reduce((s,r)=>s+r.ftdCV,0);
+  const totYpUC  = rows.reduce((s,r)=>s+r.ypUC,0);
+  const totYpCV  = rows.reduce((s,r)=>s+r.ypCV,0);
+  const totNewCh = rows.reduce((s,r)=>s+r.ftdNewCh,0);
+
+  const hdrStyle = 'padding:9px 8px;text-align:right;white-space:nowrap;font-size:11px;font-weight:700;color:#fff;border-right:1px solid rgba(255,255,255,.1)';
+  const hdrL     = 'padding:9px 10px;text-align:left;white-space:nowrap;font-size:11px;font-weight:700;color:#fff;border-right:1px solid rgba(255,255,255,.1)';
+
+  el.innerHTML = `
+    <div style="overflow-x:auto">
+      <table style="min-width:1300px;border-collapse:collapse;font-size:12px;width:100%">
+        <thead>
+          <tr style="background:#0d1b5e;color:#fff">
+            <th style="${hdrL}" rowspan="2">#</th>
+            <th style="${hdrL}" rowspan="2">Name</th>
+            <th style="${hdrL}" rowspan="2">Role</th>
+            <th style="${hdrStyle}" rowspan="2">Total TGT</th>
+            <th style="${hdrStyle}" rowspan="2">Total Disb</th>
+            <th colspan="3" style="padding:9px 8px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#1a237e;border-right:2px solid rgba(255,255,255,.2)">UC</th>
+            <th colspan="3" style="padding:9px 8px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#4a148c;border-right:2px solid rgba(255,255,255,.2)">CV</th>
+            <th colspan="3" style="padding:9px 8px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#006064;border-right:2px solid rgba(255,255,255,.2)">CHANNEL</th>
+            <th colspan="2" style="padding:9px 8px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#e65100;border-right:2px solid rgba(255,255,255,.2)">YESTERDAY (YP)</th>
+            <th colspan="3" style="padding:9px 8px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#b71c1c">FTD</th>
+          </tr>
+          <tr style="background:#1a237e;color:#fff;font-size:10px">
+            <th style="${hdrStyle}">TGT</th>
+            <th style="${hdrStyle}">ACH</th>
+            <th style="padding:9px 8px;text-align:center;white-space:nowrap;font-size:10px;font-weight:700;color:#fff;background:#283593;border-right:2px solid rgba(255,255,255,.2)">ACH%<br>vs LMTD</th>
+            <th style="padding:9px 8px;text-align:right;white-space:nowrap;font-size:10px;font-weight:700;color:#fff;background:#4a148c">TGT</th>
+            <th style="padding:9px 8px;text-align:right;white-space:nowrap;font-size:10px;font-weight:700;color:#fff;background:#4a148c">ACH</th>
+            <th style="padding:9px 8px;text-align:center;white-space:nowrap;font-size:10px;font-weight:700;color:#fff;background:#6a1b9a;border-right:2px solid rgba(255,255,255,.2)">ACH%<br>vs LMTD</th>
+            <th style="padding:9px 8px;text-align:right;white-space:nowrap;font-size:10px;font-weight:700;color:#fff;background:#006064">TGT</th>
+            <th style="padding:9px 8px;text-align:right;white-space:nowrap;font-size:10px;font-weight:700;color:#fff;background:#006064">ACH</th>
+            <th style="padding:9px 8px;text-align:center;white-space:nowrap;font-size:10px;font-weight:700;color:#fff;background:#00838f;border-right:2px solid rgba(255,255,255,.2)">ACH%<br>vs LMTD</th>
+            <th style="padding:9px 8px;text-align:right;white-space:nowrap;font-size:10px;font-weight:700;color:#fff;background:#ef6c00">YP UC</th>
+            <th style="padding:9px 8px;text-align:right;white-space:nowrap;font-size:10px;font-weight:700;color:#fff;background:#ef6c00;border-right:2px solid rgba(255,255,255,.2)">YP CV</th>
+            <th style="padding:9px 8px;text-align:right;white-space:nowrap;font-size:10px;font-weight:700;color:#fff;background:#b71c1c">UC</th>
+            <th style="padding:9px 8px;text-align:right;white-space:nowrap;font-size:10px;font-weight:700;color:#fff;background:#b71c1c">CV</th>
+            <th style="padding:9px 8px;text-align:center;white-space:nowrap;font-size:10px;font-weight:700;color:#fff;background:#c62828">New<br>Ch</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((r,i) => {
+            const rowBg = r.cases===0 ? 'background:#fafafa;opacity:.65' : i%2===0 ? '' : 'background:#f8f9ff';
+            const roleBadge = r.isTH
+              ? '<span class="badge badge-blue" style="font-size:10px">TH</span>'
+              : '<span class="badge badge-green" style="font-size:10px">AM</span>';
+            return `<tr style="${rowBg}">
+              <td style="padding:7px 10px;color:#9e9e9e;font-size:11px;border-bottom:1px solid #f0f0f0">${i+1}</td>
+              <td style="padding:7px 10px;border-bottom:1px solid #f0f0f0">
+                <b style="font-size:12px;color:${r.isTH?'#3949ab':'#1a237e'}">${r.label}</b>
+                ${r.cases===0?'<span style="font-size:9px;color:#e53935;margin-left:4px">No txn</span>':''}
+              </td>
+              <td style="padding:7px 8px;border-bottom:1px solid #f0f0f0">${roleBadge}</td>
+              <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-size:11px;color:#666">${r.totTgt>0?fmtCr(r.totTgt):'—'}</td>
+              <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:700">${fmtCr(r.tot)}<br><small style="font-weight:400;color:#9e9e9e">${r.cases}c</small></td>
+              <!-- UC -->
+              <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-size:11px;color:#666;background:#f8f9ff">${r.ucTgt>0?fmtCr(r.ucTgt):'—'}</td>
+              <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:700;color:#1565c0;background:#f8f9ff">${fmtCr(r.ucAmt)}</td>
+              <td style="padding:7px 8px;text-align:center;border-bottom:1px solid #f0f0f0;border-right:2px solid #e8eaf6;background:#f0f4ff">
+                ${achBadgeSmall(r.ucAch)}<br><small style="font-size:9px">${gTag(r.ucAmt, r.prevUC)}</small>
+              </td>
+              <!-- CV -->
+              <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-size:11px;color:#666;background:#fdf5ff">${r.cvTgt>0?fmtCr(r.cvTgt):'—'}</td>
+              <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:700;color:#6a1b9a;background:#fdf5ff">${fmtCr(r.cvAmt)}</td>
+              <td style="padding:7px 8px;text-align:center;border-bottom:1px solid #f0f0f0;border-right:2px solid #e8eaf6;background:#f3e5f5">
+                ${achBadgeSmall(r.cvAch)}<br><small style="font-size:9px">${gTag(r.cvAmt, r.prevCV)}</small>
+              </td>
+              <!-- Channel -->
+              <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-size:11px;color:#666;background:#e0f7fa">${r.chTgt||'—'}</td>
+              <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:700;color:#00838f;background:#e0f7fa">${r.ch}</td>
+              <td style="padding:7px 8px;text-align:center;border-bottom:1px solid #f0f0f0;border-right:2px solid #e8eaf6;background:#b2ebf2">
+                ${achBadgeSmall(r.chAch)}<br><small style="font-size:9px">${gTag(r.ch, r.prevCh, false)}</small>
+              </td>
+              <!-- YP -->
+              <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:700;color:${r.ypUC>0?'#e65100':'#9e9e9e'};background:#fff8f0">${r.ypUC>0?fmtCr(r.ypUC):'—'}</td>
+              <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:700;color:${r.ypCV>0?'#e65100':'#9e9e9e'};background:#fff8f0;border-right:2px solid #e8eaf6">${r.ypCV>0?fmtCr(r.ypCV):'—'}</td>
+              <!-- FTD -->
+              <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:700;color:#1565c0;background:#fff8f8">${r.ftdUC>0?fmtCr(r.ftdUC):'<span style="color:#ccc">—</span>'}</td>
+              <td style="padding:7px 8px;text-align:right;border-bottom:1px solid #f0f0f0;font-weight:700;color:#6a1b9a;background:#fff8f8">${r.ftdCV>0?fmtCr(r.ftdCV):'<span style="color:#ccc">—</span>'}</td>
+              <td style="padding:7px 8px;text-align:center;border-bottom:1px solid #f0f0f0;background:#fff0f0">
+                ${r.ftdNewCh>0?`<span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:8px;font-weight:700">${r.ftdNewCh}</span>`:'<span style="color:#ccc">—</span>'}
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:#e8eaf6;font-weight:700;border-top:2px solid #1a237e">
+            <td style="padding:8px 10px;color:#1a237e" colspan="3">TOTAL (${rows.length})</td>
+            <td style="padding:8px;text-align:right">${fmtCr(totTgtSum)}</td>
+            <td style="padding:8px;text-align:right;font-size:13px">${fmtCr(totDisb)}</td>
+            <td style="padding:8px;text-align:right">${fmtCr(totUCTgt)}</td>
+            <td style="padding:8px;text-align:right;color:#1565c0;font-size:13px">${fmtCr(totUC)}</td>
+            <td></td>
+            <td style="padding:8px;text-align:right">${fmtCr(totCVTgt)}</td>
+            <td style="padding:8px;text-align:right;color:#6a1b9a;font-size:13px">${fmtCr(totCV)}</td>
+            <td></td>
+            <td style="padding:8px;text-align:right">${totChTgt||'—'}</td>
+            <td style="padding:8px;text-align:right;color:#00838f;font-size:13px">${totCh}</td>
+            <td></td>
+            <td style="padding:8px;text-align:right;color:#e65100">${fmtCr(totYpUC)}</td>
+            <td style="padding:8px;text-align:right;color:#e65100">${fmtCr(totYpCV)}</td>
+            <td style="padding:8px;text-align:right;color:#1565c0">${fmtCr(totFtdUC)}</td>
+            <td style="padding:8px;text-align:right;color:#6a1b9a">${fmtCr(totFtdCV)}</td>
+            <td style="padding:8px;text-align:center">${totNewCh||'—'}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div style="font-size:10px;color:#9e9e9e;margin-top:8px">
+      ACH% = Current MTD vs Target &nbsp;|&nbsp; vs LMTD = Growth vs ${getPrevMonthLabel()} same days &nbsp;|&nbsp; YP = Yesterday's performance &nbsp;|&nbsp; FTD New Ch = UC channels activated today for first time this month
+    </div>`;
 }
 
 // ========== CHANNELS ==========
