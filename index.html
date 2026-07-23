@@ -7322,9 +7322,6 @@ function saveCommitmentToSheet(inputEl) {
   const amtL     = parseAmt(val);
   const today    = new Date().toISOString().slice(0,10);
 
-  const asUrl = getASUrl();
-  if (!asUrl) return; // no AS URL configured — silently skip
-
   // Debounce — wait 800ms after last keystroke
   clearTimeout(inputEl._saveTimer);
   inputEl._saveTimer = setTimeout(async () => {
@@ -7348,18 +7345,19 @@ function saveCommitmentToSheet(inputEl) {
     }
 
     try {
-      await fetch(asUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        mode: 'no-cors'
-      });
-      // Visual feedback
+      // Use the same always-available backend (APPS_SCRIPT_URL / apiPost)
+      // that the Issues tab uses — NOT the manually-configured, per-browser
+      // mailroom AS URL, which most users/devices never have set.
+      const resp = await apiPost(payload);
+      if (resp && resp.error) throw new Error(resp.error);
+      // Visual feedback — confirmed save
       inputEl.style.borderColor = '#2e7d32';
       setTimeout(() => inputEl.style.borderColor = '#c5cae9', 1500);
     } catch(e) {
+      console.error('saveCommitment failed:', e.message);
       inputEl.style.borderColor = '#c62828';
-      setTimeout(() => inputEl.style.borderColor = '#c5cae9', 2000);
+      inputEl.title = 'Save failed: ' + e.message;
+      setTimeout(() => inputEl.style.borderColor = '#c5cae9', 2500);
     }
   }, 800);
 }
