@@ -2142,6 +2142,13 @@ function buildRHPerfTable() {
   const totYpUC  = rows.reduce((s,r)=>s+r.ypUC,0);
   const totYpCV  = rows.reduce((s,r)=>s+r.ypCV,0);
   const totNewCh = rows.reduce((s,r)=>s+r.ftdNewCh,0);
+  // LMTD totals + overall ACH% (for the footer's ACH% vs LMTD cells)
+  const totPrevUC = rows.reduce((s,r)=>s+r.prevUC,0);
+  const totPrevCV = rows.reduce((s,r)=>s+r.prevCV,0);
+  const totPrevCh = rows.reduce((s,r)=>s+r.prevCh,0);
+  const totUCAch  = totUCTgt>0 ? Math.round((totUC/totUCTgt)*100) : null;
+  const totCVAch  = totCVTgt>0 ? Math.round((totCV/totCVTgt)*100) : null;
+  const totChAch  = totChTgt>0 ? Math.round((totCh/totChTgt)*100) : null;
 
   const hdrStyle = 'padding:9px 8px;text-align:right;white-space:nowrap;font-size:11px;font-weight:700;color:#fff;border-right:1px solid rgba(255,255,255,.1)';
   const hdrL     = 'padding:9px 10px;text-align:left;white-space:nowrap;font-size:11px;font-weight:700;color:#fff;border-right:1px solid rgba(255,255,255,.1)';
@@ -2234,13 +2241,13 @@ function buildRHPerfTable() {
             <td style="padding:8px;text-align:right;font-size:13px">${fmtCr(totDisb)}</td>
             <td style="padding:8px;text-align:right">${fmtCr(totUCTgt)}</td>
             <td style="padding:8px;text-align:right;color:#1565c0;font-size:13px">${fmtCr(totUC)}</td>
-            <td></td>
+            <td style="padding:8px;text-align:center">${achBadgeSmall(totUCAch)}<br><small style="font-size:9px;font-weight:400">${gTag(totUC, totPrevUC)}</small></td>
             <td style="padding:8px;text-align:right">${fmtCr(totCVTgt)}</td>
             <td style="padding:8px;text-align:right;color:#6a1b9a;font-size:13px">${fmtCr(totCV)}</td>
-            <td></td>
+            <td style="padding:8px;text-align:center">${achBadgeSmall(totCVAch)}<br><small style="font-size:9px;font-weight:400">${gTag(totCV, totPrevCV)}</small></td>
             <td style="padding:8px;text-align:right">${totChTgt||'—'}</td>
             <td style="padding:8px;text-align:right;color:#00838f;font-size:13px">${totCh}</td>
-            <td></td>
+            <td style="padding:8px;text-align:center">${achBadgeSmall(totChAch)}<br><small style="font-size:9px;font-weight:400">${gTag(totCh, totPrevCh, false)}</small></td>
             <td style="padding:8px;text-align:right;color:#e65100">${fmtCr(totYpUC)}</td>
             <td style="padding:8px;text-align:right;color:#e65100">${fmtCr(totYpCV)}</td>
             <td style="padding:8px;text-align:right;color:#1565c0">${fmtCr(totFtdUC)}</td>
