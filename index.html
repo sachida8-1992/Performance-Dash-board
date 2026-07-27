@@ -4688,6 +4688,11 @@ function buildChannelDrive(el) {
     return e.rh_id === currentUser.id;
   });
 
+  // Mail recipient list is ALWAYS the full team, regardless of the AM filter above —
+  // otherwise "Select All" in Mail BMs silently only checks whichever AM the page
+  // happens to be filtered to, and the rest of the team never gets an email.
+  const mailBmList = getMailBMList();
+
   const bmRows = bmList.map(bm => {
     const bmCur  = curTxns.filter(t=>t.bm_id===bm.id);
     const bmPrev = prevTxns.filter(t=>t.bm_id===bm.id);
@@ -4782,6 +4787,48 @@ function promptASUrl() {
   return existing;
 }
 
+// ── Canonical mail recipient lists — always pulled fresh from the
+// Employee Sheet (getEmpData()) and always the FULL scope for the
+// logged-in role. Every mailroom / Channel Drive send function should
+// use these instead of building its own inline filter, so the
+// recipient set can never silently drift or get scoped down by an
+// unrelated on-screen filter (e.g. the AM dropdown).
+function getMailBMList() {
+  const emps = getEmpData();
+  const role = currentUser.designation;
+  return emps.filter(e => {
+    if (e.designation !== 'BM') return false;
+    if (role === 'AM') return e.am_id === currentUser.id;
+    if (role === 'TH') return e.th_id === currentUser.id || e.am_id === currentUser.id;
+    return e.rh_id === currentUser.id; // RH
+  });
+}
+function getMailAMList() {
+  const emps = getEmpData();
+  const role = currentUser.designation;
+  return emps.filter(e => {
+    if (e.designation !== 'AM') return false;
+    if (role === 'TH') return e.th_id === currentUser.id;
+    return e.rh_id === currentUser.id; // RH
+  });
+}
+function getMailTHList() {
+  return getEmpData().filter(e => e.designation === 'TH' && e.rh_id === currentUser.id);
+}
+// The RH sitting above whoever is currently sending mail (or the RH
+// themselves if they're the one sending) — always CC'd on every mail.
+function getRHCCEmail() {
+  if (!currentUser) return null;
+  if (currentUser.designation === 'RH') return currentUser.email || null;
+  const rh = getEmpData().find(e => e.id === currentUser.rh_id);
+  return rh ? (rh.email || null) : null;
+}
+// Appends the RH's email to a cc list and de-dupes it.
+function withRHCC(ccArr) {
+  const rhEmail = getRHCCEmail();
+  return [...new Set([...(ccArr||[]), rhEmail].filter(Boolean))];
+}
+
 // ── Core email sender via Apps Script ──────────────────────
 async function sendEmail({ to, cc, subject, htmlBody, statusEl }) {
   let url = getASUrl();
@@ -4797,7 +4844,7 @@ async function sendEmail({ to, cc, subject, htmlBody, statusEl }) {
     await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, cc: cc||[], subject, htmlBody }),
+      body: JSON.stringify({ to, cc: withRHCC(cc), subject, htmlBody }),
       mode: 'no-cors'
     });
     statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700"> Sent to ${to.length} recipient${to.length>1?'s':''}!</span>`;
@@ -4811,9 +4858,9 @@ async function sendEmail({ to, cc, subject, htmlBody, statusEl }) {
 function buildMailroom(el) {
   const emps   = getEmpData();
   const asUrl  = getASUrl();
-  const bmList = emps.filter(e => e.designation==='BM' && e.rh_id===currentUser.id);
-  const amList = emps.filter(e => e.designation==='AM' && e.rh_id===currentUser.id);
-  const thList = emps.filter(e => e.designation==='TH' && e.rh_id===currentUser.id);
+  const bmList = getMailBMList();
+  const amList = getMailAMList();
+  const thList = getMailTHList();
 
   function recipCheckboxes(list, prefix) {
     return list.map(e => `
@@ -4992,7 +5039,7 @@ function buildMailroom(el) {
             <div style="padding:10px 14px;background:#fff8f8;display:flex;align-items:center;justify-content:space-between">
               <div>
                 <span style="font-weight:700;font-size:13px;color:#c62828">Mail BMs</span>
-                <span style="font-size:11px;color:#9e9e9e;margin-left:6px">Own channel gaps · CC: AM & TH</span>
+                <span style="font-size:11px;color:#9e9e9e;margin-left:6px">Own channel gaps · CC: AM & TH · ${mailBmList.length} BMs total</span>
               </div>
               <div style="display:flex;gap:6px">
                 <button onclick="toggleSection('ch-bm-list')" style="padding:4px 10px;background:#ffebee;color:#c62828;border:none;border-radius:6px;font-size:11px;cursor:pointer">Select</button>
@@ -5001,11 +5048,12 @@ function buildMailroom(el) {
               </div>
             </div>
             <div id="ch-bm-list" style="display:none;max-height:150px;overflow-y:auto;border-top:1px solid #ffcdd2">
-              <div style="padding:6px 10px;background:#ffebee;display:flex;gap:6px">
+              <div style="padding:6px 10px;background:#ffebee;display:flex;gap:6px;align-items:center">
                 <button onclick="document.querySelectorAll('.ch-bm-chk').forEach(c=>c.checked=true)" style="padding:2px 8px;border:none;background:#c62828;color:#fff;border-radius:4px;font-size:10px;cursor:pointer">All</button>
                 <button onclick="document.querySelectorAll('.ch-bm-chk').forEach(c=>c.checked=false)" style="padding:2px 8px;border:1px solid #9e9e9e;background:#fff;border-radius:4px;font-size:10px;cursor:pointer">None</button>
+                <span style="font-size:10px;color:#9e9e9e;margin-left:4px">${mailBmList.length} BM(s) listed — unaffected by the AM filter above</span>
               </div>
-              ${recipCheckboxes(bmList, 'ch-bm')}
+              ${recipCheckboxes(mailBmList, 'ch-bm')}
             </div>
             <div id="ch-bm-status" style="padding:6px 14px;font-size:11px;min-height:24px;border-top:1px solid #ffcdd2"></div>
           </div>
@@ -6374,7 +6422,7 @@ async function sendScorecardToBMs() {
     if (!bm || !bm.email) { continue; }
     const amEmp = emps.find(e=>e.id===bm.am_id);
     const thEmp = emps.find(e=>e.id===bm.th_id);
-    const cc    = [amEmp?.email, thEmp?.email].filter(Boolean);
+    const cc    = withRHCC([amEmp?.email, thEmp?.email]);
     const ach   = (() => {
       const t   = myTxns.filter(x=>x.bm_id===bm.id);
       const tot = t.reduce((s,x)=>s+x.amt,0);
@@ -6396,7 +6444,7 @@ async function sendScorecardToBMs() {
     statusEl.innerHTML = 'Sent ' + sent + '/' + checked.length + '...';
     await new Promise(r=>setTimeout(r,400));
   }
-  statusEl.innerHTML = '<span style="color:#2e7d32">Sent to ' + sent + ' BMs | CC: AM & TH</span>';
+  statusEl.innerHTML = '<span style="color:#2e7d32">Sent to ' + sent + ' BMs | CC: AM, TH & RH</span>';
 }
 
 // ── Send Scorecard to AMs ───────────────────────────────────
@@ -6414,7 +6462,7 @@ async function sendScorecardToBMsForAM() {
     const am    = emps.find(e=>e.id===chk.dataset.id);
     if (!am || !am.email) continue;
     const thEmp = emps.find(e=>e.id===am.th_id);
-    const cc    = [thEmp?.email].filter(Boolean);
+    const cc    = withRHCC([thEmp?.email]);
     try {
       await fetch(getASUrl(), {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -6430,7 +6478,7 @@ async function sendScorecardToBMsForAM() {
     statusEl.innerHTML = 'Sent ' + sent + '/' + checked.length + '...';
     await new Promise(r=>setTimeout(r,400));
   }
-  statusEl.innerHTML = '<span style="color:#2e7d32">Sent to ' + sent + ' AMs | CC: TH</span>';
+  statusEl.innerHTML = '<span style="color:#2e7d32">Sent to ' + sent + ' AMs | CC: TH & RH</span>';
 }
 
 // ── Send Scorecard to THs ───────────────────────────────────
@@ -6446,13 +6494,13 @@ async function sendScorecardToBMsForTH() {
     await fetch(getASUrl(), {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        to: tos, cc: [],
+        to: tos, cc: withRHCC([]),
         subject: getCurMonthLabel() + ' Region Scorecard',
         htmlBody: buildTHScorecardHTML()
       }),
       mode:'no-cors'
     });
-    statusEl.innerHTML = '<span style="color:#2e7d32">Sent to ' + tos.length + ' THs</span>';
+    statusEl.innerHTML = '<span style="color:#2e7d32">Sent to ' + tos.length + ' THs | CC: RH</span>';
   } catch(e) {
     statusEl.innerHTML = '<span style="color:#c62828">Error: ' + e.message + '</span>';
   }
@@ -6601,14 +6649,14 @@ async function sendExitGoalToBMs() {
   const statusEl= document.getElementById('exit-status');
   if (!getASUrl()) { promptASUrl(); return; }
 
-  const bmList = emps.filter(e=>e.designation==='BM'&&e.rh_id===currentUser.id&&e.email);
+  const bmList = getMailBMList().filter(e=>e.email);
   statusEl.innerHTML = '<span style="color:#2e7d32">Sending '+ms.label+' Exit Goal mail to '+bmList.length+' BMs...</span>';
   let sent=0;
 
   for (const bm of bmList) {
     const amEmp = emps.find(e=>e.id===bm.am_id);
     const thEmp = emps.find(e=>e.id===bm.th_id);
-    const cc    = [amEmp?.email, thEmp?.email].filter(Boolean);
+    const cc    = withRHCC([amEmp?.email, thEmp?.email]);
     try {
       await fetch(getASUrl(), {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -6624,7 +6672,7 @@ async function sendExitGoalToBMs() {
     statusEl.innerHTML = '<span style="color:#2e7d32">Sent '+sent+'/'+bmList.length+'...</span>';
     await new Promise(r=>setTimeout(r,350));
   }
-  statusEl.innerHTML = '<span style="color:#2e7d32;font-weight:700">Exit Goal mail sent to '+sent+' BMs | CC: AM & TH</span>';
+  statusEl.innerHTML = '<span style="color:#2e7d32;font-weight:700">Exit Goal mail sent to '+sent+' BMs | CC: AM, TH & RH</span>';
 }
 
 async function sendExitGoalToAMs() {
@@ -6635,13 +6683,13 @@ async function sendExitGoalToAMs() {
   if (!getASUrl()) { promptASUrl(); return; }
 
   // Build AM-level summary email
-  const amList = emps.filter(e=>e.designation==='AM'&&e.rh_id===currentUser.id&&e.email);
+  const amList = getMailAMList().filter(e=>e.email);
   statusEl.innerHTML = '<span style="color:#2e7d32">Sending to '+amList.length+' AMs...</span>';
   let sent=0;
 
   for (const am of amList) {
     const thEmp = emps.find(e=>e.id===am.th_id);
-    const cc    = [thEmp?.email].filter(Boolean);
+    const cc    = withRHCC([thEmp?.email]);
     const amBMs = emps.filter(e=>e.designation==='BM'&&e.am_id===am.id);
 
     // Build AM summary table showing each BM exit status
@@ -6688,7 +6736,7 @@ async function sendExitGoalToAMs() {
     statusEl.innerHTML = '<span style="color:#2e7d32">Sent '+sent+'/'+amList.length+'...</span>';
     await new Promise(r=>setTimeout(r,350));
   }
-  statusEl.innerHTML = '<span style="color:#2e7d32;font-weight:700">Exit Goal mail sent to '+sent+' AMs | CC: TH</span>';
+  statusEl.innerHTML = '<span style="color:#2e7d32;font-weight:700">Exit Goal mail sent to '+sent+' AMs | CC: TH & RH</span>';
 }
 
 async function sendQ1ScoreCard() {
@@ -6700,9 +6748,9 @@ async function sendQ1ScoreCard() {
   const sendAMs = document.getElementById('q1-send-am')?.checked;
   const sendTHs = document.getElementById('q1-send-th')?.checked;
 
-  const bmList = sendBMs ? emps.filter(e=>e.designation==='BM'&&e.rh_id===currentUser.id&&e.email) : [];
-  const amList = sendAMs ? emps.filter(e=>e.designation==='AM'&&e.rh_id===currentUser.id&&e.email) : [];
-  const thList = sendTHs ? emps.filter(e=>e.designation==='TH'&&e.rh_id===currentUser.id&&e.email) : [];
+  const bmList = sendBMs ? getMailBMList().filter(e=>e.email) : [];
+  const amList = sendAMs ? getMailAMList().filter(e=>e.email) : [];
+  const thList = sendTHs ? getMailTHList().filter(e=>e.email) : [];
   const total  = bmList.length + amList.length + thList.length;
 
   if (!total) { statusEl.innerHTML = '<span style="color:#c62828">Select at least one group</span>'; return; }
@@ -6714,7 +6762,7 @@ async function sendQ1ScoreCard() {
   for (const bm of bmList) {
     const amEmp = emps.find(e=>e.id===bm.am_id);
     const thEmp = emps.find(e=>e.id===bm.th_id);
-    const cc    = [amEmp?.email, thEmp?.email].filter(Boolean);
+    const cc    = withRHCC([amEmp?.email, thEmp?.email]);
     try {
       await fetch(getASUrl(), {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -6734,7 +6782,7 @@ async function sendQ1ScoreCard() {
     try {
       await fetch(getASUrl(), {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ to:[am.email], cc:[thEmp?.email].filter(Boolean),
+        body: JSON.stringify({ to:[am.email], cc: withRHCC([thEmp?.email]),
           subject: 'Q1 ' + fyLabel + ' Team Scorecard - ' + am.name,
           htmlBody: buildQ1EmailHTML(am) }),
         mode:'no-cors'
@@ -6749,7 +6797,7 @@ async function sendQ1ScoreCard() {
     try {
       await fetch(getASUrl(), {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ to:[th.email], cc:[],
+        body: JSON.stringify({ to:[th.email], cc: withRHCC([]),
           subject: 'Q1 ' + fyLabel + ' Scorecard - ' + th.name,
           htmlBody: buildQ1EmailHTML(th) }),
         mode:'no-cors'
@@ -6760,7 +6808,7 @@ async function sendQ1ScoreCard() {
     await new Promise(r=>setTimeout(r,300));
   }
 
-  statusEl.innerHTML = '<span style="color:#2e7d32;font-weight:700">Q1 scorecard sent to ' + sent + ' employees!</span>';
+  statusEl.innerHTML = '<span style="color:#2e7d32;font-weight:700">Q1 scorecard sent to ' + sent + ' employees! (CC: RH on all)</span>';
 }
 
 async function sendScorecardToAMs() {
@@ -6776,7 +6824,7 @@ async function sendScorecardToAMs() {
     const am    = emps.find(e=>e.id===chk.dataset.id);
     if (!am || !am.email) continue;
     const thEmp = emps.find(e=>e.id===am.th_id);
-    const cc    = [thEmp?.email].filter(Boolean);
+    const cc    = withRHCC([thEmp?.email]);
     try {
       await fetch(getASUrl(), {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -6792,7 +6840,7 @@ async function sendScorecardToAMs() {
     statusEl.innerHTML = `<span style="color:#1565c0">Sent ${sent}/${checked.length}...</span>`;
     await new Promise(r=>setTimeout(r,300));
   }
-  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} AMs | CC: TH</span>`;
+  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} AMs | CC: TH & RH</span>`;
 }
 
 // ── Send scorecard to THs ───────────────────────────────────
@@ -6808,13 +6856,13 @@ async function sendScorecardToTHs() {
     await fetch(getASUrl(), {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        to: tos, cc: [],
+        to: tos, cc: withRHCC([]),
         subject: getCurMonthLabel() + ' Region Scorecard',
         htmlBody: buildTHScorecardHTML()
       }),
       mode:'no-cors'
     });
-    statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${tos.length} THs</span>`;
+    statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${tos.length} THs | CC: RH</span>`;
   } catch(e) {
     statusEl.innerHTML = `<span style="color:#c62828">${e.message}</span>`;
   }
@@ -6838,7 +6886,7 @@ async function sendChannelToBMs() {
     if (!bm || !bm.email) continue;
     const amEmp = emps.find(e=>e.id===bm.am_id);
     const thEmp = emps.find(e=>e.id===bm.th_id);
-    const cc    = [amEmp?.email, thEmp?.email].filter(Boolean);
+    const cc    = withRHCC([amEmp?.email, thEmp?.email]);
 
     const bmCur  = myTxns.filter(t=>t.bm_id===bm.id);
     const bmPrev = prevData.filter(t=>t.bm_id===bm.id);
@@ -6939,7 +6987,7 @@ async function sendChannelToBMs() {
     statusEl.innerHTML = `<span style="color:#e53935">Sent ${sent}/${checked.length}...</span>`;
     await new Promise(r=>setTimeout(r,300));
   }
-  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} BMs | CC: AM & TH</span>`;
+  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} BMs | CC: AM, TH & RH</span>`;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -7418,7 +7466,7 @@ async function sendChannelToAMs() {
     const am    = emps.find(e => e.id === chk.dataset.id);
     if (!am || !am.email) continue;
     const thEmp = emps.find(e => e.id === am.th_id);
-    const cc    = [thEmp?.email].filter(Boolean);
+    const cc    = withRHCC([thEmp?.email]);
 
     const amCurTxns  = myTxns.filter(t => t.am_id === am.id);
     const amPrevTxns = (window._LIVE_MAY||[]).filter(t => t.am_id === am.id);
@@ -7439,7 +7487,7 @@ async function sendChannelToAMs() {
     statusEl.innerHTML = `Sent ${sent}/${checked.length}...`;
     await new Promise(r => setTimeout(r, 400));
   }
-  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} AM(s) | CC: TH</span>`;
+  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} AM(s) | CC: TH & RH</span>`;
 }
 
 async function sendChannelToTHs() {
@@ -7472,7 +7520,7 @@ async function sendChannelToTHs() {
       await fetch(getASUrl(), {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
-          to: [thEmp.email], cc: [],
+          to: [thEmp.email], cc: withRHCC([]),
           subject: `Channel Drive Alert - ${thEmp.name} Team - ${getCurMonthLabel()}`,
           htmlBody: buildTHChannelEmailHTML(thEmp, thCurTxns, thPrevTxns, thL3Txns)
         }),
@@ -7483,7 +7531,7 @@ async function sendChannelToTHs() {
     statusEl.innerHTML = `Sent ${sent}/${checked.length}...`;
     await new Promise(r => setTimeout(r, 400));
   }
-  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} TH(s)</span>`;
+  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} TH(s) | CC: RH</span>`;
 }
 
 function selectGroup(prefix, role) {
