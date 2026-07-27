@@ -4688,11 +4688,6 @@ function buildChannelDrive(el) {
     return e.rh_id === currentUser.id;
   });
 
-  // Mail recipient list is ALWAYS the full team, regardless of the AM filter above —
-  // otherwise "Select All" in Mail BMs silently only checks whichever AM the page
-  // happens to be filtered to, and the rest of the team never gets an email.
-  const mailBmList = getMailBMList();
-
   const bmRows = bmList.map(bm => {
     const bmCur  = curTxns.filter(t=>t.bm_id===bm.id);
     const bmPrev = prevTxns.filter(t=>t.bm_id===bm.id);
@@ -5039,7 +5034,7 @@ function buildMailroom(el) {
             <div style="padding:10px 14px;background:#fff8f8;display:flex;align-items:center;justify-content:space-between">
               <div>
                 <span style="font-weight:700;font-size:13px;color:#c62828">Mail BMs</span>
-                <span style="font-size:11px;color:#9e9e9e;margin-left:6px">Own channel gaps · CC: AM & TH · ${mailBmList.length} BMs total</span>
+                <span style="font-size:11px;color:#9e9e9e;margin-left:6px">Own channel gaps · CC: AM & TH · ${bmList.length} BMs total</span>
               </div>
               <div style="display:flex;gap:6px">
                 <button onclick="toggleSection('ch-bm-list')" style="padding:4px 10px;background:#ffebee;color:#c62828;border:none;border-radius:6px;font-size:11px;cursor:pointer">Select</button>
@@ -5051,9 +5046,9 @@ function buildMailroom(el) {
               <div style="padding:6px 10px;background:#ffebee;display:flex;gap:6px;align-items:center">
                 <button onclick="document.querySelectorAll('.ch-bm-chk').forEach(c=>c.checked=true)" style="padding:2px 8px;border:none;background:#c62828;color:#fff;border-radius:4px;font-size:10px;cursor:pointer">All</button>
                 <button onclick="document.querySelectorAll('.ch-bm-chk').forEach(c=>c.checked=false)" style="padding:2px 8px;border:1px solid #9e9e9e;background:#fff;border-radius:4px;font-size:10px;cursor:pointer">None</button>
-                <span style="font-size:10px;color:#9e9e9e;margin-left:4px">${mailBmList.length} BM(s) listed — unaffected by the AM filter above</span>
+                <span style="font-size:10px;color:#9e9e9e;margin-left:4px">${bmList.length} BM(s) listed — unaffected by the AM filter above</span>
               </div>
-              ${recipCheckboxes(mailBmList, 'ch-bm')}
+              ${recipCheckboxes(bmList, 'ch-bm')}
             </div>
             <div id="ch-bm-status" style="padding:6px 14px;font-size:11px;min-height:24px;border-top:1px solid #ffcdd2"></div>
           </div>
