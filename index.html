@@ -2284,10 +2284,25 @@ function getBMFTDReportRows() {
     const bmTxns = ftdTxns.filter(t => t.bm_id === bm.id);
     const uc = bmTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
     const cv = bmTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-    return { bmName: bm.name, amName: amEmp ? amEmp.name : '—', uc, cv, total: uc+cv, cases: bmTxns.length };
+    return { bmName: bm.name, amName: amEmp ? amEmp.name : '—', amId: bm.am_id, uc, cv, total: uc+cv, cases: bmTxns.length };
   }).sort((a,b) => b.total - a.total);
 
   return { rows, todayStr };
+}
+
+// Roll up BM-level rows into an AM-wise summary (total across all BMs in that AM's span)
+function getAMFTDRollup(rows) {
+  const map = {};
+  rows.forEach(r => {
+    const key = r.amId || r.amName;
+    if (!map[key]) map[key] = { amName: r.amName, uc: 0, cv: 0, total: 0, bmCount: 0, achieved: 0 };
+    map[key].uc    += r.uc;
+    map[key].cv    += r.cv;
+    map[key].total += r.total;
+    map[key].bmCount += 1;
+    if (r.total > 0) map[key].achieved += 1;
+  });
+  return Object.values(map).sort((a,b) => b.total - a.total);
 }
 
 function buildBMFTDReport() {
@@ -2295,6 +2310,7 @@ function buildBMFTDReport() {
   if (!el) return;
   const { rows, todayStr } = getBMFTDReportRows();
   const achievers = rows.filter(r => r.total > 0);
+  const amRollup  = getAMFTDRollup(rows).filter(a => a.total > 0);
   const totUC = rows.reduce((s,r)=>s+r.uc,0);
   const totCV = rows.reduce((s,r)=>s+r.cv,0);
   const dateLabel = new Date(todayStr+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long'});
@@ -2304,8 +2320,37 @@ function buildBMFTDReport() {
     return;
   }
 
-  el.innerHTML = `
+  const amSummaryHtml = `
+    <div style="overflow-x:auto;margin-bottom:18px">
+      <div style="font-size:11px;font-weight:800;color:#00838f;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px;padding:5px 10px;background:#e0f7fa;border-radius:6px;display:inline-block">AM-wise Total</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:460px">
+        <thead>
+          <tr style="background:#006064">
+            <th style="padding:8px 10px;text-align:left;color:#fff;font-size:11px">#</th>
+            <th style="padding:8px 10px;text-align:left;color:#fff;font-size:11px">AM Name</th>
+            <th style="padding:8px 10px;text-align:center;color:#fff;font-size:11px">BMs</th>
+            <th style="padding:8px 10px;text-align:right;color:#fff;font-size:11px">UC</th>
+            <th style="padding:8px 10px;text-align:right;color:#fff;font-size:11px">CV</th>
+            <th style="padding:8px 10px;text-align:right;color:#fff;font-size:11px">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${amRollup.map((a,i) => `
+            <tr style="background:${i%2===0?'#fff':'#e0f7fa'};border-bottom:1px solid #f0f0f0">
+              <td style="padding:6px 10px;color:#9e9e9e">${i+1}</td>
+              <td style="padding:6px 10px;font-weight:700;color:#006064">${a.amName}</td>
+              <td style="padding:6px 10px;text-align:center;color:#546e7a">${a.achieved}/${a.bmCount}</td>
+              <td style="padding:6px 10px;text-align:right;color:#1565c0">${a.uc>0?fmtL(a.uc):'—'}</td>
+              <td style="padding:6px 10px;text-align:right;color:#6a1b9a">${a.cv>0?fmtL(a.cv):'—'}</td>
+              <td style="padding:6px 10px;text-align:right;font-weight:700;color:#2e7d32">${fmtL(a.total)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  el.innerHTML = amSummaryHtml + `
     <div style="overflow-x:auto">
+      <div style="font-size:11px;font-weight:800;color:#1a237e;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px;padding:5px 10px;background:#e8eaf6;border-radius:6px;display:inline-block">BM-wise Detail</div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:520px">
         <thead>
           <tr style="background:#1a237e">
@@ -2353,6 +2398,7 @@ function downloadBMFTDReportImage() {
 
   const totUC = achievers.reduce((s,r)=>s+r.uc,0);
   const totCV = achievers.reduce((s,r)=>s+r.cv,0);
+  const amRollup = getAMFTDRollup(rows).filter(a => a.total > 0);
   const dateLabel = new Date(todayStr+'T00:00:00').toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
   const wrap = document.createElement('div');
@@ -2363,7 +2409,41 @@ function downloadBMFTDReportImage() {
       <div style="font-size:16px;font-weight:700;margin-top:6px"> Today's FTD Disbursement Report</div>
       <div style="font-size:12px;opacity:.85;margin-top:2px">${dateLabel} &nbsp;|&nbsp; ${currentUser.name} (RH)</div>
     </div>
-    <div style="padding:18px 24px">
+    <div style="padding:18px 24px 4px">
+      <div style="font-size:12px;font-weight:800;color:#00838f;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">AM-wise Total</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
+        <thead>
+          <tr style="background:#e0f7fa">
+            <th style="padding:7px 8px;text-align:left;color:#006064;font-size:11px;border-bottom:2px solid #006064">#</th>
+            <th style="padding:7px 8px;text-align:left;color:#006064;font-size:11px;border-bottom:2px solid #006064">AM Name</th>
+            <th style="padding:7px 8px;text-align:center;color:#006064;font-size:11px;border-bottom:2px solid #006064">BMs</th>
+            <th style="padding:7px 8px;text-align:right;color:#006064;font-size:11px;border-bottom:2px solid #006064">UC</th>
+            <th style="padding:7px 8px;text-align:right;color:#006064;font-size:11px;border-bottom:2px solid #006064">CV</th>
+            <th style="padding:7px 8px;text-align:right;color:#006064;font-size:11px;border-bottom:2px solid #006064">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${amRollup.map((a,i) => `
+            <tr style="background:${i%2===0?'#fff':'#e0f7fa'}">
+              <td style="padding:7px 8px;color:#9e9e9e;border-bottom:1px solid #f0f0f0">${i+1}</td>
+              <td style="padding:7px 8px;font-weight:700;color:#006064;border-bottom:1px solid #f0f0f0">${a.amName}</td>
+              <td style="padding:7px 8px;text-align:center;color:#546e7a;border-bottom:1px solid #f0f0f0">${a.achieved}/${a.bmCount}</td>
+              <td style="padding:7px 8px;text-align:right;color:#1565c0;border-bottom:1px solid #f0f0f0">${a.uc>0?fmtL(a.uc):'—'}</td>
+              <td style="padding:7px 8px;text-align:right;color:#6a1b9a;border-bottom:1px solid #f0f0f0">${a.cv>0?fmtL(a.cv):'—'}</td>
+              <td style="padding:7px 8px;text-align:right;font-weight:800;color:#2e7d32;border-bottom:1px solid #f0f0f0">${fmtL(a.total)}</td>
+            </tr>`).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:#006064">
+            <td colspan="2" style="padding:8px 8px;color:#fff;font-weight:800">TOTAL (${amRollup.length} AMs)</td>
+            <td style="padding:8px 8px;text-align:center;color:#fff;font-weight:800">${achievers.length}/${rows.length}</td>
+            <td style="padding:8px 8px;text-align:right;color:#fff;font-weight:800">${fmtL(totUC)}</td>
+            <td style="padding:8px 8px;text-align:right;color:#fff;font-weight:800">${fmtL(totCV)}</td>
+            <td style="padding:8px 8px;text-align:right;color:#fff;font-weight:900">${fmtL(totUC+totCV)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <div style="font-size:12px;font-weight:800;color:#1a237e;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">BM-wise Detail</div>
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead>
           <tr style="background:#e8eaf6">
