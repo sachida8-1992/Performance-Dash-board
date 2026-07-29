@@ -3462,7 +3462,7 @@ function computeBMIncentive(bmTxns, bmEmp, opts) {
   // So: totalIncentive = baseIncentive + totalIncentive * pct
   // => totalIncentive * (1 - pct) = baseIncentive
   // => totalIncentive = baseIncentive / (1 - pct)
-  const dealerBonus    = dealerBonusPct > 0 ? Math.round(baseIncentive / (1 - dealerBonusPct/100) * (dealerBonusPct/100)) : 0;
+  const dealerBonus    = dealerBonusPct > 0 ? Math.round(baseIncentive * (dealerBonusPct/100)) : 0;
   const totalIncentive = baseIncentive + dealerBonus;
 
   return { isCV: false, totalIncentive, baseIncentive, dealerBonus, dealerBonusPct, effGMV, appliedRate, activeSlab, ucDealers, tier, ucAmt, ucvAmt, ncvAmt };
@@ -3739,7 +3739,7 @@ function buildIncentive(el) {
   else if (ucDealers >= 11) dealerBonusPct = 12;
   else if (ucDealers >= 9)  dealerBonusPct = 10;
 
-  const dealerBonus    = dealerBonusPct > 0 ? Math.round(baseIncentive / (1 - dealerBonusPct/100) * (dealerBonusPct/100)) : 0;
+  const dealerBonus    = dealerBonusPct > 0 ? Math.round(baseIncentive * (dealerBonusPct/100)) : 0;
   const totalIncentive = baseIncentive + dealerBonus;
 
   // ── May calculation ──
@@ -3770,7 +3770,7 @@ function buildIncentive(el) {
     const base = slab ? Math.round(gmv*(rate/100)) : 0;
     const ch   = countChannels(txns, resolveEmpById(currentUser.id));
     const pct  = ch>=13?15:ch>=11?12:ch>=9?10:0;
-    const db   = pct>0 ? Math.round(base/(1-pct/100)*(pct/100)) : 0;
+    const db   = pct>0 ? Math.round(base*(pct/100)) : 0;
     return {gmv,gmvCr,base,ch,pct,db,total:base+db,slab,rate,ucA,ucvA,ncvA};
   }
   const mCalc = calcUCInc(mayBmTxns);
