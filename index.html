@@ -423,11 +423,11 @@ function fmtCr(amt) {
   return '₹' + amt.toLocaleString();
 }
 function fmtL(amt) { return (amt/100000).toFixed(2) + ' L'; }
-// Converts a decimal rate (e.g. 0.14) into a clean percentage string (e.g. "14%"),
-// rounding away JS floating-point noise (0.14*100 === 14.000000000000002).
+// Formats a slab rate for display. Rates are stored as the literal percentage
+// value (e.g. 0.12 means "0.12%"), so this just cleans up trailing zeros —
+// it does NOT multiply by 100.
 function fmtPct(rate) {
-  const p = Math.round(rate * 10000) / 100;
-  return (p % 1 === 0 ? p.toFixed(0) : p.toFixed(2)) + '%';
+  return (rate % 1 === 0 ? rate.toFixed(0) : rate.toFixed(2)) + '%';
 }
 function pct(a,b) { return b>0 ? Math.min(Math.round(a/b*100),999) : 0; }
 function tenureMonths(joining) {
@@ -3444,7 +3444,7 @@ function computeBMIncentive(bmTxns, bmEmp, opts) {
     }
   }
 
-  const baseIncentive = activeSlab ? Math.round(effGMV * appliedRate) : 0;
+  const baseIncentive = activeSlab ? Math.round(effGMV * (appliedRate/100)) : 0;
 
   // Dealer bonus: unique UC channel activations (ch_check > 0 for UC txns)
   const ucDealers = new Set(
@@ -3730,7 +3730,7 @@ function buildIncentive(el) {
     }
   }
 
-  const baseIncentive = activeSlab ? Math.round(effGMV * appliedRate) : 0;
+  const baseIncentive = activeSlab ? Math.round(effGMV * (appliedRate/100)) : 0;
 
   // Dealer bonus: unique UC channel activations (ch_check > 0), bonus = % of TOTAL incentive
   const ucDealers = new Set(bmTxns.filter(t=>t.product==='Used Car' && t.ch_check>0 && t.dcid).map(t=>t.dcid)).size;
@@ -3767,7 +3767,7 @@ function buildIncentive(el) {
       if(gt1yrB && (tier==='T2'||tier==='T1') && (s.label==='80L-1Cr'||s.label==='1Cr-1.25Cr')) continue;
       if(gmvCr>=s.min&&(gmvCr<s.max||s.label==='3Cr+')){slab=s;rate=r;}
     }
-    const base = slab ? Math.round(gmv*rate) : 0;
+    const base = slab ? Math.round(gmv*(rate/100)) : 0;
     const ch   = countChannels(txns, resolveEmpById(currentUser.id));
     const pct  = ch>=13?15:ch>=11?12:ch>=9?10:0;
     const db   = pct>0 ? Math.round(base/(1-pct/100)*(pct/100)) : 0;
