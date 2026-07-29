@@ -3217,7 +3217,7 @@ function buildTeamIncentive(el) {
            + `<div style="font-size:10px;color:#9e9e9e">${fmtCr(inc.effGMV)} effGMV</div>`;
     }
     return `<div style="font-weight:700;color:#1a237e;font-size:14px">₹${inc.totalIncentive.toLocaleString()}</div>`
-         + `<div style="font-size:10px;color:#546e7a">${inc.activeSlab?.label||''} · ${inc.appliedRate}%`
+         + `<div style="font-size:10px;color:#546e7a">${inc.activeSlab?.label||''} · ${(inc.appliedRate*100).toFixed(inc.appliedRate*100%1===0?0:2)}%`
          + (inc.dealerBonusPct>0 ? ` <span style="color:#2e7d32">+${inc.dealerBonusPct}%</span>` : '')
          + `</div>`;
   }
@@ -3778,7 +3778,7 @@ function buildIncentive(el) {
         <div class="incentive-amount" style="font-size:36px">${fmtCr(Math.round(mCalc.total))}</div>
         <div class="incentive-breakdown">
           <div class="incentive-item"><div class="ivalue">${fmtCr(mCalc.gmv)}</div><div class="ilabel">Eff. GMV</div></div>
-          <div class="incentive-item"><div class="ivalue">${mCalc.slab?mCalc.rate+'%':'—'}</div><div class="ilabel">${mCalc.slab?.label||'Below threshold'}</div></div>
+          <div class="incentive-item"><div class="ivalue">${mCalc.slab?(mCalc.rate*100).toFixed(mCalc.rate*100%1===0?0:2)+'%':'—'}</div><div class="ilabel">${mCalc.slab?.label||'Below threshold'}</div></div>
           <div class="incentive-item"><div class="ivalue">${mCalc.pct>0?'+'+mCalc.pct+'%':'None'}</div><div class="ilabel">Dealer Bonus (${mCalc.ch} ch)</div></div>
         </div>
       </div>
@@ -3787,7 +3787,7 @@ function buildIncentive(el) {
         <div class="incentive-amount" style="font-size:36px">${fmtCr(Math.round(totalIncentive))}</div>
       <div class="incentive-breakdown">
         <div class="incentive-item"><div class="ivalue">${fmtCr(effGMV)}</div><div class="ilabel">Eff. GMV</div></div>
-        <div class="incentive-item"><div class="ivalue">${activeSlab?appliedRate+'%':'—'}</div><div class="ilabel">${activeSlab?.label||'Below threshold'}</div></div>
+        <div class="incentive-item"><div class="ivalue">${activeSlab?(appliedRate*100).toFixed(appliedRate*100%1===0?0:2)+'%':'—'}</div><div class="ilabel">${activeSlab?.label||'Below threshold'}</div></div>
         <div class="incentive-item"><div class="ivalue">${dealerBonusPct>0?'+'+dealerBonusPct+'%':'None'}</div><div class="ilabel">Dealer Bonus (${ucDealers} ch)</div></div>
       </div>
     </div>
@@ -3803,7 +3803,7 @@ function buildIncentive(el) {
           <tr><td>NCV GMV</td><td style="text-align:right">${fmtCr(mCalc.ncvA)}</td><td style="text-align:right">${fmtCr(ncvAmt)}</td></tr>
           <tr style="font-weight:700"><td>Eff. GMV (UC+UCV+NCV×50%)</td><td style="text-align:right">${fmtCr(mCalc.gmv)}</td><td style="text-align:right">${fmtCr(effGMV)}</td></tr>
           <tr><td>Slab</td><td style="text-align:right">${mCalc.slab?.label||'—'}</td><td style="text-align:right">${activeSlab?.label||'—'}</td></tr>
-          <tr><td>Rate</td><td style="text-align:right">${mCalc.rate?mCalc.rate+'%':'—'}</td><td style="text-align:right">${appliedRate?appliedRate+'%':'—'}</td></tr>
+          <tr><td>Rate</td><td style="text-align:right">${mCalc.rate?(mCalc.rate*100).toFixed(mCalc.rate*100%1===0?0:2)+'%':'—'}</td><td style="text-align:right">${appliedRate?(appliedRate*100).toFixed(appliedRate*100%1===0?0:2)+'%':'—'}</td></tr>
           <tr><td>Base Incentive</td><td style="text-align:right">${fmtCr(mCalc.base)}</td><td style="text-align:right">${fmtCr(baseIncentive)}</td></tr>
           <tr><td>UC Active Channels</td><td style="text-align:right">${mCalc.ch}</td><td style="text-align:right">${ucDealers}</td></tr>
           <tr><td>Dealer Bonus</td><td style="text-align:right;color:#2e7d32">${mCalc.db>0?'+'+fmtCr(mCalc.db):'—'}</td><td style="text-align:right;color:#2e7d32">${dealerBonus>0?'+'+fmtCr(dealerBonus):'—'}</td></tr>
