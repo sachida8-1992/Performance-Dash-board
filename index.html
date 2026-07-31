@@ -898,21 +898,27 @@ function buildPageList() {
     return pages;
   }
 
+  if (d === 'BM') {
+    pages.push({id:'weekly',         label:' Weekly Review'});
+    pages.push({id:'channels_group', label:' Channels'});
+    pages.push({id:'banks',          label:' Banks'});
+    pages.push({id:'scorecard',      label:' Scorecard'});
+    pages.push({id:'monthly',        label:' Monthly Summary'});
+    pages.push({id:'quarterly',      label:' Q1 Scorecard'});
+    pages.push({id:'incentive',      label:' Incentive'});
+    pages.push({id:'insights',       label:' Insights'});
+    pages.push({id:'issues',         label:' Issues'});
+    pages.push({id:'deviation',      label:' Deviation Matrix'});
+    return pages;
+  }
+
   if (d === 'TH' || d === 'RH') {
     pages.push({id:'hierarchy', label:' Hierarchy View'});
     pages.push({id:'weekly',    label:' Weekly Review'});
   }
   pages.push({id:'banks', label:' Banks'});
-  if (d === 'BM') {
-    pages.push({id:'incentive', label:' Incentive'});
-  }
-  if (d !== 'BM') {
-    pages.push({id:'incentive', label:' Team Incentive'});
-  }
+  pages.push({id:'incentive', label:' Team Incentive'});
   pages.push({id:'insights', label:' Insights'});
-  if (d === 'BM') {
-    pages.push({id:'weekly', label:' Weekly Review'});
-  }
   pages.push({id:'deviation',  label:' Deviation Matrix'});
   pages.push({id:'scorecard',   label:' Scorecard'});
   pages.push({id:'monthly',     label:' Monthly Summary'});
