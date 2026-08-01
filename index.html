@@ -8789,10 +8789,11 @@ function buildHierarchy(el) {
 // TH VIEW: AM-wise → click → BM-wise inside AM
 // ─────────────────────────────────────────────
 // ── Shared: build flat BM table with TH/AM filter dropdowns ──
-function buildFlatHierarchy(el, scopeTxns, role) {
-  const emps     = getEmpData();
-  const todayStr = new Date().toISOString().slice(0,10);
-  const prevData = window._LIVE_MAY || [];
+function buildFlatHierarchy(el, role) {
+  const emps      = getEmpData();
+  const todayStr  = new Date().toISOString().slice(0,10);
+  const months    = getFYMonths();                 // oldest (April) → current, left to right
+  const curPfx    = getCurMonthPrefix();
 
   const thList = emps.filter(e => e.designation==='TH' &&
     (role==='RH' ? e.rh_id===currentUser.id : e.th_id===currentUser.id));
@@ -8803,7 +8804,18 @@ function buildFlatHierarchy(el, scopeTxns, role) {
      role==='TH' ? (e.th_id===currentUser.id||e.am_id===currentUser.id) :
      e.th_id===currentUser.id));
 
-  function renderTable(filterTH, filterAM) {
+  function renderTable(filterTH, filterAM, selectedPfx) {
+    selectedPfx = selectedPfx || curPfx;
+    const mIdx        = Math.max(0, months.findIndex(m => m.pfx === selectedPfx));
+    const selMonth     = months[mIdx] || months[months.length-1];
+    const isCurMonth   = selMonth.pfx === curPfx;
+    const scopeTxns    = selMonth.data();
+    const prevData     = mIdx > 0 ? months[mIdx-1].data() : [];
+    // For a past (completed) month, "FTD" becomes "Last Day" — the most recent
+    // date that actually has data in that month, instead of today's real date.
+    const refDate = isCurMonth ? todayStr : (scopeTxns.reduce((max,t) => t.date>max?t.date:max, '') || todayStr);
+    const ftdLabel = isCurMonth ? 'FTD' : 'Last Day';
+
     let bms = allBMs;
     if (filterTH) bms = bms.filter(e=>e.th_id===filterTH);
     if (filterAM) bms = bms.filter(e=>e.am_id===filterAM);
@@ -8816,16 +8828,17 @@ function buildFlatHierarchy(el, scopeTxns, role) {
 
     const rows = bms.map(e => {
       const txns    = bmMap[e.id] || [];
-      const prev    = toLMTD(prevMap[e.id] || []);
+      const rawPrev = prevMap[e.id] || [];
+      const prev    = isCurMonth ? toLMTD(rawPrev) : rawPrev;
       // Current month
       const ucTxns  = txns.filter(t=>t.product==='Used Car');
       const cvTxns  = txns.filter(t=>t.product!=='Used Car');
       const ucAmt   = ucTxns.reduce((s,t)=>s+t.amt,0);
       const cvAmt   = cvTxns.reduce((s,t)=>s+t.amt,0);
       const tot     = ucAmt+cvAmt;
-      // LMTD
-      const prevUC  = toLMTD(prev.filter(t=>t.product==='Used Car')).reduce((s,t)=>s+t.amt,0);
-      const prevCV  = toLMTD(prev.filter(t=>t.product!=='Used Car')).reduce((s,t)=>s+t.amt,0);
+      // LMTD (full previous month if viewing a completed past month; same-day cutoff if viewing the real current month)
+      const prevUC  = prev.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+      const prevCV  = prev.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
       // Targets
       const ucTgt   = (e.uc_tgt||0)*1e5;
       const cvTgt   = (e.cv_tgt||0)*1e5;
@@ -8834,18 +8847,17 @@ function buildFlatHierarchy(el, scopeTxns, role) {
       const cvAch   = cvTgt>0?Math.round((cvAmt/cvTgt)*100):null;
       // Channels
       const ch      = countChannels(txns, e);
-      const prevCh  = countChannels(toLMTD(prevMap[e.id]||[]), e);
+      const prevCh  = countChannels(prev, e);
       const chTgt   = e.ch_tgt||0;
       const chAch   = chTgt>0?Math.round((ch/chTgt)*100):null;
-      // FTD
-      const ftd     = txns.filter(t=>t.date===todayStr);
+      // FTD (or "Last Day" for a completed past month)
+      const ftd     = txns.filter(t=>t.date===refDate);
       const ftdUC   = ftd.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
       const ftdCV   = ftd.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-      // FTD New channels (channels activated today that had no disbursement before today this month)
+      // New channels activated on refDate that had no disbursement before refDate that month
       const ftdDcids     = new Set(ftd.filter(t=>t.dcid).map(t=>t.dcid));
       const prevMonthDcids= new Set((prevMap[e.id]||[]).filter(t=>t.dcid).map(t=>t.dcid));
-      const beforeTodayDcids = new Set(txns.filter(t=>t.date<todayStr&&t.dcid).map(t=>t.dcid));
-      // FTD unique new UC channels = channels active in FTD (UC), not active before today this month, not in prev month
+      const beforeTodayDcids = new Set(txns.filter(t=>t.date<refDate&&t.dcid).map(t=>t.dcid));
       const ftdNewCh = [...ftdDcids].filter(d => {
         const t = ftd.filter(x=>x.dcid===d);
         const hasUC = t.some(x=>x.product==='Used Car');
@@ -8908,7 +8920,7 @@ function buildFlatHierarchy(el, scopeTxns, role) {
               <th style="padding:6px 8px;text-align:center;color:#fff;font-weight:700;background:#1a237e;border-right:2px solid rgba(255,255,255,.2)" colspan="3">UC</th>
               <th style="padding:6px 8px;text-align:center;color:#fff;font-weight:700;background:#4a148c;border-right:2px solid rgba(255,255,255,.2)" colspan="3">CV</th>
               <th style="padding:6px 8px;text-align:center;color:#fff;font-weight:700;background:#006064;border-right:2px solid rgba(255,255,255,.2)" colspan="3">Channel</th>
-              <th style="padding:6px 8px;text-align:center;color:#fff;font-weight:700;background:#b71c1c" colspan="3">FTD</th>
+              <th style="padding:6px 8px;text-align:center;color:#fff;font-weight:700;background:#b71c1c" colspan="3">${ftdLabel}</th>
             </tr>
             <tr style="background:#1a237e;color:#fff;font-size:10px">
               <th style="${hdrStyle}">TGT</th>
@@ -8992,26 +9004,31 @@ function buildFlatHierarchy(el, scopeTxns, role) {
         </table>
       </div>
       <div style="font-size:10px;color:#9e9e9e;margin-top:8px">
-        ACH% = Current MTD vs Target &nbsp;|&nbsp; vs LMTD = Growth vs ${getPrevMonthLabel()} same days &nbsp;|&nbsp; FTD New Ch = UC channels activated today for first time this month
+        Showing: <b>${selMonth.label}</b> &nbsp;|&nbsp; ACH% = ${selMonth.label} vs Target &nbsp;|&nbsp; vs LMTD = Growth vs ${mIdx>0?months[mIdx-1].label:'—'} &nbsp;|&nbsp; ${ftdLabel} New Ch = UC channels activated that day for first time that month
       </div>`;
   }
 
   const thOptions = thList.map(e=>`<option value="${e.id}">${e.name}</option>`).join('');
   const amOptions = amList.map(e=>`<option value="${e.id}">${e.name}</option>`).join('');
+  const monthOptions = months.map(m => `<option value="${m.pfx}"${m.pfx===curPfx?' selected':''}>${m.label}</option>`).join('');
 
   el.innerHTML = `
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px 16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07)">
-      <span style="font-size:13px;font-weight:700;color:#1a237e">Filter:</span>
+      <span style="font-size:13px;font-weight:700;color:#1a237e">Month:</span>
+      <select id="hierMonthFilter" onchange="applyHierFilter()" style="padding:6px 12px;border:1.5px solid #1a237e;border-radius:8px;font-size:13px;color:#1a237e;font-weight:700;background:#e8eaf6">
+        ${monthOptions}
+      </select>
+      <span style="font-size:13px;font-weight:700;color:#1a237e;margin-left:8px">Filter:</span>
       ${role==='RH'?`<select id="hierTHFilter" onchange="applyHierFilter()" style="padding:6px 12px;border:1px solid #c5cae9;border-radius:8px;font-size:13px;color:#333;background:#f5f7ff">
         <option value="">All TH</option>${thOptions}
       </select>`:''}
       <select id="hierAMFilter" onchange="applyHierFilter()" style="padding:6px 12px;border:1px solid #c5cae9;border-radius:8px;font-size:13px;color:#333;background:#f5f7ff">
         <option value="">All AM</option>${amOptions}
       </select>
-      <button onclick="(document.getElementById('hierTHFilter')&&(document.getElementById('hierTHFilter').value=''));document.getElementById('hierAMFilter').value='';applyHierFilter()"
+      <button onclick="(document.getElementById('hierTHFilter')&&(document.getElementById('hierTHFilter').value=''));document.getElementById('hierAMFilter').value='';document.getElementById('hierMonthFilter').value='${curPfx}';applyHierFilter()"
         style="padding:6px 12px;border:1px solid #e0e0e0;border-radius:8px;font-size:12px;background:#fff;cursor:pointer;color:#666">Reset</button>
     </div>
-    <div id="hierTableBody">${renderTable('', '')}</div>
+    <div id="hierTableBody">${renderTable('', '', curPfx)}</div>
   `;
 
   window._hierRenderFn = renderTable;
@@ -9046,6 +9063,7 @@ function applyWkFilter() {
 function applyHierFilter() {
   const thVal = document.getElementById('hierTHFilter')?.value || '';
   const amVal = document.getElementById('hierAMFilter')?.value || '';
+  const moVal = document.getElementById('hierMonthFilter')?.value || '';
 
   // When TH selected, reset AM filter to show only AMs under that TH
   if (thVal) {
@@ -9060,16 +9078,16 @@ function applyHierFilter() {
 
   const body = document.getElementById('hierTableBody');
   if (body && window._hierRenderFn) {
-    body.innerHTML = window._hierRenderFn(thVal, amVal);
+    body.innerHTML = window._hierRenderFn(thVal, amVal, moVal);
   }
 }
 
 function buildTHHierarchy(el) {
-  buildFlatHierarchy(el, myTxns, 'TH');
+  buildFlatHierarchy(el, 'TH');
 }
 
 function buildRHHierarchy(el) {
-  buildFlatHierarchy(el, myTxns, 'RH');
+  buildFlatHierarchy(el, 'RH');
 }
 
 
