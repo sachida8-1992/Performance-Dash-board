@@ -3805,103 +3805,138 @@ function buildIncentive(el) {
 
 // ========== TEAM ==========
 function buildTeam(el) {
-  // Build BM map from live transactions, grouped by bm_id
-  const bmMap = {};
-  myTxns.forEach(t => {
-    const key = t.bm_id || t.bm || 'unknown';
-    if (!bmMap[key]) bmMap[key] = [];
-    bmMap[key].push(t);
-  });
+  const months  = getFYMonths();          // oldest (April) → current
+  const curPfx  = getCurMonthPrefix();
+  const myBMs   = getEmpData().filter(e => e.designation === 'BM' && e.am_id === currentUser.id);
+  const myBMIds = new Set(myBMs.map(e => e.id));
 
-  // Add zero-txn BMs from employee sheet who report to this AM
-  getEmpData().forEach(e => {
-    if (e.designation === 'BM' && e.am_id === currentUser.id && !bmMap[e.id]) {
-      bmMap[e.id] = [];
-    }
-  });
+  function renderTable(selectedPfx) {
+    selectedPfx      = selectedPfx || curPfx;
+    const mIdx       = Math.max(0, months.findIndex(m => m.pfx === selectedPfx));
+    const selMonth   = months[mIdx] || months[months.length-1];
+    const isCurMonth = selMonth.pfx === curPfx;
+    // Scope this month's data down to just this AM's BMs (raw historical data is org-wide)
+    const scopeTxns  = selMonth.data().filter(t => myBMIds.has(t.bm_id));
+    const refDate    = isCurMonth
+      ? new Date().toISOString().slice(0,10)
+      : (scopeTxns.reduce((max,t) => t.date>max?t.date:max, '') || new Date().toISOString().slice(0,10));
+    const ftdLabel   = isCurMonth ? 'FTD' : 'Last Day';
 
-  const todayStr = new Date().toISOString().slice(0,10);
+    // Build BM map from this month's scoped transactions, grouped by bm_id
+    const bmMap = {};
+    scopeTxns.forEach(t => {
+      const key = t.bm_id || t.bm || 'unknown';
+      if (!bmMap[key]) bmMap[key] = [];
+      bmMap[key].push(t);
+    });
 
-  const bmRows = Object.entries(bmMap).map(([key, txns]) => {
-    const emp    = resolveEmpById(key) || (txns.length ? resolveEmpById(txns[0].bm_id) || resolveEmpName(txns[0].bm) : null);
-    const name   = emp ? emp.name : (txns[0]?.bm || key);
-    const tier   = emp ? (emp.tier || '—') : '—';
-    const ucTgt  = emp ? (emp.uc_tgt || 0) * 1e5 : 0;
-    const cvTgt  = emp ? (emp.cv_tgt || 0) * 1e5 : 0;
-    const chTgt  = emp ? (emp.ch_tgt || 0) : 0;
-    const totTgt = ucTgt + cvTgt;
+    // Add zero-txn BMs from employee sheet who report to this AM
+    myBMs.forEach(e => { if (!bmMap[e.id]) bmMap[e.id] = []; });
 
-    const ucAmt  = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
-    const cvAmt  = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-    const totAmt = ucAmt + cvAmt;
-    const cases  = txns.length;
-    const bmEmpT = resolveEmpById(key);
-    const activeCh = countChannels(txns, bmEmpT);
-    const ach    = totTgt > 0 ? Math.round((totAmt/totTgt)*100) : null;
-    const chAch  = chTgt > 0 ? Math.round((activeCh/chTgt)*100) : null;
+    const bmRows = Object.entries(bmMap).map(([key, txns]) => {
+      const emp    = resolveEmpById(key) || (txns.length ? resolveEmpById(txns[0].bm_id) || resolveEmpName(txns[0].bm) : null);
+      const name   = emp ? emp.name : (txns[0]?.bm || key);
+      const tier   = emp ? (emp.tier || '—') : '—';
+      const ucTgt  = emp ? (emp.uc_tgt || 0) * 1e5 : 0;
+      const cvTgt  = emp ? (emp.cv_tgt || 0) * 1e5 : 0;
+      const chTgt  = emp ? (emp.ch_tgt || 0) : 0;
+      const totTgt = ucTgt + cvTgt;
 
-    const ftdTxns = txns.filter(t => t.date && t.date.slice(0,10) === todayStr);
-    const ftdUC   = ftdTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
-    const ftdCV   = ftdTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+      const ucAmt  = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+      const cvAmt  = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+      const totAmt = ucAmt + cvAmt;
+      const cases  = txns.length;
+      const bmEmpT = resolveEmpById(key);
+      const activeCh = countChannels(txns, bmEmpT);
+      const ach    = totTgt > 0 ? Math.round((totAmt/totTgt)*100) : null;
+      const chAch  = chTgt > 0 ? Math.round((activeCh/chTgt)*100) : null;
 
-    return {name, tier, ucTgt, cvTgt, chTgt, totTgt, ucAmt, cvAmt, totAmt, cases, activeCh, ach, chAch, ftdUC, ftdCV};
-  }).sort((a,b) => b.totAmt - a.totAmt);
+      const ftdTxns = txns.filter(t => t.date && t.date.slice(0,10) === refDate);
+      const ftdUC   = ftdTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+      const ftdCV   = ftdTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
 
-  const teamTot  = bmRows.reduce((s,r)=>s+r.totAmt,0);
-  const teamUC   = bmRows.reduce((s,r)=>s+r.ucAmt,0);
-  const teamCV   = bmRows.reduce((s,r)=>s+r.cvAmt,0);
-  const teamTgt  = bmRows.reduce((s,r)=>s+r.totTgt,0);
-  const teamAch  = teamTgt > 0 ? Math.round((teamTot/teamTgt)*100) : 0;
-  const onTrack  = bmRows.filter(r=>r.ach!==null&&r.ach>=70).length;
-  const behind   = bmRows.filter(r=>r.ach!==null&&r.ach<70).length;
+      return {name, tier, ucTgt, cvTgt, chTgt, totTgt, ucAmt, cvAmt, totAmt, cases, activeCh, ach, chAch, ftdUC, ftdCV};
+    }).sort((a,b) => b.totAmt - a.totAmt);
+
+    const teamTot  = bmRows.reduce((s,r)=>s+r.totAmt,0);
+    const teamUC   = bmRows.reduce((s,r)=>s+r.ucAmt,0);
+    const teamCV   = bmRows.reduce((s,r)=>s+r.cvAmt,0);
+    const teamTgt  = bmRows.reduce((s,r)=>s+r.totTgt,0);
+    const teamAch  = teamTgt > 0 ? Math.round((teamTot/teamTgt)*100) : 0;
+    const onTrack  = bmRows.filter(r=>r.ach!==null&&r.ach>=70).length;
+    const behind   = bmRows.filter(r=>r.ach!==null&&r.ach<70).length;
+
+    return `
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="kpi"><div class="kpi-label">Active BMs</div><div class="kpi-value">${bmRows.length}</div></div>
+        <div class="kpi"><div class="kpi-label">Team Disbursement</div><div class="kpi-value">${fmtCr(teamTot)}</div></div>
+        <div class="kpi"><div class="kpi-label">Team Achievement</div>
+          <div class="kpi-value" style="color:${teamAch>=100?'#2e7d32':teamAch>=70?'#1565c0':'#c62828'}">${teamTgt>0?teamAch+'%':'—'}</div>
+        </div>
+        <div class="kpi"><div class="kpi-label">On Track / Behind</div>
+          <div class="kpi-value" style="font-size:18px"><span style="color:#2e7d32">${onTrack}</span> / <span style="color:#c62828">${behind}</span></div>
+        </div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:14px 20px;background:#e8eaf6;font-size:13px;font-weight:700;color:#1a237e">
+           BM Performance — ${selMonth.label}
+          <span style="font-weight:400;font-size:11px;margin-left:10px;color:#3949ab">UC: ${fmtCr(teamUC)} | CV: ${fmtCr(teamCV)}</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th>BM Name</th><th>Tier</th>
+              <th>Disbursement</th><th>UC Tgt</th><th>CV Tgt</th><th>% Ach</th>
+              <th>UC</th><th>CV</th><th>Cases</th>
+              <th>Active Ch</th><th>Ch Tgt</th><th>Ch Ach%</th>
+              <th style="color:#1565c0">${ftdLabel} UC</th><th style="color:#880e4f">${ftdLabel} CV</th>
+            </tr></thead>
+            <tbody>
+              ${bmRows.map(r => `<tr>
+                <td><b style="font-size:12px">${r.name}</b></td>
+                <td><span class="badge badge-grey">${r.tier}</span></td>
+                <td><b>${fmtCr(r.totAmt)}</b></td>
+                <td style="font-size:12px;color:#666">${r.ucTgt>0?fmtCr(r.ucTgt):'—'}</td>
+                <td style="font-size:12px;color:#666">${r.cvTgt>0?fmtCr(r.cvTgt):'—'}</td>
+                <td>${r.ach!==null ? achBadge(r.ach) : '<span class="badge badge-grey">—</span>'}</td>
+                <td style="font-size:12px">${fmtCr(r.ucAmt)}</td>
+                <td style="font-size:12px">${fmtCr(r.cvAmt)}</td>
+                <td>${r.cases}</td>
+                <td><b>${r.activeCh}</b></td>
+                <td style="font-size:12px;color:#666">${r.chTgt||'—'}</td>
+                <td>${r.chAch!==null ? achBadge(r.chAch) : '<span class="badge badge-grey">—</span>'}</td>
+                <td style="font-size:11px;color:#1565c0;font-weight:700">${r.ftdUC>0?fmtCr(r.ftdUC):'<span style="color:#9e9e9e">—</span>'}</td>
+                <td style="font-size:11px;color:#880e4f;font-weight:700">${r.ftdCV>0?fmtCr(r.ftdCV):'<span style="color:#9e9e9e">—</span>'}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  const monthOptions = months.map(m => `<option value="${m.pfx}"${m.pfx===curPfx?' selected':''}>${m.label}</option>`).join('');
 
   el.innerHTML = `
-    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
-      <div class="kpi"><div class="kpi-label">Active BMs</div><div class="kpi-value">${bmRows.length}</div></div>
-      <div class="kpi"><div class="kpi-label">Team Disbursement</div><div class="kpi-value">${fmtCr(teamTot)}</div></div>
-      <div class="kpi"><div class="kpi-label">Team Achievement</div>
-        <div class="kpi-value" style="color:${teamAch>=100?'#2e7d32':teamAch>=70?'#1565c0':'#c62828'}">${teamTgt>0?teamAch+'%':'—'}</div>
-      </div>
-      <div class="kpi"><div class="kpi-label">On Track / Behind</div>
-        <div class="kpi-value" style="font-size:18px"><span style="color:#2e7d32">${onTrack}</span> / <span style="color:#c62828">${behind}</span></div>
-      </div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px 16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07)">
+      <span style="font-size:13px;font-weight:700;color:#1a237e">Month:</span>
+      <select id="teamMonthFilter" onchange="applyTeamMonthFilter()" style="padding:6px 12px;border:1.5px solid #1a237e;border-radius:8px;font-size:13px;color:#1a237e;font-weight:700;background:#e8eaf6">
+        ${monthOptions}
+      </select>
+      <button onclick="document.getElementById('teamMonthFilter').value='${curPfx}';applyTeamMonthFilter()"
+        style="padding:6px 12px;border:1px solid #e0e0e0;border-radius:8px;font-size:12px;background:#fff;cursor:pointer;color:#666">Reset</button>
     </div>
-    <div class="card" style="padding:0;overflow:hidden">
-      <div style="padding:14px 20px;background:#e8eaf6;font-size:13px;font-weight:700;color:#1a237e">
-         BM Performance — ${getCurMonthLabel()}
-        <span style="font-weight:400;font-size:11px;margin-left:10px;color:#3949ab">UC: ${fmtCr(teamUC)} | CV: ${fmtCr(teamCV)}</span>
-      </div>
-      <div style="overflow-x:auto">
-        <table>
-          <thead><tr>
-            <th>BM Name</th><th>Tier</th>
-            <th>Disbursement</th><th>UC Tgt</th><th>CV Tgt</th><th>% Ach</th>
-            <th>UC</th><th>CV</th><th>Cases</th>
-            <th>Active Ch</th><th>Ch Tgt</th><th>Ch Ach%</th>
-            <th style="color:#1565c0">FTD UC</th><th style="color:#880e4f">FTD CV</th>
-          </tr></thead>
-          <tbody>
-            ${bmRows.map(r => `<tr>
-              <td><b style="font-size:12px">${r.name}</b></td>
-              <td><span class="badge badge-grey">${r.tier}</span></td>
-              <td><b>${fmtCr(r.totAmt)}</b></td>
-              <td style="font-size:12px;color:#666">${r.ucTgt>0?fmtCr(r.ucTgt):'—'}</td>
-              <td style="font-size:12px;color:#666">${r.cvTgt>0?fmtCr(r.cvTgt):'—'}</td>
-              <td>${r.ach!==null ? achBadge(r.ach) : '<span class="badge badge-grey">—</span>'}</td>
-              <td style="font-size:12px">${fmtCr(r.ucAmt)}</td>
-              <td style="font-size:12px">${fmtCr(r.cvAmt)}</td>
-              <td>${r.cases}</td>
-              <td><b>${r.activeCh}</b></td>
-              <td style="font-size:12px;color:#666">${r.chTgt||'—'}</td>
-              <td>${r.chAch!==null ? achBadge(r.chAch) : '<span class="badge badge-grey">—</span>'}</td>
-              <td style="font-size:11px;color:#1565c0;font-weight:700">${r.ftdUC>0?fmtCr(r.ftdUC):'<span style="color:#9e9e9e">—</span>'}</td>
-              <td style="font-size:11px;color:#880e4f;font-weight:700">${r.ftdCV>0?fmtCr(r.ftdCV):'<span style="color:#9e9e9e">—</span>'}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <div id="teamTableBody">${renderTable(curPfx)}</div>
   `;
+
+  window._teamRenderFn = renderTable;
+}
+
+function applyTeamMonthFilter() {
+  const moVal = document.getElementById('teamMonthFilter')?.value || '';
+  const body  = document.getElementById('teamTableBody');
+  if (body && window._teamRenderFn) {
+    body.innerHTML = window._teamRenderFn(moVal);
+  }
 }
 
 // ========== INSIGHTS ==========
