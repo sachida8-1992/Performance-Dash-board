@@ -2812,15 +2812,34 @@ function buildDealersRH(el) {
 }
 
 function buildBanks(el) {
+  const months = getFYMonths();           // oldest (April) → current
+  const curPfx = getCurMonthPrefix();
+
+  function scopeToRole(txns) {
+    const d = currentUser.designation, id = currentUser.id;
+    if (d==='BM') return txns.filter(t=>t.bm_id===id);
+    if (d==='AM') return txns.filter(t=>t.am_id===id);
+    if (d==='TH') return txns.filter(t=>t.th_id===id||t.am_id===id);
+    return txns.filter(t=>t.rh_id===id); // RH
+  }
+
   // Build state options from myTxns sorted by volume
   const stateSet = {};
   myTxns.forEach(t => { if (t.state && t.state !== 'nan') stateSet[t.state] = (stateSet[t.state]||0) + t.amt; });
   const stateOptions = Object.keys(stateSet).sort((a,b) => stateSet[b]-stateSet[a])
     .map(s => `<option value="${s}">${s}</option>`).join('');
 
-  // Three dropdowns: Product + Loan Type + State
+  const monthOptions = months.map(m => `<option value="${m.pfx}"${m.pfx===curPfx?' selected':''}>${m.label}</option>`).join('');
+
+  // Four dropdowns: Month + Product + Loan Type + State
   el.innerHTML = `
     <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:12px;font-weight:600;color:#1a237e">Month:</label>
+        <select id="bankMonthFilter" onchange="renderBanksFilter()" style="padding:6px 10px;border:1.5px solid #1a237e;border-radius:8px;font-size:13px;color:#1a237e;font-weight:700;background:#e8eaf6;cursor:pointer">
+          ${monthOptions}
+        </select>
+      </div>
       <div style="display:flex;align-items:center;gap:8px">
         <label style="font-size:12px;font-weight:600;color:#555">Product:</label>
         <select id="bankProdFilter" onchange="renderBanksFilter()" style="padding:6px 10px;border:1.5px solid #c5cae9;border-radius:8px;font-size:13px;background:#fff;cursor:pointer">
@@ -2844,6 +2863,8 @@ function buildBanks(el) {
           ${stateOptions}
         </select>
       </div>
+      <button onclick="document.getElementById('bankMonthFilter').value='${curPfx}';renderBanksFilter()"
+        style="padding:6px 12px;border:1px solid #e0e0e0;border-radius:8px;font-size:12px;background:#fff;cursor:pointer;color:#666">Reset Month</button>
     </div>
     <div id="bankTotal" style="font-size:12px;color:#9e9e9e;margin-bottom:12px"></div>
     <div class="grid-2">
@@ -2857,12 +2878,12 @@ function buildBanks(el) {
           <thead><tr>
             <th>Bank / NBFC</th>
             <th style="text-align:center">Cases</th>
-            <th style="text-align:right">July MTD</th>
-            <th style="text-align:right">June LMTD</th>
+            <th style="text-align:right" id="bankColSelLabel">MTD</th>
+            <th style="text-align:right" id="bankColPrevLabel">LMTD</th>
             <th style="text-align:center">Growth</th>
-            <th style="text-align:right">June Final</th>
-            <th style="text-align:center">July Share%</th>
-            <th style="text-align:center">June Share%</th>
+            <th style="text-align:right" id="bankColPrevFinalLabel">Final</th>
+            <th style="text-align:center" id="bankColSelShareLabel">Share%</th>
+            <th style="text-align:center" id="bankColPrevShareLabel">Share%</th>
           </tr></thead>
           <tbody id="bankTableBody"></tbody>
         </table>
@@ -2874,16 +2895,32 @@ function buildBanks(el) {
     const prod  = (document.getElementById('bankProdFilter')  || {value:'all'}).value;
     const loan  = (document.getElementById('bankLoanFilter')  || {value:'all'}).value;
     const state = (document.getElementById('bankStateFilter') || {value:'all'}).value;
+    const moVal = (document.getElementById('bankMonthFilter') || {value:curPfx}).value;
 
-    // Filter July txns
-    let filtered = myTxns;
+    const mIdx      = Math.max(0, months.findIndex(m => m.pfx === moVal));
+    const selMonth  = months[mIdx] || months[months.length-1];
+    const prevMonth = mIdx > 0 ? months[mIdx-1] : null;
+    const isCurMonth= selMonth.pfx === curPfx;
+    const selLabel  = selMonth.label.split(' ')[0];        // e.g. "August"
+    const prevLabel = prevMonth ? prevMonth.label.split(' ')[0] : '—';
+
+    // Update column headers to match selected month / its predecessor
+    const setH = (id, txt) => { const h=document.getElementById(id); if (h) h.textContent = txt; };
+    setH('bankColSelLabel',      selLabel + (isCurMonth ? ' MTD' : ' Final'));
+    setH('bankColPrevLabel',     prevLabel + (isCurMonth ? ' LMTD' : ' Final'));
+    setH('bankColPrevFinalLabel',prevLabel + ' Final');
+    setH('bankColSelShareLabel', selLabel + ' Share%');
+    setH('bankColPrevShareLabel',prevLabel + ' Share%');
+
+    // Selected-month txns, scoped to this role
+    let filtered = scopeToRole(selMonth.data());
     if (prod  === 'uc')       filtered = filtered.filter(t => t.product === 'Used Car');
     if (prod  === 'cv')       filtered = filtered.filter(t => t.product !== 'Used Car');
     if (state !== 'all')      filtered = filtered.filter(t => t.state === state);
     if (loan  === 'purchase') filtered = filtered.filter(t => (t.loan_type||'').toLowerCase().includes('purchase') && !(t.loan_type||'').toLowerCase().startsWith('ucv') && !(t.loan_type||'').toLowerCase().startsWith('ncv'));
     if (loan  === 'others')   filtered = filtered.filter(t => !((t.loan_type||'').toLowerCase().includes('purchase') && !(t.loan_type||'').toLowerCase().startsWith('ucv') && !(t.loan_type||'').toLowerCase().startsWith('ncv')));
 
-    // July bank map
+    // Selected-month bank map
     const bankMap = {};
     filtered.forEach(t => {
       const bk = t.bank || 'Unknown';
@@ -2894,16 +2931,10 @@ function buildBanks(el) {
     const banks = Object.values(bankMap).sort((a,b)=>b.amt-a.amt);
     const total = banks.reduce((s,b)=>s+b.amt,0)||1;
 
-    // Scope May data
-    const mayScope = getMayData().filter(t => {
-      const d2=currentUser.designation, id2=currentUser.id;
-      if(d2==='BM') return t.bm_id===id2;
-      if(d2==='AM') return t.am_id===id2;
-      if(d2==='TH') return t.th_id===id2||t.am_id===id2;
-      return t.rh_id===id2;
-    });
+    // Previous-month txns (relative to the SELECTED month, not always real-world previous month)
+    const mayScope = prevMonth ? scopeToRole(prevMonth.data()) : [];
 
-    // Apply same state/product/loan filters to May data
+    // Apply same state/product/loan filters to previous-month data
     let mayScopeFiltered = mayScope;
     if (prod  === 'uc')       mayScopeFiltered = mayScopeFiltered.filter(t => t.product === 'Used Car');
     if (prod  === 'cv')       mayScopeFiltered = mayScopeFiltered.filter(t => t.product !== 'Used Car');
@@ -2911,8 +2942,9 @@ function buildBanks(el) {
     if (loan  === 'purchase') mayScopeFiltered = mayScopeFiltered.filter(t => (t.loan_type||'').toLowerCase().includes('purchase') && !(t.loan_type||'').toLowerCase().startsWith('ucv') && !(t.loan_type||'').toLowerCase().startsWith('ncv'));
     if (loan  === 'others')   mayScopeFiltered = mayScopeFiltered.filter(t => !((t.loan_type||'').toLowerCase().includes('purchase') && !(t.loan_type||'').toLowerCase().startsWith('ucv') && !(t.loan_type||'').toLowerCase().startsWith('ncv')));
 
-    // June LMTD (same days as July)
-    const mayLMTD = toLMTD(mayScopeFiltered);
+    // Previous-month LMTD: same-day cutoff only when selected month is the real current month;
+    // otherwise compare against the previous month's FULL total (both months complete).
+    const mayLMTD = isCurMonth ? toLMTD(mayScopeFiltered) : mayScopeFiltered;
     const mayBankMap = {};
     mayLMTD.forEach(t => {
       const bk = t.bank || 'Unknown';
@@ -2920,7 +2952,7 @@ function buildBanks(el) {
       mayBankMap[bk] += t.amt;
     });
 
-    // June Full month (for June Final GMV)
+    // Previous month full total (for "Final" column)
     const juneFinalMap = {};
     mayScopeFiltered.forEach(t => {
       const bk = t.bank || 'Unknown';
