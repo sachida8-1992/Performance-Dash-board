@@ -5301,7 +5301,7 @@ async function sendEmail({ to, cc, subject, htmlBody, statusEl }) {
   try {
     await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ to, cc: withRHCC(cc), subject, htmlBody }),
       mode: 'no-cors'
     });
@@ -6889,7 +6889,7 @@ async function sendScorecardToBMs() {
     })();
     try {
       await fetch(getASUrl(), {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({
           to: [bm.email], cc,
           subject: getCurMonthLabel() + ' Scorecard - ' + bm.name + (ach!==null?' - '+ach+'% achieved':''),
@@ -6923,7 +6923,7 @@ async function sendScorecardToBMsForAM() {
     const cc    = withRHCC([thEmp?.email]);
     try {
       await fetch(getASUrl(), {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({
           to: [am.email], cc,
           subject: getCurMonthLabel() + ' Team Scorecard - ' + am.name,
@@ -6950,7 +6950,7 @@ async function sendScorecardToBMsForTH() {
   const tos = checked.map(c=>c.dataset.email).filter(Boolean);
   try {
     await fetch(getASUrl(), {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
       body: JSON.stringify({
         to: tos, cc: withRHCC([]),
         subject: getCurMonthLabel() + ' Region Scorecard',
@@ -7117,7 +7117,7 @@ async function sendExitGoalToBMs() {
     const cc    = withRHCC([amEmp?.email, thEmp?.email]);
     try {
       await fetch(getASUrl(), {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({
           to: [bm.email], cc,
           subject: ms.label+' Exit Goal Report — '+bm.name+' — '+getCurMonthLabel(),
@@ -7181,7 +7181,7 @@ async function sendExitGoalToAMs() {
 
     try {
       await fetch(getASUrl(), {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({
           to:[am.email], cc,
           subject: ms.label+' Exit — Team Status | '+am.name,
@@ -7223,7 +7223,7 @@ async function sendQ1ScoreCard() {
     const cc    = withRHCC([amEmp?.email, thEmp?.email]);
     try {
       await fetch(getASUrl(), {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({ to:[bm.email], cc,
           subject: 'Q1 ' + fyLabel + ' Scorecard - ' + bm.name,
           htmlBody: buildQ1EmailHTML(bm) }),
@@ -7239,7 +7239,7 @@ async function sendQ1ScoreCard() {
     const thEmp = emps.find(e=>e.id===am.th_id);
     try {
       await fetch(getASUrl(), {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({ to:[am.email], cc: withRHCC([thEmp?.email]),
           subject: 'Q1 ' + fyLabel + ' Team Scorecard - ' + am.name,
           htmlBody: buildQ1EmailHTML(am) }),
@@ -7254,7 +7254,7 @@ async function sendQ1ScoreCard() {
   for (const th of thList) {
     try {
       await fetch(getASUrl(), {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({ to:[th.email], cc: withRHCC([]),
           subject: 'Q1 ' + fyLabel + ' Scorecard - ' + th.name,
           htmlBody: buildQ1EmailHTML(th) }),
@@ -7285,7 +7285,7 @@ async function sendScorecardToAMs() {
     const cc    = withRHCC([thEmp?.email]);
     try {
       await fetch(getASUrl(), {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({
           to: [am.email], cc,
           subject: getCurMonthLabel() + ' Team Scorecard - ' + am.name,
@@ -7312,7 +7312,7 @@ async function sendScorecardToTHs() {
   const tos = checked.map(c=>c.dataset.email).filter(Boolean);
   try {
     await fetch(getASUrl(), {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
       body: JSON.stringify({
         to: tos, cc: withRHCC([]),
         subject: getCurMonthLabel() + ' Region Scorecard',
@@ -7432,7 +7432,7 @@ async function sendChannelToBMs() {
 
     try {
       await fetch(getASUrl(), {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({
           to: [bm.email], cc,
           subject: `Channel Drive Alert - ${bm.name} - ${lost.length} lost, ${inact.length} inactive`,
@@ -7932,7 +7932,7 @@ async function sendChannelToAMs() {
 
     try {
       await fetch(getASUrl(), {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({
           to: [am.email], cc,
           subject: `Channel Drive Alert — ${am.name} Area — ${getCurMonthLabel()}`,
@@ -7976,7 +7976,7 @@ async function sendChannelToTHs() {
 
     try {
       await fetch(getASUrl(), {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({
           to: [thEmp.email], cc: withRHCC([]),
           subject: `Channel Drive Alert - ${thEmp.name} Team - ${getCurMonthLabel()}`,
@@ -8738,7 +8738,7 @@ async function loadSubventionData(force) {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: 'getSubventionRequests' })
     });
     const data = await res.json();
@@ -9141,7 +9141,7 @@ async function submitSubventionRequest() {
   };
 
   try {
-    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload) });
     const data = await res.json();
     if (data.status === 'ok') {
       alert('Subvention request submitted for RH approval.');
@@ -9173,7 +9173,7 @@ async function updateSubventionStatus(requestId, status, waiverPct) {
   const waiverAmt = req ? (waiverPct/100 * (+req.gmv||0)) : 0;
   try {
     const res = await fetch(url, {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
       body: JSON.stringify({ action:'updateSubvention', requestId, status, waiverPct, waiverAmt, approvedBy: currentUser.name })
     });
     const data = await res.json();
