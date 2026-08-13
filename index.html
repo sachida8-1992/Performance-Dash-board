@@ -5221,7 +5221,13 @@ function buildChannelDrive(el) {
 
 // ========== MAILROOM — Send HTML Scorecard Email ==========
 // ── Apps Script URL management ─────────────────────────────
-function getASUrl() { return localStorage.getItem('rupyy_as_email_url') || ''; }
+// This is the one true backend deployment for Commitments, Mailroom, and
+// Subvention. It's hardcoded so every user gets it automatically — nobody
+// should ever need to manually configure this per-browser. localStorage is
+// kept only as an optional override (e.g. if you ever redeploy to a new URL
+// and want to test it before changing this constant).
+const DEFAULT_AS_URL = 'https://script.google.com/macros/s/AKfycbznRRcKd7ear6OvFIomft5cbDpdug5iQ_4xzWHMpu-8fh-oymmQ_rpwXMr5lMo9WuW7/exec';
+function getASUrl() { return localStorage.getItem('rupyy_as_email_url') || DEFAULT_AS_URL; }
 function setASUrl(url) { localStorage.setItem('rupyy_as_email_url', url); }
 
 function promptASUrl() {
