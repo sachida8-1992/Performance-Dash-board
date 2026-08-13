@@ -814,6 +814,14 @@ async function doLogin() {
   const pool = (dataLoaded && window._LIVE_EMP && window._LIVE_EMP.length) ? window._LIVE_EMP : EMP_DATA;
   const emp = pool.find(e => e.email === name && e.password != null && String(e.password) === String(pass));
   if (!emp) {
+    // TEMPORARY DEBUG — remove once login issue is resolved.
+    const byEmail = pool.find(e => e.email === name);
+    console.log('%c[LOGIN DEBUG]', 'color:#e65100;font-weight:bold', {
+      typedEmail: name,
+      typedPassword: JSON.stringify(pass),
+      poolSource: (dataLoaded && window._LIVE_EMP && window._LIVE_EMP.length) ? 'LIVE DATA (' + window._LIVE_EMP.length + ' employees)' : 'EMBEDDED FALLBACK',
+      foundByEmail: byEmail ? { name: byEmail.name, storedEmail: JSON.stringify(byEmail.email), storedPassword: JSON.stringify(byEmail.password), storedPasswordType: typeof byEmail.password } : 'NO EMPLOYEE FOUND WITH THIS EMAIL',
+    });
     errEl.textContent = 'Invalid email or password';
     return;
   }
