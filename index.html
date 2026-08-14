@@ -8755,12 +8755,14 @@ async function loadSubventionData(force) {
 // Scope requests visible to the current user
 function scopeSubventionRequests(requests) {
   const d = currentUser.designation, id = String(currentUser.id);
-  const myRhId = String(currentUser.rh_id || '');
   // IDs coming back from the Sheet may arrive as numbers (Google Sheets auto-converts
   // numeric-looking text), while IDs on the client are always strings — normalize both
   // sides with String() so "10074456" and 10074456 are treated as equal.
   if (d === 'RH') return requests.filter(r => String(r.rhId) === id);
-  if (d === 'TH') return requests.filter(r => String(r.rhId) === myRhId && (String(r.requestedById) === id || String(r.thId) === id));
+  // TH: match on identity alone (requester or thId) — don't also require rhId to line up,
+  // since a TH's own Employee Sheet row doesn't always have their reporting RH's code filled
+  // in (that field is more reliably populated on BM rows for hierarchy rollups).
+  if (d === 'TH') return requests.filter(r => String(r.requestedById) === id || String(r.thId) === id);
   return requests.filter(r => String(r.requestedById) === id); // AM: own requests only
 }
 
