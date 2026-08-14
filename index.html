@@ -507,8 +507,10 @@ function findPayoutGridCandidates(bankName) {
   });
 }
 
-// Given a confirmed Payout Grid entry + GMV (in actual rupees), return the
-// matching slab's payout %, plus NIL-topup flag if applicable.
+// Given a confirmed Payout Grid entry + GMV (in actual rupees — pass the
+// CHANNEL's total monthly UC GMV here, not a single case's amount, since
+// payout slabs are eligibility bands based on the channel's overall volume),
+// return the matching slab's payout %, plus NIL-topup flag if applicable.
 // Bands are inclusive of their upper bound: 0-15L, >15-30L, >30-50L, >50-100L, >100L.
 function getPayoutForSlab(gridEntry, gmvRupees, loanType) {
   const gmvLacs = (gmvRupees||0) / 1e5;
@@ -8833,6 +8835,30 @@ function buildSubventionBankwise(requests) {
             <b style="color:#1a237e">${bank}</b>: <span style="color:#2e7d32;font-weight:700">${fmtCr(amt)}</span>
           </div>`).join('')}
       </div>
+    </div>
+    ${buildSubventionChannelwise(requests)}`;
+}
+
+function buildSubventionChannelwise(requests) {
+  const approved = requests.filter(r => r.status === 'Approved');
+  if (!approved.length) return '';
+  const byChannel = {};
+  approved.forEach(r => {
+    const ch = r.channel || 'Unknown';
+    if (!byChannel[ch]) byChannel[ch] = { amt: 0, count: 0 };
+    byChannel[ch].amt += (+r.waiverAmt||0);
+    byChannel[ch].count++;
+  });
+  const rows = Object.entries(byChannel).sort((a,b)=>b[1].amt-a[1].amt);
+  return `
+    <div style="margin-top:16px">
+      <div style="font-size:11px;font-weight:800;color:#6a1b9a;text-transform:uppercase;margin-bottom:8px">Channel-wise Subvention Taken</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${rows.map(([channel,d]) => `
+          <div style="background:#f3e5f5;border-radius:8px;padding:8px 14px;font-size:12px">
+            <b style="color:#6a1b9a">${channel}</b> (${d.count}): <span style="color:#2e7d32;font-weight:700">${fmtCr(d.amt)}</span>
+          </div>`).join('')}
+      </div>
     </div>`;
 }
 
@@ -8878,13 +8904,14 @@ function buildSubventionRHApprovals(all) {
       <div style="overflow-x:auto;margin-top:10px">
         <table>
           <thead><tr>
-            <th>Loan ID</th><th>Requested By</th><th>Bank</th><th>Loan Type</th><th style="text-align:right">GMV</th>
+            <th>Loan ID</th><th>Channel</th><th>Requested By</th><th>Bank</th><th>Loan Type</th><th style="text-align:right">GMV</th>
             <th style="text-align:center">Slab %</th><th style="text-align:center">Ask %</th><th style="text-align:center">Subvention %</th>
             <th>Waiver %</th><th style="text-align:right">Action</th>
           </tr></thead>
           <tbody>
             ${pending.map(r => `<tr>
               <td><b>${r.loanId}</b></td>
+              <td style="color:#6a1b9a;font-weight:600">${r.channel||'—'}</td>
               <td>${r.requestedByName} <span class="badge badge-grey" style="font-size:9px">${r.requestedByRole}</span></td>
               <td>${r.bank}</td>
               <td style="font-size:11px">${r.loanType}</td>
@@ -8911,13 +8938,14 @@ function buildSubventionRequestTable(requests, showAll) {
     <div style="overflow-x:auto;margin-top:10px">
       <table>
         <thead><tr>
-          <th>Loan ID</th><th>Bank</th><th>Loan Type</th><th style="text-align:right">GMV</th>
+          <th>Loan ID</th><th>Channel</th><th>Bank</th><th>Loan Type</th><th style="text-align:right">GMV</th>
           <th style="text-align:center">Slab %</th><th style="text-align:center">Ask %</th><th style="text-align:center">Subvention %</th>
           <th style="text-align:center">Status</th><th style="text-align:center">Waiver %</th><th style="text-align:right">Waiver Amt</th>
         </tr></thead>
         <tbody>
           ${sorted.map(r => `<tr>
             <td><b>${r.loanId}</b></td>
+            <td style="color:#6a1b9a;font-weight:600">${r.channel||'—'}</td>
             <td>${r.bank}</td>
             <td style="font-size:11px">${r.loanType}</td>
             <td style="text-align:right">${fmtCr(r.gmv)}</td>
@@ -8952,8 +8980,24 @@ function lookupSubventionLoan() {
     return;
   }
 
+  // Channel identity: DCID is the reliable key (dealer name can have typos/variants); fall back to name if DCID missing.
+  const channelKey  = found.dcid || found.dealer || '';
+  const channelName = found.dealer || found.dcid || 'Unknown Channel';
+
+  // Channel's TOTAL Used Car GMV disbursed this month (all cases from this channel, not just this one) —
+  // this is what determines the eligible Payout Grid slab, per business rule.
+  const channelTxnsThisMonth = curMonthTxns.filter(t =>
+    (found.dcid ? t.dcid === found.dcid : t.dealer === found.dealer) && t.product === 'Used Car'
+  );
+  const channelMonthlyUCGMV = channelTxnsThisMonth.reduce((s,t) => s + t.amt, 0);
+  const channelCaseCount    = channelTxnsThisMonth.length;
+
   window._subState.loanId = loanId;
   window._subState.case = found;
+  window._subState.channelKey = channelKey;
+  window._subState.channelName = channelName;
+  window._subState.channelGMV = channelMonthlyUCGMV;
+  window._subState.channelCaseCount = channelCaseCount;
   window._subState.candidates = findSubventionGridCandidates(found.bank, (found.amt||0)/1e5);
   window._subState.selectedIdx = -1;
   window._subState.calc = null;
@@ -8963,7 +9007,8 @@ function lookupSubventionLoan() {
   window._subState.payoutIdx = window._subState.payoutCandidates.length === 1 ? 0 : -1;
   window._subState.payoutResult = null;
   if (window._subState.payoutIdx === 0) {
-    window._subState.payoutResult = getPayoutForSlab(window._subState.payoutCandidates[0], found.amt, found.loan_type);
+    // Slab is based on the CHANNEL's total monthly UC GMV, not this single case's amount.
+    window._subState.payoutResult = getPayoutForSlab(window._subState.payoutCandidates[0], channelMonthlyUCGMV, found.loan_type);
     window._subState.slabPct = String(window._subState.payoutResult.payoutPct);
   }
   renderSubCaseDetails();
@@ -8984,7 +9029,7 @@ function renderSubCaseDetails() {
     const pr = st.payoutResult;
     payoutInfoHtml = `
       <div style="margin-top:8px;padding:10px 12px;background:${pr.isNilTopup?'#ffebee':'#e8f5e9'};border-radius:8px;font-size:12px">
-        <span>Slab: <b>${pr.slabLabel}</b></span> &nbsp;|&nbsp;
+        <span>Eligible Slab (channel monthly UC GMV): <b>${pr.slabLabel}</b></span> &nbsp;|&nbsp;
         <span>Category: <b>${pr.category}</b></span> &nbsp;|&nbsp;
         <span>Payout Grid %: <b style="font-size:14px;color:${pr.isNilTopup?'#c62828':'#2e7d32'}">${pr.payoutPct}%</b></span>
         ${pr.isNilTopup ? '<div style="color:#c62828;font-weight:700;margin-top:4px"> NIL payout — Internal Topup case on a lender where topups get no payout (see grid T&C).</div>' : ''}
@@ -9042,12 +9087,21 @@ function renderSubCaseDetails() {
     <div style="padding:14px;background:#fff;border:1.5px solid #e8eaf6;border-radius:10px">
       <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12px;margin-bottom:10px">
         <span>Loan ID: <b>${c.loan_id||st.loanId}</b></span>
+        <span>Channel: <b style="color:#6a1b9a">${st.channelName}</b></span>
         <span>Bank: <b>${c.bank||'—'}</b></span>
         <span>RegNo: <b>${c.regno||'—'}</b></span>
         <span>Loan Type: <b>${c.loan_type||'—'}</b></span>
         <span>Gross Disbursed: <b>${fmtL(c.amt||0)}</b></span>
         <span>ROI: <b>${c.roi!=null?c.roi+'%':'—'}</b></span>
         <span>Tenure: <b>${c.tenure!=null?c.tenure+'mo':'—'}</b></span>
+      </div>
+
+      <div style="font-size:11px;font-weight:800;color:#6a1b9a;text-transform:uppercase;margin-bottom:4px">Channel Business Performance (This Month)</div>
+      <div style="padding:10px 12px;background:#f3e5f5;border-radius:8px;font-size:12px;margin-bottom:14px">
+        <span>Channel: <b>${st.channelName}</b></span> &nbsp;|&nbsp;
+        <span>UC GMV (MTD): <b style="color:#6a1b9a;font-size:14px">${fmtCr(st.channelGMV||0)}</b></span> &nbsp;|&nbsp;
+        <span>Cases: <b>${st.channelCaseCount||0}</b></span>
+        <div style="font-size:10px;color:#795548;margin-top:4px">Payout slab eligibility below is based on this channel's total UC GMV this month, not just this one case.</div>
       </div>
 
       <div style="font-size:11px;font-weight:800;color:#1a237e;text-transform:uppercase;margin-bottom:4px">Payout Grid — Actual Payout %</div>
@@ -9080,7 +9134,7 @@ function selectPayoutGridRow(idx) {
   const st = window._subState;
   st.payoutIdx = parseInt(idx);
   if (st.payoutIdx >= 0 && st.payoutCandidates[st.payoutIdx]) {
-    st.payoutResult = getPayoutForSlab(st.payoutCandidates[st.payoutIdx], st.case.amt, st.case.loan_type);
+    st.payoutResult = getPayoutForSlab(st.payoutCandidates[st.payoutIdx], st.channelGMV, st.case.loan_type);
     st.slabPct = String(st.payoutResult.payoutPct);
   } else {
     st.payoutResult = null;
@@ -9121,6 +9175,8 @@ async function submitSubventionRequest() {
     requestId: 'SUB-' + Date.now(),
     timestamp: new Date().toISOString(),
     loanId: c.loan_id || st.loanId,
+    channel: st.channelName || '',
+    channelGMV: st.channelGMV || 0,
     bank: c.bank || '',
     regno: c.regno || '',
     loanType: c.loan_type || '',
