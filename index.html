@@ -1355,8 +1355,12 @@ function buildOverview(el) {
       ${d === 'RH' ? `
       <!-- RH: AM/TH Performance Table replaces pie chart -->
       <div class="card" style="grid-column:1/-1;padding:16px 18px" id="rhPerfTableCard">
-        <div style="margin-bottom:12px">
-          <div class="card-title" style="margin-bottom:0"> AM / TH Performance — MTD vs LMTD</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+          <div class="card-title" style="margin-bottom:0" id="rhPerfTableTitle"> AM / TH Performance — MTD vs LMTD</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label style="font-size:11px;font-weight:700;color:#555">Month:</label>
+            <select id="rhPerfMonthFilter" onchange="buildRHPerfTable(this.value)" style="padding:6px 10px;border:1.5px solid #1a237e;border-radius:8px;font-size:12px;color:#1a237e;font-weight:700;background:#e8eaf6;cursor:pointer"></select>
+          </div>
         </div>
         <div id="rhPerfTableBody" style="overflow-x:auto"></div>
       </div>
@@ -2169,19 +2173,48 @@ function getActiveChannels() {
 }
 
 // ========== RH PERFORMANCE TABLE ==========
-function buildRHPerfTable() {
+function buildRHPerfTable(selectedPfx) {
   const el = document.getElementById('rhPerfTableBody');
   if (!el) return;
+
+  const months  = getFYMonths();          // oldest (April) → current
+  const curPfx  = getCurMonthPrefix();
+  selectedPfx   = selectedPfx || curPfx;
+  const mIdx      = Math.max(0, months.findIndex(m => m.pfx === selectedPfx));
+  const selMonth  = months[mIdx] || months[months.length-1];
+  const prevMonth = mIdx > 0 ? months[mIdx-1] : null;
+  const isCurMonth= selMonth.pfx === curPfx;
+
+  // Populate the month dropdown (only once per page build — re-populating on every
+  // filter change would reset the user's selection mid-interaction)
+  const monthSel = document.getElementById('rhPerfMonthFilter');
+  if (monthSel && !monthSel.options.length) {
+    monthSel.innerHTML = months.map(m => `<option value="${m.pfx}"${m.pfx===selectedPfx?' selected':''}>${m.label}</option>`).join('');
+  }
+  const titleEl = document.getElementById('rhPerfTableTitle');
+  if (titleEl) titleEl.textContent = ' AM / TH Performance — ' + selMonth.label + (isCurMonth ? ' (MTD vs LMTD)' : ' (Final vs Prior Month)');
+
+  function scopeToRH(txns) { return txns.filter(t => t.rh_id === currentUser.id); }
 
   const today      = new Date();
   const todayStr   = today.toISOString().slice(0,10);
   const yest       = new Date(today); yest.setDate(yest.getDate() - 1);
   const yesterdayStr = yest.toISOString().slice(0,10);
-  const mtdDay     = today.getDate();
   const allEmps    = getEmpData();
-  const juneTxns   = getTxnData().filter(t => t.date && t.date.startsWith(getCurMonth()));
-  const mayRaw     = getMayData();
-  const mayLMTD    = toLMTD(mayRaw);
+  const juneTxns   = scopeToRH(selMonth.data());
+  const mayRaw     = prevMonth ? scopeToRH(prevMonth.data()) : [];
+  // Same-day cutoff only when viewing the real current month; past months compare full-month vs full-month.
+  const mayLMTD    = isCurMonth ? toLMTD(mayRaw) : mayRaw;
+  // "FTD"/"YP" only make sense for the real current month; for a completed past
+  // month, use its last actual date as the reference and relabel accordingly.
+  const refDate    = isCurMonth ? todayStr : (juneTxns.reduce((max,t) => t.date>max?t.date:max, '') || todayStr);
+  const refPrevDate= isCurMonth ? yesterdayStr : (() => {
+    const dates = [...new Set(juneTxns.map(t=>t.date))].sort();
+    const idx = dates.indexOf(refDate);
+    return idx > 0 ? dates[idx-1] : refDate;
+  })();
+  const ftdLabel   = isCurMonth ? 'FTD' : 'Last Day';
+  const ypLabel    = isCurMonth ? 'YESTERDAY (YP)' : 'Prior Day';
 
   function fmtL(v) { return (v/1e5).toFixed(2)+'L'; }
 
@@ -2208,11 +2241,11 @@ function buildRHPerfTable() {
     });
     return Object.values(bmMap).reduce((s,set) => s+set.size, 0);
   }
-  // New channels activated today (across scope) that weren't active earlier this month
+  // New channels activated on refDate (across scope) that weren't active earlier this month
   function newChannelsToday(scopeTxns) {
-    const ftd = scopeTxns.filter(t => t.date === todayStr);
+    const ftd = scopeTxns.filter(t => t.date === refDate);
     const ftdDcids = new Set(ftd.filter(t=>t.dcid && t.product==='Used Car').map(t=>t.dcid));
-    const beforeTodayDcids = new Set(scopeTxns.filter(t => t.date < todayStr && t.dcid).map(t=>t.dcid));
+    const beforeTodayDcids = new Set(scopeTxns.filter(t => t.date < refDate && t.dcid).map(t=>t.dcid));
     return [...ftdDcids].filter(d => !beforeTodayDcids.has(d)).length;
   }
 
@@ -2241,8 +2274,8 @@ function buildRHPerfTable() {
     const chTgt   = bmScope.reduce((s,e)=>s+(e.ch_tgt||0),0);
     const chAch   = chTgt>0 ? Math.round((ch/chTgt)*100) : null;
 
-    const ftdTxns = jTxns.filter(t => t.date === todayStr);
-    const ypTxns  = jTxns.filter(t => t.date === yesterdayStr);
+    const ftdTxns = jTxns.filter(t => t.date === refDate);
+    const ypTxns  = jTxns.filter(t => t.date === refPrevDate);
     const ftdUC   = ftdTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
     const ftdCV   = ftdTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
     const ypUC    = ypTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
@@ -2316,8 +2349,8 @@ function buildRHPerfTable() {
             <th colspan="3" style="padding:9px 8px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#1a237e;border-right:2px solid rgba(255,255,255,.2)">UC</th>
             <th colspan="3" style="padding:9px 8px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#4a148c;border-right:2px solid rgba(255,255,255,.2)">CV</th>
             <th colspan="3" style="padding:9px 8px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#006064;border-right:2px solid rgba(255,255,255,.2)">CHANNEL</th>
-            <th colspan="2" style="padding:9px 8px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#e65100;border-right:2px solid rgba(255,255,255,.2)">YESTERDAY (YP)</th>
-            <th colspan="3" style="padding:9px 8px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#b71c1c">FTD</th>
+            <th colspan="2" style="padding:9px 8px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#e65100;border-right:2px solid rgba(255,255,255,.2)">${ypLabel}</th>
+            <th colspan="3" style="padding:9px 8px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:#b71c1c">${ftdLabel}</th>
           </tr>
           <tr style="background:#1a237e;color:#fff;font-size:10px">
             <th style="${hdrStyle}">TGT</th>
@@ -2406,7 +2439,7 @@ function buildRHPerfTable() {
       </table>
     </div>
     <div style="font-size:10px;color:#9e9e9e;margin-top:8px">
-      ACH% = Current MTD vs Target &nbsp;|&nbsp; vs LMTD = Growth vs ${getPrevMonthLabel()} same days &nbsp;|&nbsp; YP = Yesterday's performance &nbsp;|&nbsp; FTD New Ch = UC channels activated today for first time this month
+      ACH% = ${selMonth.label} vs Target &nbsp;|&nbsp; vs LMTD = Growth vs ${prevMonth?prevMonth.label:'—'} ${isCurMonth?'same days':'(full month)'} &nbsp;|&nbsp; ${ypLabel} = ${isCurMonth?'Yesterday':'Prior day'}&#39;s performance &nbsp;|&nbsp; ${ftdLabel} New Ch = UC channels activated that day for first time that month
     </div>`;
 }
 
