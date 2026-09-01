@@ -3049,9 +3049,15 @@ function buildBanks(el) {
     return txns.filter(t=>t.rh_id===id); // RH
   }
 
-  // Build state options from myTxns sorted by volume
+  // Build state options from ALL months combined (not just the current month) — so a
+  // state that only appears in a past month's data is still selectable when that
+  // month is chosen in the Month filter above.
   const stateSet = {};
-  myTxns.forEach(t => { if (t.state && t.state !== 'nan') stateSet[t.state] = (stateSet[t.state]||0) + t.amt; });
+  months.forEach(m => {
+    scopeToRole(m.data()).forEach(t => {
+      if (t.state && t.state !== 'nan') stateSet[t.state] = (stateSet[t.state]||0) + t.amt;
+    });
+  });
   const stateOptions = Object.keys(stateSet).sort((a,b) => stateSet[b]-stateSet[a])
     .map(s => `<option value="${s}">${s}</option>`).join('');
 
