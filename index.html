@@ -3121,6 +3121,16 @@ function buildBanks(el) {
         </table>
       </div>
     </div>
+    ${currentUser.designation !== 'BM' ? `
+    <div class="card" style="margin-top:20px">
+      <div class="card-title"> GMV Mix — Total vs Platinum Banks</div>
+      <div id="bankPlatinumSummary" style="margin-top:10px"></div>
+    </div>
+    <div class="card" style="margin-top:20px">
+      <div class="card-title"> Bank-wise Disbursement — Last 3 Months</div>
+      <div id="bankTrend3M" style="overflow-x:auto;margin-top:10px"></div>
+    </div>
+    ` : ''}
   `;
 
   window.renderBanksFilter = function() {
@@ -3330,6 +3340,63 @@ function buildBanks(el) {
 
     const totalEl = document.getElementById('bankTotal');
     if (totalEl) totalEl.textContent = filtered.length + ' cases · ' + fmtCr(total) + (state !== 'all' ? ' · ' + state : '');
+
+    // ── Platinum GMV share summary (RH/TH/AM only) ──────────
+    const platSummaryEl = document.getElementById('bankPlatinumSummary');
+    if (platSummaryEl) {
+      const platAmt = banks.filter(b => getTier(b.name) === 'Platinum').reduce((s,b) => s + b.amt, 0);
+      const platPct = total > 0 ? Math.round((platAmt/total)*100) : 0;
+      platSummaryEl.innerHTML = `
+        <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
+          <div class="kpi"><div class="kpi-label">Total GMV (${selMonth.label})</div><div class="kpi-value">${fmtCr(total)}</div></div>
+          <div class="kpi"><div class="kpi-label">Platinum Bank GMV</div><div class="kpi-value" style="color:#7b1fa2">${fmtCr(platAmt)}</div></div>
+          <div class="kpi"><div class="kpi-label">Platinum Share of Total GMV</div><div class="kpi-value" style="color:${platPct>=50?'#2e7d32':platPct>=30?'#1565c0':'#e65100'}">${platPct}%</div></div>
+        </div>`;
+    }
+
+    // ── 3-Month Bank-wise Trend (RH/TH/AM only) ─────────────
+    const trendEl = document.getElementById('bankTrend3M');
+    if (trendEl) {
+      // Last 3 months ending at the currently selected month (so it tracks the Month filter above)
+      const last3 = months.slice(Math.max(0, mIdx-2), mIdx+1); // oldest → newest, at most 3
+      function monthBankMap(m) {
+        let txns = scopeToRole(m.data());
+        if (prod === 'uc') txns = txns.filter(t => t.product === 'Used Car');
+        if (prod === 'cv') txns = txns.filter(t => t.product !== 'Used Car');
+        if (state !== 'all') txns = txns.filter(t => t.state === state);
+        const map = {};
+        txns.forEach(t => { const bk = t.bank||'Unknown'; map[bk] = (map[bk]||0) + t.amt; });
+        return map;
+      }
+      const monthMaps = last3.map(m => ({ label: m.label.split(' ')[0], map: monthBankMap(m) }));
+      // Union of all banks appearing in any of the 3 months, ranked by the most recent month's amount
+      const allBankNames = [...new Set(monthMaps.flatMap(mm => Object.keys(mm.map)))];
+      const latestMap = monthMaps[monthMaps.length-1] ? monthMaps[monthMaps.length-1].map : {};
+      allBankNames.sort((a,b) => (latestMap[b]||0) - (latestMap[a]||0));
+
+      const totalsByMonth = monthMaps.map(mm => Object.values(mm.map).reduce((s,v)=>s+v,0));
+
+      trendEl.innerHTML = `
+        <table style="min-width:520px">
+          <thead><tr>
+            <th>Bank / NBFC</th>
+            ${monthMaps.map(mm => `<th style="text-align:right">${mm.label}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${allBankNames.map((bk,i) => `<tr style="background:${i%2===0?'#fff':'#f8f9ff'}">
+              <td style="padding:7px 10px;font-size:12px">${shortName(bk)}${tierBadge(bk)}</td>
+              ${monthMaps.map(mm => `<td style="padding:7px 8px;text-align:right;font-size:12px">${mm.map[bk]?fmtCr(mm.map[bk]):'<span style="color:#ccc">—</span>'}</td>`).join('')}
+            </tr>`).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="background:#e8eaf6;font-weight:700;border-top:2px solid #1a237e">
+              <td style="padding:8px 10px;color:#1a237e">TOTAL</td>
+              ${totalsByMonth.map(t => `<td style="padding:8px;text-align:right;color:#1a237e">${fmtCr(t)}</td>`).join('')}
+            </tr>
+          </tfoot>
+        </table>
+        <div style="font-size:10px;color:#9e9e9e;margin-top:8px">Shows the 3 months ending at the Month filter above (currently ${selMonth.label}). Respects the Product/State filters, not Loan Type.</div>`;
+    }
 
     if (charts.banks) { try { charts.banks.destroy(); } catch(e){} delete charts.banks; }
     setTimeout(() => {
@@ -5480,6 +5547,29 @@ function buildMailroom(el) {
             <div id="q1-status" style="padding:4px 14px 8px;font-size:11px;min-height:20px"></div>
           </div>
 
+          <!-- Month Closing Mailer -->
+          <div style="border:1px solid #80cbc4;border-radius:10px;overflow:hidden;background:linear-gradient(135deg,#f0faf8,#fff)">
+            <div style="padding:10px 14px;background:linear-gradient(135deg,#00695c,#00897b);display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <span style="font-weight:700;font-size:13px;color:#fff">Month Closing Mailer</span>
+                <span style="font-size:11px;color:rgba(255,255,255,.7);margin-left:6px">YTD Month-wise · All roles</span>
+              </div>
+              <div style="display:flex;gap:6px">
+                <button onclick="previewMonthClosingEmail()" style="padding:4px 10px;background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;font-size:11px;cursor:pointer">Preview</button>
+                <button onclick="sendMonthClosingMail()" style="padding:4px 14px;background:#fff;color:#00695c;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer" id="mc-send-btn">Send</button>
+              </div>
+            </div>
+            <div style="padding:10px 14px">
+              <div style="font-size:11px;color:#555;margin-bottom:8px">Send to:</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer"><input type="checkbox" id="mc-send-bm" checked style="accent-color:#00695c"> BMs</label>
+                <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer"><input type="checkbox" id="mc-send-am" checked style="accent-color:#00695c"> AMs</label>
+                <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer"><input type="checkbox" id="mc-send-th" checked style="accent-color:#00695c"> THs</label>
+              </div>
+            </div>
+            <div id="mc-status" style="padding:4px 14px 8px;font-size:11px;min-height:20px"></div>
+          </div>
+
           <!-- Scorecard Preview panel -->
           <div style="border:1px solid #e8eaf6;border-radius:8px;overflow:hidden">
             <div style="padding:8px 12px;background:#f5f7ff;font-size:11px;font-weight:700;color:#1a237e">Email Preview</div>
@@ -6068,105 +6158,6 @@ function buildAMScorecardHTML(am) {
     +'</body></html>';
 }
 
-function buildTHScorecardHTML() {
-  const emps     = getEmpData();
-  const prevData = window._LIVE_MAY||[];
-  const date     = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
-  const month    = getCurMonthLabel();
-  const prevMonth= getPrevMonthLabel();
-  const todayDay = getTodayDay();
-
-  const bmList = emps.filter(e=>e.designation==='BM'&&e.rh_id===currentUser.id);
-  const amList = emps.filter(e=>e.designation==='AM'&&e.rh_id===currentUser.id);
-
-  const amRows = amList.map(am=>{
-    const cur    = myTxns.filter(t=>t.am_id===am.id);
-    const prv    = toLMTD(prevData.filter(t=>t.am_id===am.id));
-    const curAmt = cur.reduce((s,t)=>s+t.amt,0);
-    const prvAmt = prv.reduce((s,t)=>s+t.amt,0);
-    const curCh  = new Set(cur.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
-    const prvCh  = new Set(prv.filter(t=>t.ch_check>0&&t.dcid).map(t=>t.dcid)).size;
-    const amBMs  = bmList.filter(b=>b.am_id===am.id);
-    const onT    = amBMs.filter(b=>{
-      const t=myTxns.filter(x=>x.bm_id===b.id);
-      const tgt=((b.uc_tgt||0)+(b.cv_tgt||0))*1e5;
-      return tgt>0&&Math.round((t.reduce((s,x)=>s+x.amt,0)/tgt)*100)>=70;
-    }).length;
-    const diff   = curAmt-prvAmt;
-    const gPct   = prvAmt>0?Math.round((diff/prvAmt)*100):null;
-    return {am,curAmt,prvAmt,curCh,prvCh,bmCount:amBMs.length,onTrack:onT,diff,gPct,chDiff:curCh-prvCh};
-  }).sort((a,b)=>b.curAmt-a.curAmt);
-
-  const totCur  = amRows.reduce((s,r)=>s+r.curAmt,0);
-  const totPrv  = amRows.reduce((s,r)=>s+r.prvAmt,0);
-  const totCh   = amRows.reduce((s,r)=>s+r.curCh,0);
-  const prvCh   = amRows.reduce((s,r)=>s+r.prvCh,0);
-  const totOnT  = amRows.reduce((s,r)=>s+r.onTrack,0);
-  const totUC   = myTxns.filter(t=>t.rh_id===currentUser.id&&t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
-  const totCV   = myTxns.filter(t=>t.rh_id===currentUser.id&&t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-  const totDiff = totCur-totPrv;
-  const gPct    = totPrv>0?Math.round((totDiff/totPrv)*100):null;
-  const up      = totDiff>=0;
-
-  const tblRows = amRows.map((r,i)=>{
-    const rowBg = i%2===0?'#ffffff':'#f8f9ff';
-    const up2   = r.diff>=0;
-    const gTag  = r.gPct!==null
-      ? '<span style="background:'+(up2?'#e8f5e9':'#ffebee')+';color:'+(up2?'#1b5e20':'#b71c1c')+';padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700">'+(up2?'&#9650;':'&#9660;')+' '+(up2?'+':'')+r.gPct+'% ('+(up2?'+':'')+fmtCr(Math.abs(r.diff))+')</span>'
-      : '-';
-    const onTBg = r.onTrack===r.bmCount?'#e8f5e9':'#fff8e1';
-    const onTCol= r.onTrack===r.bmCount?'#1b5e20':'#e65100';
-    return '<tr style="background:'+rowBg+'">'
-      +'<td style="padding:8px 10px;font-weight:700;color:#1a237e;border-bottom:1px solid #f0f0f0">'+r.am.name+'</td>'
-      +'<td style="padding:8px 10px;text-align:right;font-weight:700;border-bottom:1px solid #f0f0f0">'+fmtCr(r.curAmt)+'</td>'
-      +'<td style="padding:8px 10px;text-align:right;color:#9e9e9e;font-size:11px;border-bottom:1px solid #f0f0f0">'+fmtCr(r.prvAmt)+'</td>'
-      +'<td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0">'+gTag+'</td>'
-      +'<td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0"><span style="background:'+onTBg+';color:'+onTCol+';padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">'+r.onTrack+'/'+r.bmCount+'</span></td>'
-      +'<td style="padding:8px 8px;text-align:center;font-size:11px;border-bottom:1px solid #f0f0f0"><b>'+r.curCh+'</b>'+(r.chDiff!==0?'<span style="font-size:10px;color:'+(r.chDiff>0?'#2e7d32':'#c62828')+';margin-left:2px">'+(r.chDiff>0?'+':'')+r.chDiff+'</span>':'')+'</td>'
-      +'<td style="padding:8px 8px;text-align:center;font-size:11px;border-bottom:1px solid #f0f0f0">'+r.bmCount+'</td>'
-      +'</tr>';
-  }).join('');
-
-  return '<!DOCTYPE html><html><body style="margin:0;padding:16px;background:#f0f2f5;font-family:Arial,Helvetica,sans-serif">'
-    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:linear-gradient(135deg,#0d47a1,#1a237e);border-radius:12px 12px 0 0"><tr><td style="padding:22px 28px">'
-    +'<div style="color:rgba(255,255,255,.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">REGION PERFORMANCE REPORT</div>'
-    +'<div style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">'+month+' Region Scorecard</div>'
-    +'<div style="color:rgba(255,255,255,.75);font-size:12px">'+date+' &nbsp;|&nbsp; From: '+currentUser.name+'</div>'
-    +'</td></tr></table>'
-    // Region KPIs
-    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:#fff;border:1px solid #e8eaf6;border-top:none"><tr>'
-    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0"><div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Region GMV</div><div style="font-size:20px;font-weight:800;color:#1a237e">'+fmtCr(totCur)+'</div><div style="font-size:10px;color:#9e9e9e">LMTD: '+fmtCr(totPrv)+'</div>'+(gPct!==null?'<div style="margin-top:4px"><span style="background:'+(up?'#e8f5e9':'#ffebee')+';color:'+(up?'#1b5e20':'#b71c1c')+';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">'+(up?'&#9650;':'&#9660;')+' '+(up?'+':'')+gPct+'%</span></div>':'')+'</td>'
-    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0"><div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">UC</div><div style="font-size:20px;font-weight:800;color:#1565c0">'+fmtCr(totUC)+'</div></td>'
-    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0"><div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">CV</div><div style="font-size:20px;font-weight:800;color:#6a1b9a">'+fmtCr(totCV)+'</div></td>'
-    +'<td style="padding:14px 16px;text-align:center;border-right:1px solid #f0f0f0"><div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">Channels</div><div style="font-size:20px;font-weight:800;color:#00838f">'+totCh+'</div><div style="font-size:10px;color:#9e9e9e">LMTD: '+prvCh+'</div></td>'
-    +'<td style="padding:14px 16px;text-align:center"><div style="font-size:10px;color:#9e9e9e;font-weight:600;text-transform:uppercase">BMs On Track</div><div style="font-size:20px;font-weight:800;color:#2e7d32">'+totOnT+'/'+bmList.length+'</div></td>'
-    +'</tr></table>'
-    // AM Table
-    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:#fff;border:1px solid #e8eaf6;border-top:none">'
-    +'<tr style="background:#1a237e">'
-    +'<th style="padding:8px 10px;text-align:left;color:#fff;font-size:11px">AM Name</th>'
-    +'<th style="padding:8px 10px;text-align:right;color:#fff;font-size:11px">'+month.split(' ')[0]+'</th>'
-    +'<th style="padding:8px 10px;text-align:right;color:rgba(255,255,255,.7);font-size:11px">LMTD</th>'
-    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">Growth</th>'
-    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">On Track</th>'
-    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">Channels</th>'
-    +'<th style="padding:8px 8px;text-align:center;color:#fff;font-size:11px">BMs</th>'
-    +'</tr>'
-    +tblRows
-    +'<tr style="background:#e8eaf6">'
-    +'<td style="padding:8px 10px;font-weight:800;color:#1a237e">REGION TOTAL</td>'
-    +'<td style="padding:8px 10px;text-align:right;font-weight:800;color:#1a237e">'+fmtCr(totCur)+'</td>'
-    +'<td style="padding:8px 10px;text-align:right;color:#9e9e9e;font-size:11px">'+fmtCr(totPrv)+'</td>'
-    +'<td style="padding:8px 8px;text-align:center">'+(gPct!==null?'<span style="background:'+(up?'#e8f5e9':'#ffebee')+';color:'+(up?'#1b5e20':'#b71c1c')+';padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700">'+(up?'&#9650;':'&#9660;')+' '+(up?'+':'')+gPct+'%</span>':'-')+'</td>'
-    +'<td style="padding:8px 8px;text-align:center;font-size:11px">'+totOnT+'/'+bmList.length+'</td>'
-    +'<td style="padding:8px 8px;text-align:center;font-weight:800">'+totCh+'</td>'
-    +'<td style="padding:8px 8px;text-align:center">'+bmList.length+'</td>'
-    +'</tr></table>'
-    +'<table width="640" cellpadding="0" cellspacing="0" align="center" style="background:#1a237e;border-radius:0 0 12px 12px"><tr>'
-    +'<td style="padding:12px 28px;text-align:center"><div style="color:rgba(255,255,255,.6);font-size:10px">Rupyy Performance Dashboard &nbsp;|&nbsp; '+date+'</div></td>'
-    +'</tr></table>'
-    +'</body></html>';
-}
 
 // ── Generic Scorecard Email (for AM/TH type selector) ──────
 function buildScorecardEmailHTML(type, note) {
@@ -6627,7 +6618,7 @@ function buildAMScorecardHTML(am) {
     +'</body></html>';
 }
 
-function buildTHScorecardHTML() {
+function buildTHScorecardHTML(th) {
   const emps     = getEmpData();
   const prevData = window._LIVE_MAY||[];
   const date     = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
@@ -6635,8 +6626,19 @@ function buildTHScorecardHTML() {
   const prevMonth= getPrevMonthLabel();
   const todayDay = getTodayDay();
 
-  const bmList = emps.filter(e=>e.designation==='BM'&&e.rh_id===currentUser.id);
-  const amList = emps.filter(e=>e.designation==='AM'&&e.rh_id===currentUser.id);
+  // When a specific TH is passed, scope strictly to their own AM/BM span.
+  // Falls back to the whole region only for the generic (no-TH-selected) preview.
+  const bmList = th
+    ? emps.filter(e=>e.designation==='BM'&&(e.th_id===th.id||e.am_id && emps.find(a=>a.id===e.am_id&&a.th_id===th.id)))
+    : emps.filter(e=>e.designation==='BM'&&e.rh_id===currentUser.id);
+  const amList = th
+    ? emps.filter(e=>e.designation==='AM'&&e.th_id===th.id)
+    : emps.filter(e=>e.designation==='AM'&&e.rh_id===currentUser.id);
+  const scopeId  = th ? th.id : currentUser.id;
+  const scopeKey = th ? 'th_id' : 'rh_id';
+  const reportLabel = th ? th.name + "'S TEAM PERFORMANCE REPORT" : 'REGION PERFORMANCE REPORT';
+  const reportTitle = th ? month + ' — ' + th.name + ' Team Scorecard' : month + ' Region Scorecard';
+  const totalLabel  = th ? 'TEAM TOTAL' : 'REGION TOTAL';
 
   const amRows = amList.map(am=>{
     const cur    = myTxns.filter(t=>t.am_id===am.id);
@@ -6660,9 +6662,9 @@ function buildTHScorecardHTML() {
   const totCh   = amRows.reduce((s,r)=>s+r.curCh,0);
   const prvCh   = amRows.reduce((s,r)=>s+r.prvCh,0);
   const totOnT  = amRows.reduce((s,r)=>s+r.onTrack,0);
-  const totUC   = myTxns.filter(t=>t.rh_id===currentUser.id&&t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
-  const totCV   = myTxns.filter(t=>t.rh_id===currentUser.id&&t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
-  const lmtdData= toLMTD(prevData.filter(t=>t.rh_id===currentUser.id));
+  const totUC   = myTxns.filter(t=>t[scopeKey]===scopeId&&t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+  const totCV   = myTxns.filter(t=>t[scopeKey]===scopeId&&t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+  const lmtdData= toLMTD(prevData.filter(t=>t[scopeKey]===scopeId));
   const prvUC   = lmtdData.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
   const prvCV   = lmtdData.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
 
@@ -6674,8 +6676,8 @@ function buildTHScorecardHTML() {
     <!-- Header -->
     <div style="background:linear-gradient(135deg,#0d47a1,#1a237e,#283593);border-radius:16px 16px 0 0;padding:28px 32px;position:relative;overflow:hidden">
       <div style="position:absolute;right:-20px;top:-20px;width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,.06)"></div>
-      <div style="font-size:11px;color:rgba(255,255,255,.6);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">REGION PERFORMANCE REPORT</div>
-      <div style="color:#fff;font-size:22px;font-weight:800;margin-bottom:4px">${month} Region Scorecard</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.6);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">${reportLabel}</div>
+      <div style="color:#fff;font-size:22px;font-weight:800;margin-bottom:4px">${reportTitle}</div>
       <div style="color:rgba(255,255,255,.75);font-size:13px">${date} &nbsp;|&nbsp; From: ${currentUser.name}</div>
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
         ${cap(bmList.length+' BMs','rgba(255,255,255,.15)','#fff')}
@@ -6685,10 +6687,10 @@ function buildTHScorecardHTML() {
       </div>
     </div>
 
-    <!-- Region KPIs -->
+    <!-- KPIs -->
     <div style="background:#fff;padding:20px 24px;border-bottom:1px solid #f0f0f0">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
-        ${metricCard('Region GMV', totCur, totPrv, '#1a237e')}
+        ${metricCard(th ? 'Team GMV' : 'Region GMV', totCur, totPrv, '#1a237e')}
         ${metricCard('Used Car', totUC, prvUC, '#1565c0')}
         ${metricCard('CV', totCV, prvCV, '#6a1b9a')}
         ${metricCard('Channels', totCh, prvCh, '#00838f','num')}
@@ -6731,7 +6733,7 @@ function buildTHScorecardHTML() {
           </td>
         </tr>`).join('')}
         <tr style="background:#e8eaf6">
-          <td style="padding:8px 10px;font-weight:800;color:#1a237e;border-radius:0 0 0 8px">REGION TOTAL</td>
+          <td style="padding:8px 10px;font-weight:800;color:#1a237e;border-radius:0 0 0 8px">${totalLabel}</td>
           <td style="padding:8px 10px;text-align:right;font-weight:800;color:#1a237e">${fmtCr(totCur)}</td>
           <td style="padding:8px 10px;text-align:right;color:#9e9e9e;font-weight:700">${fmtCr(totPrv)}</td>
           <td style="padding:8px 8px;text-align:center">${gCap(totCur,totPrv)}</td>
@@ -6897,6 +6899,239 @@ function buildQ1EmailHTML(emp) {
     + '</div></body></html>';
 }
 
+// ═══════════════════════════════════════════════════════════
+// MONTH CLOSING MAILER — YTD Month-wise Performance
+// ═══════════════════════════════════════════════════════════
+function buildMonthClosingEmailHTML(emp) {
+  const emps    = getEmpData();
+  const date    = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+  const fyLabel = 'FY' + getFYStartYear() + '-' + String(getFYStartYear()+1).slice(2);
+
+  // All months from FY start (April) through the current month — same list used
+  // everywhere else in the dashboard for YTD views.
+  const ytdMonths = getFYMonths();
+  const closedLabel = ytdMonths.length ? ytdMonths[ytdMonths.length-1].label : '';
+
+  function getTxns(emp, monthData) {
+    if (emp.designation==='BM') return monthData.filter(t=>t.bm_id===emp.id);
+    if (emp.designation==='AM') return monthData.filter(t=>t.am_id===emp.id);
+    if (emp.designation==='TH') return monthData.filter(t=>t.am_id===emp.id||t.th_id===emp.id);
+    return [];
+  }
+
+  // Month-wise stats
+  const monthStats = ytdMonths.map(m => {
+    const txns = getTxns(emp, m.data());
+    const uc   = txns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
+    const cv   = txns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
+    const ch   = countChannels(txns, emp);
+    return { label: m.label.split(' ')[0], tot: uc+cv, uc, cv, cases: txns.length, ch };
+  });
+
+  const ytdTot   = monthStats.reduce((s,m)=>s+m.tot,0);
+  const ytdUC    = monthStats.reduce((s,m)=>s+m.uc,0);
+  const ytdCV    = monthStats.reduce((s,m)=>s+m.cv,0);
+  const ytdCases = monthStats.reduce((s,m)=>s+m.cases,0);
+
+  const ucTgt  = (emp.uc_tgt||0)*1e5 * ytdMonths.length;
+  const cvTgt  = (emp.cv_tgt||0)*1e5 * ytdMonths.length;
+  const tgt    = ucTgt + cvTgt;
+  const ach    = tgt>0 ? Math.round((ytdTot/tgt)*100) : null;
+  const achCol = ach===null?'#555':ach>=100?'#2e7d32':ach>=70?'#1565c0':'#c62828';
+
+  // Month-on-month trend arrow (this month vs previous month, both from monthStats)
+  const lastIdx  = monthStats.length - 1;
+  const lastM    = monthStats[lastIdx];
+  const prevM    = lastIdx > 0 ? monthStats[lastIdx-1] : null;
+  const momDiff  = prevM ? lastM.tot - prevM.tot : null;
+  const momPct   = prevM && prevM.tot>0 ? Math.round((momDiff/prevM.tot)*100) : null;
+
+  // BM rows for AM/TH
+  let bmTable = '';
+  if (emp.designation === 'AM' || emp.designation === 'TH') {
+    const bmList = emps.filter(e=>e.designation==='BM'&&(emp.designation==='AM'?e.am_id===emp.id:(e.th_id===emp.id||e.am_id&&emps.find(a=>a.id===e.am_id&&a.th_id===emp.id))));
+    const bmRows = bmList.map(bm => {
+      const t   = ytdMonths.flatMap(m=>m.data().filter(x=>x.bm_id===bm.id));
+      const amt = t.reduce((s,x)=>s+x.amt,0);
+      const t3  = ((bm.uc_tgt||0)+(bm.cv_tgt||0))*1e5*ytdMonths.length;
+      const a   = t3>0?Math.round((amt/t3)*100):null;
+      return {bm, amt, cases:t.length, ach:a};
+    }).sort((a,b)=>b.amt-a.amt);
+
+    bmTable = '<tr style="background:#e8eaf6"><td colspan="6" style="padding:8px 12px;font-weight:700;color:#1a237e">BM-wise YTD Performance</td></tr>'
+      + '<tr style="background:#1a237e;color:#fff"><th style="padding:7px 10px;text-align:left">BM Name</th><th style="padding:7px 8px;text-align:left">Tier</th><th style="padding:7px 10px;text-align:right">YTD GMV</th><th style="padding:7px 8px;text-align:right">YTD UC</th><th style="padding:7px 8px;text-align:right">YTD CV</th><th style="padding:7px 8px;text-align:center">Ach%</th></tr>'
+      + bmRows.map((r,i) => {
+        const col = r.ach===null?'#555':r.ach>=100?'#2e7d32':r.ach>=70?'#1565c0':'#c62828';
+        const t   = ytdMonths.flatMap(m=>m.data().filter(x=>x.bm_id===r.bm.id));
+        const uc  = t.filter(x=>x.product==='Used Car').reduce((s,x)=>s+x.amt,0);
+        const cv  = t.filter(x=>x.product!=='Used Car').reduce((s,x)=>s+x.amt,0);
+        return '<tr style="background:' + (i%2===0?'#fff':'#f8f9ff') + '">'
+          + '<td style="padding:7px 10px;font-weight:700;border-bottom:1px solid #f0f0f0">' + r.bm.name + '</td>'
+          + '<td style="padding:7px 8px;border-bottom:1px solid #f0f0f0"><span style="background:#e8eaf6;color:#3949ab;padding:1px 5px;border-radius:6px;font-size:10px">' + (r.bm.tier||'-') + '</span></td>'
+          + '<td style="padding:7px 10px;text-align:right;font-weight:700;border-bottom:1px solid #f0f0f0">' + fmtCr(r.amt) + '</td>'
+          + '<td style="padding:7px 8px;text-align:right;color:#1565c0;border-bottom:1px solid #f0f0f0">' + fmtCr(uc) + '</td>'
+          + '<td style="padding:7px 8px;text-align:right;color:#6a1b9a;border-bottom:1px solid #f0f0f0">' + fmtCr(cv) + '</td>'
+          + '<td style="padding:7px 8px;text-align:center;border-bottom:1px solid #f0f0f0"><span style="background:' + (r.ach>=100?'#e8f5e9':r.ach>=70?'#e3f2fd':'#ffebee') + ';color:' + col + ';padding:2px 7px;border-radius:8px;font-size:11px;font-weight:700">' + (r.ach!==null?r.ach+'%':'--') + '</span></td>'
+          + '</tr>';
+      }).join('');
+  }
+
+  return '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f0f2f5;font-family:Arial,Helvetica,sans-serif">'
+    + '<div style="max-width:620px;margin:0 auto;padding:16px">'
+
+    // Header
+    + '<div style="background:linear-gradient(135deg,#00695c,#00897b);border-radius:12px 12px 0 0;padding:24px 28px">'
+    + '<div style="color:rgba(255,255,255,.7);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">MONTH CLOSING REPORT - ' + fyLabel + '</div>'
+    + '<div style="color:#fff;font-size:20px;font-weight:800;margin-bottom:4px">' + closedLabel + ' Closing — YTD Scorecard</div>'
+    + '<div style="color:rgba(255,255,255,.75);font-size:13px">Hi ' + emp.name + ' | ' + date + '</div>'
+    + '</div>'
+
+    // YTD Summary row
+    + '<div style="background:#fff;padding:0;border-bottom:2px solid #e0f2f1">'
+    + '<table style="width:100%;border-collapse:collapse">'
+    + '<tr style="background:#f1faf8">'
+    + '<td style="padding:14px 12px;text-align:center;border-right:1px solid #e0f2f1"><div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:4px">YTD Total</div><div style="font-size:20px;font-weight:800;color:#00695c">' + fmtCr(ytdTot) + '</div></td>'
+    + '<td style="padding:14px 12px;text-align:center;border-right:1px solid #e0f2f1"><div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:4px">UC</div><div style="font-size:20px;font-weight:800;color:#1565c0">' + fmtCr(ytdUC) + '</div></td>'
+    + '<td style="padding:14px 12px;text-align:center;border-right:1px solid #e0f2f1"><div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:4px">CV</div><div style="font-size:20px;font-weight:800;color:#6a1b9a">' + fmtCr(ytdCV) + '</div></td>'
+    + '<td style="padding:14px 12px;text-align:center;border-right:1px solid #e0f2f1"><div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:4px">Cases</div><div style="font-size:20px;font-weight:800;color:#333">' + ytdCases + '</div></td>'
+    + '<td style="padding:14px 12px;text-align:center"><div style="font-size:10px;color:#9e9e9e;font-weight:700;text-transform:uppercase;margin-bottom:4px">YTD Ach%</div><div style="font-size:20px;font-weight:800;color:' + achCol + '">' + (ach!==null?ach+'%':'--') + '</div></td>'
+    + '</tr>'
+    + '</table>'
+    + '</div>'
+
+    // This-month-vs-last-month callout
+    + (momDiff!==null ? '<div style="background:#fff;padding:12px 20px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:10px">'
+      + '<span style="font-size:11px;color:#9e9e9e;font-weight:700;text-transform:uppercase">' + closedLabel + ' vs Prior Month:</span>'
+      + '<span style="background:' + (momDiff>=0?'#e8f5e9':'#ffebee') + ';color:' + (momDiff>=0?'#1b5e20':'#b71c1c') + ';padding:3px 10px;border-radius:10px;font-size:12px;font-weight:700">' + (momDiff>=0?'&#9650; +':'&#9660; ') + fmtCr(Math.abs(momDiff)) + (momPct!==null?' ('+(momDiff>=0?'+':'')+momPct+'%)':'') + '</span>'
+      + '</div>' : '')
+
+    // Month-wise breakdown table
+    + '<div style="background:#fff;padding:16px 20px;border-bottom:1px solid #f0f0f0">'
+    + '<div style="font-size:12px;font-weight:700;color:#00695c;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">YTD Month-wise Breakdown</div>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+    + '<thead><tr style="background:#00695c;color:#fff">'
+    + '<th style="padding:8px 10px;text-align:left">Month</th>'
+    + '<th style="padding:8px 10px;text-align:right">GMV</th>'
+    + '<th style="padding:8px 8px;text-align:right">UC</th>'
+    + '<th style="padding:8px 8px;text-align:right">CV</th>'
+    + '<th style="padding:8px 8px;text-align:center">Cases</th>'
+    + '<th style="padding:8px 8px;text-align:center">Channels</th>'
+    + '</tr></thead>'
+    + '<tbody>'
+    + monthStats.map((m,i) =>
+        '<tr style="background:' + (i===monthStats.length-1?'#e0f2f1':i%2===0?'#fff':'#f8f9ff') + '">'
+        + '<td style="padding:8px 10px;font-weight:700;color:#00695c;border-bottom:1px solid #f0f0f0">' + m.label + (i===monthStats.length-1?' <span style="font-size:9px;color:#00897b">(latest)</span>':'') + '</td>'
+        + '<td style="padding:8px 10px;text-align:right;font-weight:700;border-bottom:1px solid #f0f0f0">' + fmtCr(m.tot) + '</td>'
+        + '<td style="padding:8px 8px;text-align:right;color:#1565c0;border-bottom:1px solid #f0f0f0">' + fmtCr(m.uc) + '</td>'
+        + '<td style="padding:8px 8px;text-align:right;color:#6a1b9a;border-bottom:1px solid #f0f0f0">' + fmtCr(m.cv) + '</td>'
+        + '<td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0">' + m.cases + '</td>'
+        + '<td style="padding:8px 8px;text-align:center;border-bottom:1px solid #f0f0f0">' + m.ch + '</td>'
+        + '</tr>'
+      ).join('')
+    + '<tr style="background:#e0f2f1;font-weight:700">'
+    + '<td style="padding:8px 10px;color:#00695c">YTD TOTAL</td>'
+    + '<td style="padding:8px 10px;text-align:right;color:#00695c">' + fmtCr(ytdTot) + '</td>'
+    + '<td style="padding:8px 8px;text-align:right;color:#1565c0">' + fmtCr(ytdUC) + '</td>'
+    + '<td style="padding:8px 8px;text-align:right;color:#6a1b9a">' + fmtCr(ytdCV) + '</td>'
+    + '<td style="padding:8px 8px;text-align:center">' + ytdCases + '</td>'
+    + '<td style="padding:8px 8px;text-align:center">' + monthStats.reduce((s,m)=>s+m.ch,0) + '</td>'
+    + '</tr>'
+    + '</tbody>'
+    + '</table>'
+    + '</div>'
+
+    + bmTable
+
+    // Footer
+    + '<div style="background:#00695c;padding:12px 20px;border-radius:0 0 12px 12px;display:flex;justify-content:space-between;align-items:center">'
+    + '<div style="color:rgba(255,255,255,.9);font-size:12px;font-weight:700">Rupyy Performance Dashboard</div>'
+    + '<div style="color:rgba(255,255,255,.5);font-size:11px">' + fyLabel + ' YTD | ' + date + '</div>'
+    + '</div>'
+
+    + '</div></body></html>';
+}
+
+function previewMonthClosingEmail() {
+  const emps  = getEmpData();
+  const panel = document.getElementById('sc-preview-panel');
+  if (!panel) return;
+  const bm = emps.find(e=>e.designation==='BM'&&e.rh_id===currentUser.id);
+  if (bm) panel.innerHTML = buildMonthClosingEmailHTML(bm);
+}
+
+async function sendMonthClosingMail() {
+  const emps    = getEmpData();
+  const statusEl= document.getElementById('mc-status');
+  if (!getASUrl()) { promptASUrl(); return; }
+
+  const sendBMs = document.getElementById('mc-send-bm')?.checked;
+  const sendAMs = document.getElementById('mc-send-am')?.checked;
+  const sendTHs = document.getElementById('mc-send-th')?.checked;
+
+  const bmList = sendBMs ? getMailBMList().filter(e=>e.email) : [];
+  const amList = sendAMs ? getMailAMList().filter(e=>e.email) : [];
+  const thList = sendTHs ? getMailTHList().filter(e=>e.email) : [];
+  const total  = bmList.length + amList.length + thList.length;
+
+  if (!total) { statusEl.innerHTML = '<span style="color:#c62828">Select at least one group</span>'; return; }
+  statusEl.innerHTML = '<span style="color:#00695c">Sending Month Closing mail to ' + total + ' employees...</span>';
+
+  const ytdMonths = getFYMonths();
+  const closedLabel = ytdMonths.length ? ytdMonths[ytdMonths.length-1].label.split(' ')[0] : '';
+  let sent = 0;
+
+  for (const bm of bmList) {
+    const amEmp = emps.find(e=>e.id===bm.am_id);
+    const thEmp = emps.find(e=>e.id===bm.th_id);
+    const cc    = withRHCC([amEmp?.email, thEmp?.email]);
+    try {
+      await fetch(getASUrl(), {
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({ to:[bm.email], cc,
+          subject: closedLabel + ' Closing — YTD Scorecard - ' + bm.name,
+          htmlBody: buildMonthClosingEmailHTML(bm) }),
+        mode:'no-cors'
+      });
+      sent++;
+    } catch(e) {}
+    statusEl.innerHTML = '<span style="color:#00695c">Sent ' + sent + '/' + total + '...</span>';
+    await new Promise(r=>setTimeout(r,300));
+  }
+
+  for (const am of amList) {
+    const thEmp = emps.find(e=>e.id===am.th_id);
+    try {
+      await fetch(getASUrl(), {
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({ to:[am.email], cc: withRHCC([thEmp?.email]),
+          subject: closedLabel + ' Closing — YTD Team Scorecard - ' + am.name,
+          htmlBody: buildMonthClosingEmailHTML(am) }),
+        mode:'no-cors'
+      });
+      sent++;
+    } catch(e) {}
+    statusEl.innerHTML = '<span style="color:#00695c">Sent ' + sent + '/' + total + '...</span>';
+    await new Promise(r=>setTimeout(r,300));
+  }
+
+  for (const th of thList) {
+    try {
+      await fetch(getASUrl(), {
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({ to:[th.email], cc: withRHCC([]),
+          subject: closedLabel + ' Closing — YTD Scorecard - ' + th.name,
+          htmlBody: buildMonthClosingEmailHTML(th) }),
+        mode:'no-cors'
+      });
+      sent++;
+    } catch(e) {}
+    statusEl.innerHTML = '<span style="color:#00695c">Sent ' + sent + '/' + total + '...</span>';
+    await new Promise(r=>setTimeout(r,300));
+  }
+
+  statusEl.innerHTML = '<span style="color:#2e7d32;font-weight:700">Month Closing mail sent to ' + sent + ' employees! (CC: RH on all)</span>';
+}
+
 function previewQ1Email() {
   const emps  = getEmpData();
   const panel = document.getElementById('sc-preview-panel');
@@ -6988,21 +7223,29 @@ async function sendScorecardToBMsForTH() {
   if (!checked.length) { statusEl.innerHTML = '<span style="color:#c62828">Select at least one TH</span>'; return; }
   if (!getASUrl()) { promptASUrl(); return; }
 
-  const tos = checked.map(c=>c.dataset.email).filter(Boolean);
-  try {
-    await fetch(getASUrl(), {
-      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({
-        to: tos, cc: withRHCC([]),
-        subject: getCurMonthLabel() + ' Region Scorecard',
-        htmlBody: buildTHScorecardHTML()
-      }),
-      mode:'no-cors'
-    });
-    statusEl.innerHTML = '<span style="color:#2e7d32">Sent to ' + tos.length + ' THs | CC: RH</span>';
-  } catch(e) {
-    statusEl.innerHTML = '<span style="color:#c62828">Error: ' + e.message + '</span>';
+  statusEl.innerHTML = `Sending to ${checked.length} TH(s)...`;
+  let sent = 0;
+
+  for (const chk of checked) {
+    const thEmp = emps.find(e => e.id === chk.dataset.id);
+    if (!thEmp || !thEmp.email) continue;
+
+    try {
+      await fetch(getASUrl(), {
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({
+          to: [thEmp.email], cc: withRHCC([]),
+          subject: getCurMonthLabel() + ' Team Scorecard - ' + thEmp.name,
+          htmlBody: buildTHScorecardHTML(thEmp)
+        }),
+        mode:'no-cors'
+      });
+      sent++;
+    } catch(e) {}
+    statusEl.innerHTML = `Sent ${sent}/${checked.length}...`;
+    await new Promise(r => setTimeout(r, 400));
   }
+  statusEl.innerHTML = '<span style="color:#2e7d32">Sent to ' + sent + ' TH(s) | CC: RH</span>';
 }
 
 // ── Exit Goal Email Builder ─────────────────────────────
@@ -7350,21 +7593,27 @@ async function sendScorecardToTHs() {
   if (!checked.length) { statusEl.innerHTML = '<span style="color:#c62828">Select at least one TH</span>'; return; }
   if (!getASUrl()) { promptASUrl(); return; }
 
-  const tos = checked.map(c=>c.dataset.email).filter(Boolean);
-  try {
-    await fetch(getASUrl(), {
-      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({
-        to: tos, cc: withRHCC([]),
-        subject: getCurMonthLabel() + ' Region Scorecard',
-        htmlBody: buildTHScorecardHTML()
-      }),
-      mode:'no-cors'
-    });
-    statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${tos.length} THs | CC: RH</span>`;
-  } catch(e) {
-    statusEl.innerHTML = `<span style="color:#c62828">${e.message}</span>`;
+  statusEl.innerHTML = `Sending to ${checked.length} TH(s)...`;
+  let sent = 0;
+  for (const chk of checked) {
+    const thEmp = emps.find(e => e.id === chk.dataset.id);
+    if (!thEmp || !thEmp.email) continue;
+    try {
+      await fetch(getASUrl(), {
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({
+          to: [thEmp.email], cc: withRHCC([]),
+          subject: getCurMonthLabel() + ' Team Scorecard - ' + thEmp.name,
+          htmlBody: buildTHScorecardHTML(thEmp)
+        }),
+        mode:'no-cors'
+      });
+      sent++;
+    } catch(e) {}
+    statusEl.innerHTML = `Sent ${sent}/${checked.length}...`;
+    await new Promise(r => setTimeout(r, 400));
   }
+  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} TH(s) | CC: RH</span>`;
 }
 
 // ── Channel Drive send functions ────────────────────────────
