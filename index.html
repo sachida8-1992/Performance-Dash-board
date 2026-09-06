@@ -602,7 +602,7 @@ async function tryLoadLiveData() {
         const m = activeBtn.getAttribute('onclick').match(/'([^']+)'/);
         if (m) activePageId = m[1];
       }
-      const activePage = document.getElementById('page-' + activePageId);
+      const activePage = document.getElementById('page_' + activePageId);
       if (activePage) {
         // Destroy charts for this page only
         if (activePageId === 'overview') {
