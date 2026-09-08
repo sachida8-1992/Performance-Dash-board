@@ -1031,7 +1031,16 @@ function doLogout() {
 function filterMyTxns() {
   const d = currentUser.designation;
   const id = currentUser.id;
-  const juneTxns = getTxnData().filter(t => t.date && t.date.startsWith(getCurMonth()));
+  // window._LIVE_TXN (returned by getTxnData()) is ALREADY exactly the current
+  // month's transactions — the Apps Script only ever pushes the current month's
+  // sheet tab into this field. Re-filtering it by t.date.startsWith(getCurMonth())
+  // used to be a "safety check," but it's actually a liability: if even a few
+  // rows have a date typo (wrong year, wrong format, etc.), those rows silently
+  // vanish from every KPI on this page while still counting correctly anywhere
+  // that doesn't re-check the date (like the AM/TH Performance table below,
+  // which trusts this same field directly and was showing correct numbers).
+  // Trusting the field directly, like that table does, avoids this failure mode.
+  const juneTxns = getTxnData();
   if (d === 'BM') {
     myTxns = juneTxns.filter(t => t.bm_id === id);
   } else if (d === 'AM') {
@@ -3450,7 +3459,7 @@ function buildTeamIncentive(el) {
     return pool.filter(t => t.bm_id===id || t.bm===currentUser.name?.toLowerCase());
   }
 
-  const juneTxns = scopeFilter(getTxnData().filter(t => t.date && t.date.startsWith(getCurMonth())));
+  const juneTxns = scopeFilter(getTxnData());
   const mayTxns  = scopeFilter(getMayData()); // Full previous month for incentive calc
 
   const juneMap = getBmMap(juneTxns);
@@ -8418,7 +8427,7 @@ function buildWeekly(el) {
     });
 
     const periodTxns = allTxns.filter(t =>
-      t.date && t.date.startsWith(getCurMonth()) && t.day > 0 && t.day <= ms.day
+      t.day > 0 && t.day <= ms.day
     );
 
     bodyEl.innerHTML = role==='BM'
@@ -8500,7 +8509,7 @@ function buildWeeklyBM(ms, periodTxns, allTxns) {
         <tbody>
           ${MILESTONES.map(m => {
             const today = new Date().getDate();
-            const mTxns = (allTxns||myTxns).filter(t=>t.date&&t.date.startsWith(getCurMonth())&&t.day>0&&t.day<=m.day);
+            const mTxns = (allTxns||myTxns).filter(t=>t.day>0&&t.day<=m.day);
             const mTgts = getMilestoneEmpTargets(emp, m);
             const mUC   = mTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
             const mCV   = mTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
@@ -8708,7 +8717,7 @@ function buildWeeklyTeam(ms, periodTxns, allTxns) {
   // Summary table for all milestones
   const today2 = new Date().getDate();
   const msSummary = MILESTONES.map(m => {
-    const mTxns = (allTxns||myTxns).filter(t=>t.date&&t.date.startsWith(getCurMonth())&&t.day>0&&t.day<=m.day);
+    const mTxns = (allTxns||myTxns).filter(t=>t.day>0&&t.day<=m.day);
     const mUC = mTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
     const mCV = mTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
     const isFut = today2 < m.day;
@@ -9267,7 +9276,7 @@ function lookupSubventionLoan() {
   const detailsEl = document.getElementById('subCaseDetails');
   if (!loanId) { detailsEl.innerHTML = '<div style="color:#c62828;font-size:12px">Enter a Loan ID.</div>'; return; }
 
-  const curMonthTxns = getTxnData().filter(t => t.date && t.date.startsWith(getCurMonth()));
+  const curMonthTxns = getTxnData();
   const found = curMonthTxns.find(t => String(t.loan_id||'').trim() === loanId);
   if (!found) {
     detailsEl.innerHTML = '<div style="color:#c62828;font-size:12px">No case found with this Loan ID in the current month&#39;s data. Check the ID or wait for the next data sync.</div>';
