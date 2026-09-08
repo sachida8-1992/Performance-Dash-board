@@ -2232,6 +2232,16 @@ function buildRHPerfTable(selectedPfx) {
   const ftdLabel   = isCurMonth ? 'FTD' : 'Last Day';
   const ypLabel    = isCurMonth ? 'YESTERDAY (YP)' : 'Prior Day';
 
+  // TEMPORARY DEBUG — remove once FTD/YP issue is resolved.
+  console.log('%c[RH PERF TABLE DEBUG]', 'color:#e65100;font-weight:bold', {
+    todayStr, yesterdayStr, refDate, refPrevDate, isCurMonth,
+    juneTxnsCount: juneTxns.length,
+    sampleDates: juneTxns.slice(0, 8).map(t => t.date),
+    datesMatchingRefDate: juneTxns.filter(t => t.date === refDate).length,
+    datesMatchingRefDateSliced: juneTxns.filter(t => t.date && t.date.slice(0,10) === refDate).length,
+    uniqueDateValues: [...new Set(juneTxns.map(t=>t.date))].sort().slice(-5),
+  });
+
   function fmtL(v) { return (v/1e5).toFixed(2)+'L'; }
 
   function gTag(cur, prev, isAmt=true) {
