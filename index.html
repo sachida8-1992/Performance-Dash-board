@@ -729,7 +729,7 @@ function parseTransactions(rows) {
     // Excel serial number
     if (/^\d{5}$/.test(s.trim())) {
       const d = new Date(Math.round((parseFloat(s) - 25569) * 86400 * 1000));
-      return d.toISOString().slice(0,10);
+      return localDateStr(d);
     }
     return s.slice(0,10);
   }
@@ -928,6 +928,13 @@ function getPrevMonthLabel() {
   const d = new Date();
   d.setMonth(d.getMonth() - 1);
   return d.toLocaleString('en-IN', {month:'long', year:'numeric'});
+}
+// Returns 'YYYY-MM-DD' from the LOCAL date components (no UTC conversion) — safer
+// than date.toISOString().slice(0,10), which converts to UTC first and can shift
+// the calendar date near midnight in timezones ahead of UTC (like IST).
+function localDateStr(d) {
+  d = d || new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 function getCurMonthPrefix() {
   // Returns e.g. '2026-07'
@@ -1468,7 +1475,7 @@ function buildOverview(el) {
     if (!ftdDiv) return;
 
     // Today's date in IST-friendly format (match disbursed_date which is stored as date only)
-    const todayStr = new Date().toISOString().slice(0,10);
+    const todayStr = localDateStr();
     const todayLabel = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
 
     // Update card title to show today's date
@@ -1623,7 +1630,7 @@ function buildTrendOrFtd() {
     buildTrendChart();
   } else {
     // FTD case table card
-    const todayStr = new Date().toISOString().slice(0,10);
+    const todayStr = localDateStr();
     // Build month's available dates from transactions
     const curMonth = getCurMonth();
     const availDates = [...new Set(myTxns.filter(t=>t.date&&t.date.startsWith(curMonth)).map(t=>t.date.slice(0,10)))].sort().reverse();
@@ -1681,7 +1688,7 @@ function buildFTDCaseTable() {
 
   const d       = currentUser.designation;
   const uid     = currentUser.id;
-  const todayStr= new Date().toISOString().slice(0,10);
+  const todayStr= localDateStr();
   const emps    = getEmpData();
 
   // Get date-range filter — defaults to today only
@@ -1859,13 +1866,13 @@ function buildTrendChart() {
   const curTxns = filterProd(filterPerson(myTxns.filter(t=>t.date&&t.date.slice(0,7)===getCurMonth())));
 
   // ── Build date range (working days, full current month) ──
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = localDateStr();
   const monthStr = getCurMonth(); // e.g. '2026-07'
   const allDates = [];
   const monthStart   = new Date(monthStr + '-01');
   const monthEndDate = new Date(monthStart.getFullYear(), monthStart.getMonth()+1, 0); // last day of current month
   for (let d = new Date(monthStart); d <= monthEndDate; d.setDate(d.getDate()+1)) {
-    if (d.getDay() !== 0) allDates.push(d.toISOString().slice(0,10)); // Mon-Sat
+    if (d.getDay() !== 0) allDates.push(localDateStr(d)); // Mon-Sat
   }
 
   // ── Daily raw amounts (July / current month) ──────────────
@@ -2206,9 +2213,9 @@ function buildRHPerfTable(selectedPfx) {
   function scopeToRH(txns) { return txns.filter(t => t.rh_id === currentUser.id); }
 
   const today      = new Date();
-  const todayStr   = today.toISOString().slice(0,10);
+  const todayStr   = localDateStr(today);
   const yest       = new Date(today); yest.setDate(yest.getDate() - 1);
-  const yesterdayStr = yest.toISOString().slice(0,10);
+  const yesterdayStr = localDateStr(yest);
   const allEmps    = getEmpData();
   const juneTxns   = scopeToRH(selMonth.data());
   const mayRaw     = prevMonth ? scopeToRH(prevMonth.data()) : [];
@@ -2252,7 +2259,7 @@ function buildRHPerfTable(selectedPfx) {
   }
   // New channels activated on refDate (across scope) that weren't active earlier this month
   function newChannelsToday(scopeTxns) {
-    const ftd = scopeTxns.filter(t => t.date === refDate);
+    const ftd = scopeTxns.filter(t => t.date && t.date.slice(0,10) === refDate);
     const ftdDcids = new Set(ftd.filter(t=>t.dcid && t.product==='Used Car').map(t=>t.dcid));
     const beforeTodayDcids = new Set(scopeTxns.filter(t => t.date < refDate && t.dcid).map(t=>t.dcid));
     return [...ftdDcids].filter(d => !beforeTodayDcids.has(d)).length;
@@ -2283,8 +2290,8 @@ function buildRHPerfTable(selectedPfx) {
     const chTgt   = bmScope.reduce((s,e)=>s+(e.ch_tgt||0),0);
     const chAch   = chTgt>0 ? Math.round((ch/chTgt)*100) : null;
 
-    const ftdTxns = jTxns.filter(t => t.date === refDate);
-    const ypTxns  = jTxns.filter(t => t.date === refPrevDate);
+    const ftdTxns = jTxns.filter(t => t.date && t.date.slice(0,10) === refDate);
+    const ypTxns  = jTxns.filter(t => t.date && t.date.slice(0,10) === refPrevDate);
     const ftdUC   = ftdTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
     const ftdCV   = ftdTxns.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
     const ypUC    = ypTxns.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
@@ -2454,10 +2461,10 @@ function buildRHPerfTable(selectedPfx) {
 
 // ── BM FTD Disbursement Report — data + preview table ───────
 function getBMFTDReportRows() {
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = localDateStr();
   const allEmps  = getEmpData();
   const bms      = allEmps.filter(e => e.designation === 'BM' && e.rh_id === currentUser.id);
-  const ftdTxns  = getTxnData().filter(t => t.date === todayStr && t.rh_id === currentUser.id);
+  const ftdTxns  = getTxnData().filter(t => t.date && t.date.slice(0,10) === todayStr && t.rh_id === currentUser.id);
 
   const rows = bms.map(bm => {
     const amEmp = allEmps.find(e => e.id === bm.am_id);
@@ -4158,8 +4165,8 @@ function buildTeam(el) {
     // Scope this month's data down to just this AM's BMs (raw historical data is org-wide)
     const scopeTxns  = selMonth.data().filter(t => myBMIds.has(t.bm_id));
     const refDate    = isCurMonth
-      ? new Date().toISOString().slice(0,10)
-      : (scopeTxns.reduce((max,t) => t.date>max?t.date:max, '') || new Date().toISOString().slice(0,10));
+      ? localDateStr()
+      : (scopeTxns.reduce((max,t) => t.date>max?t.date:max, '') || localDateStr());
     const ftdLabel   = isCurMonth ? 'FTD' : 'Last Day';
 
     // Build BM map from this month's scoped transactions, grouped by bm_id
@@ -4383,12 +4390,12 @@ function buildInsights(el) {
     // Zero days (if any)
     const byDate = {};
     myTxns.forEach(t => { byDate[t.date]=(byDate[t.date]||0)+1; });
-    const todayStr = new Date().toISOString().slice(0,10);
+    const todayStr = localDateStr();
     if (Object.keys(byDate).length > 0) {
       const firstDate = Object.keys(byDate).sort()[0];
       let zeroDays = 0;
       for (let d=new Date(firstDate); d<new Date(todayStr); d.setDate(d.getDate()+1)) {
-        if (d.getDay()!==0 && !byDate[d.toISOString().slice(0,10)]) zeroDays++;
+        if (d.getDay()!==0 && !byDate[localDateStr(d)]) zeroDays++;
       }
       if (zeroDays > 0) {
         insights.push({type:'action', title:` ${zeroDays} Zero Productivity Day${zeroDays>1?'s':''}`, body:`You had ${zeroDays} working day${zeroDays>1?'s':''} with no disbursement this month. Consistent daily activity drives better results.`});
@@ -8166,7 +8173,7 @@ function saveCommitmentToSheet(inputEl) {
   const role     = inputEl.dataset.prole;
   const product  = inputEl.dataset.product; // 'uc' or 'cv'
   const amtL     = parseAmt(val);
-  const today    = new Date().toISOString().slice(0,10);
+  const today    = localDateStr();
 
   // Debounce — wait 800ms after last keystroke
   clearTimeout(inputEl._saveTimer);
@@ -9816,7 +9823,7 @@ function downloadIssuesExcel() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `Rupyy_Issues_${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `Rupyy_Issues_${localDateStr()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -9907,7 +9914,7 @@ function buildHierarchy(el) {
 // ── Shared: build flat BM table with TH/AM filter dropdowns ──
 function buildFlatHierarchy(el, role) {
   const emps      = getEmpData();
-  const todayStr  = new Date().toISOString().slice(0,10);
+  const todayStr  = localDateStr();
   const months    = getFYMonths();                 // oldest (April) → current, left to right
   const curPfx    = getCurMonthPrefix();
 
@@ -9967,7 +9974,7 @@ function buildFlatHierarchy(el, role) {
       const chTgt   = e.ch_tgt||0;
       const chAch   = chTgt>0?Math.round((ch/chTgt)*100):null;
       // FTD (or "Last Day" for a completed past month)
-      const ftd     = txns.filter(t=>t.date===refDate);
+      const ftd     = txns.filter(t=>t.date && t.date.slice(0,10)===refDate);
       const ftdUC   = ftd.filter(t=>t.product==='Used Car').reduce((s,t)=>s+t.amt,0);
       const ftdCV   = ftd.filter(t=>t.product!=='Used Car').reduce((s,t)=>s+t.amt,0);
       // New channels activated on refDate that had no disbursement before refDate that month
@@ -10280,7 +10287,7 @@ function buildTHCard(thName, thEmp, thStats, thId, amEntries) {
 // ── Helper: BM rows table ─────────────────────────────
 function buildBMTable(bmRows) {
   if (!bmRows.length) return '<div class="empty">No BMs found.</div>';
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = localDateStr();
   return `
     <table>
       <thead><tr>
