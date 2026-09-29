@@ -7107,13 +7107,10 @@ async function sendMonthClosingMail() {
   let sent = 0;
 
   for (const bm of bmList) {
-    const amEmp = emps.find(e=>e.id===bm.am_id);
-    const thEmp = emps.find(e=>e.id===bm.th_id);
-    const cc    = withRHCC([amEmp?.email, thEmp?.email]);
     try {
       await fetch(getASUrl(), {
         method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body: JSON.stringify({ to:[bm.email], cc,
+        body: JSON.stringify({ to:[bm.email],
           subject: closedLabel + ' Closing — YTD Scorecard - ' + bm.name,
           htmlBody: buildMonthClosingEmailHTML(bm) }),
         mode:'no-cors'
@@ -7180,9 +7177,6 @@ async function sendScorecardToBMs() {
   for (const chk of checked) {
     const bm    = emps.find(e=>e.id===chk.dataset.id);
     if (!bm || !bm.email) { continue; }
-    const amEmp = emps.find(e=>e.id===bm.am_id);
-    const thEmp = emps.find(e=>e.id===bm.th_id);
-    const cc    = withRHCC([amEmp?.email, thEmp?.email]);
     const ach   = (() => {
       const t   = myTxns.filter(x=>x.bm_id===bm.id);
       const tot = t.reduce((s,x)=>s+x.amt,0);
@@ -7193,7 +7187,7 @@ async function sendScorecardToBMs() {
       await fetch(getASUrl(), {
         method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({
-          to: [bm.email], cc,
+          to: [bm.email],
           subject: getCurMonthLabel() + ' Scorecard - ' + bm.name + (ach!==null?' - '+ach+'% achieved':''),
           htmlBody: buildBMScorecardHTML(bm)
         }),
@@ -7204,7 +7198,7 @@ async function sendScorecardToBMs() {
     statusEl.innerHTML = 'Sent ' + sent + '/' + checked.length + '...';
     await new Promise(r=>setTimeout(r,400));
   }
-  statusEl.innerHTML = '<span style="color:#2e7d32">Sent to ' + sent + ' BMs | CC: AM, TH & RH</span>';
+  statusEl.innerHTML = '<span style="color:#2e7d32">Sent to ' + sent + ' BMs</span>';
 }
 
 // ── Send Scorecard to AMs ───────────────────────────────────
@@ -7422,14 +7416,11 @@ async function sendExitGoalToBMs() {
   let sent=0;
 
   for (const bm of bmList) {
-    const amEmp = emps.find(e=>e.id===bm.am_id);
-    const thEmp = emps.find(e=>e.id===bm.th_id);
-    const cc    = withRHCC([amEmp?.email, thEmp?.email]);
     try {
       await fetch(getASUrl(), {
         method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({
-          to: [bm.email], cc,
+          to: [bm.email],
           subject: ms.label+' Exit Goal Report — '+bm.name+' — '+getCurMonthLabel(),
           htmlBody: buildExitGoalEmailHTML(bm, msIdx)
         }),
@@ -7440,7 +7431,7 @@ async function sendExitGoalToBMs() {
     statusEl.innerHTML = '<span style="color:#2e7d32">Sent '+sent+'/'+bmList.length+'...</span>';
     await new Promise(r=>setTimeout(r,350));
   }
-  statusEl.innerHTML = '<span style="color:#2e7d32;font-weight:700">Exit Goal mail sent to '+sent+' BMs | CC: AM, TH & RH</span>';
+  statusEl.innerHTML = '<span style="color:#2e7d32;font-weight:700">Exit Goal mail sent to '+sent+' BMs</span>';
 }
 
 async function sendExitGoalToAMs() {
@@ -7528,13 +7519,10 @@ async function sendQ1ScoreCard() {
   let sent = 0;
 
   for (const bm of bmList) {
-    const amEmp = emps.find(e=>e.id===bm.am_id);
-    const thEmp = emps.find(e=>e.id===bm.th_id);
-    const cc    = withRHCC([amEmp?.email, thEmp?.email]);
     try {
       await fetch(getASUrl(), {
         method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body: JSON.stringify({ to:[bm.email], cc,
+        body: JSON.stringify({ to:[bm.email],
           subject: 'Q1 ' + fyLabel + ' Scorecard - ' + bm.name,
           htmlBody: buildQ1EmailHTML(bm) }),
         mode:'no-cors'
@@ -7658,9 +7646,6 @@ async function sendChannelToBMs() {
   for (const chk of checked) {
     const bm    = emps.find(e=>e.id===chk.dataset.id);
     if (!bm || !bm.email) continue;
-    const amEmp = emps.find(e=>e.id===bm.am_id);
-    const thEmp = emps.find(e=>e.id===bm.th_id);
-    const cc    = withRHCC([amEmp?.email, thEmp?.email]);
 
     const bmCur  = myTxns.filter(t=>t.bm_id===bm.id);
     const bmPrev = prevData.filter(t=>t.bm_id===bm.id);
@@ -7750,7 +7735,7 @@ async function sendChannelToBMs() {
       await fetch(getASUrl(), {
         method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
         body: JSON.stringify({
-          to: [bm.email], cc,
+          to: [bm.email],
           subject: `Channel Drive Alert - ${bm.name} - ${lost.length} lost, ${inact.length} inactive`,
           htmlBody: html
         }),
@@ -7761,7 +7746,7 @@ async function sendChannelToBMs() {
     statusEl.innerHTML = `<span style="color:#e53935">Sent ${sent}/${checked.length}...</span>`;
     await new Promise(r=>setTimeout(r,300));
   }
-  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} BMs | CC: AM, TH & RH</span>`;
+  statusEl.innerHTML = `<span style="color:#2e7d32;font-weight:700">Sent to ${sent} BMs</span>`;
 }
 
 // ══════════════════════════════════════════════════════════
